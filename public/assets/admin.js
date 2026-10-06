@@ -108,7 +108,7 @@ function viewConnections() {
   const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://10.8.0.2:8080' });
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
   const ch = s.x32.channels;
-  const chIn = (v, i) => num(v[i], { min: 1, max: 32 });
+  const chIn = (v, i) => num(v[i], { min: 1, max: 32, class: 'num' });
   const p1 = [chIn(ch.p1, 0), chIn(ch.p1, 1)], p2 = [chIn(ch.p2, 0), chIn(ch.p2, 1)], mics = [0, 1, 2].map((i) => chIn(ch.mics, i));
   return h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Status'),
@@ -176,5 +176,5 @@ function render() {
   clear(body).append({ einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, testmodus: viewTest, bericht: viewReport }[tab]());
 }
 
-app.append(topbar('Admin', { right: [h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] }), h('div', { class: 'wrap' }, tabBar, body));
+app.append(topbar('Admin', { live: false, right: [h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] }), h('div', { class: 'wrap' }, tabBar, body));
 load().catch((e) => toast(e.message, true));

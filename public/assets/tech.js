@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, logout, safe, toast, $, fmtTime } from '/assets/app.js';
+import { h, api, connect, topbar, clear, logout, safe, toast, $, fmtTime, eq } from '/assets/app.js';
 import { pendingList, upcomingList, ampel, bar, playerName } from '/assets/staff-ui.js';
 
 const app = $('#app');
@@ -28,15 +28,15 @@ function fillPresets() {
     const key = JSON.stringify(state.settings.fadePresets);
     if (row.dataset.k === key) continue;
     row.dataset.k = key;
-    clear(row).append(...state.settings.fadePresets.map((p) => h('button', { class: 'small ghost', onclick: () => { target.value = p.sec; target.dispatchEvent(new Event('change')); } }, `${p.name} ${p.sec}s`)));
+    clear(row).append(...state.settings.fadePresets.map((p) => h('button', { class: 'small', onclick: () => { target.value = p.sec; target.dispatchEvent(new Event('change')); } }, `${p.name} ${p.sec}s`)));
   }
 }
 
 // ---------- Player ----------
 function playerCard(n) {
   const r = refs[`p${n}`] = {};
-  r.title = h('div', { class: 'title' }, '—'); r.artist = h('div', { class: 'muted small' });
-  r.status = h('span', { class: 'badge' }); r.pos = h('span', {}); r.rem = h('span', {});
+  r.title = h('div', { class: 'title', style: 'font-size:1.25rem;font-weight:700;letter-spacing:-.03em;line-height:1.2' }, '—'); r.artist = h('div', { class: 'muted small' });
+  r.status = h('span', { class: 'badge' }); r.eq = eq(false); r.pos = h('span', {}); r.rem = h('span', {});
   r.prog = bar(0, `p${n}`); r.meter = bar(0, 'meter');
   r.fader = h('input', { type: 'range', min: 0, max: 100, value: 100, 'aria-label': `Fader Player ${n}` });
   let t = 0;
@@ -44,11 +44,11 @@ function playerCard(n) {
   r.fader.addEventListener('change', () => api('/control/gain', { method: 'POST', body: { player: n, value: r.fader.value / 100 } }).catch(() => {}));
   r.faderVal = h('span', { class: 'small muted' });
   r.fadeSec = numInput(5);
-  return h('div', { class: `card stack player ${n === 2 ? 'p2' : ''}` },
-    h('div', { class: 'row between' }, h('h2', {}, playerName(n)), r.status),
+  return h('div', { class: `card stack player ${n === 2 ? 'p2' : ''}`, style: 'padding-left:24px' },
+    h('div', { class: 'row between' }, h('h2', {}, playerName(n)), h('div', { class: 'row', style: 'gap:8px' }, r.eq, r.status)),
     r.title, r.artist, r.prog, h('div', { class: 'row between tiny muted' }, r.pos, r.rem),
-    h('div', { class: 'tiny muted' }, 'Pegel'), r.meter,
-    h('div', { class: 'row between small' }, h('span', {}, 'Fader'), r.faderVal), r.fader,
+    h('div', { class: 'eyebrow' }, 'Pegel'), r.meter,
+    h('div', { class: 'row between small' }, h('span', { class: 'eyebrow' }, 'Fader'), r.faderVal), r.fader,
     h('div', { class: 'row' },
       h('button', { onclick: () => post('/control/play', { player: n }) }, '▶ Play'),
       h('button', { onclick: () => post('/control/pause', { player: n }) }, '⏸ Pause')),
@@ -64,6 +64,7 @@ function updatePlayer(n) {
   r.title.textContent = p.title || '—'; r.artist.textContent = p.artist || '';
   r.status.textContent = p.fading ? '〰 Fade' : p.playing ? '▶ spielt' : '⏸ gestoppt';
   r.status.className = `badge ${p.playing ? 'ok' : ''}`;
+  r.eq.classList.toggle('off', !p.playing);
   r.pos.textContent = fmtTime(p.positionMs); r.rem.textContent = `-${fmtTime(p.remainingMs)}`;
   r.prog.firstChild.style.width = `${(p.durationMs ? p.positionMs / p.durationMs : 0) * 100}%`;
   r.meter.firstChild.style.width = `${Math.min(1, p.meter || 0) * 100}%`;
@@ -87,7 +88,7 @@ function crossfadeCard() {
     presetRow(refs.cfSec),
     h('button', { class: 'primary', onclick: () => post('/control/crossfade', { sec: Number(refs.cfSec.value) }) }, '⇄ Crossfade zum nächsten Song'),
     refs.cfBar, refs.cfInfo,
-    h('hr', { style: 'border:0;border-top:1px solid var(--line);width:100%' }),
+    h('hr'),
     h('label', { class: 'check' }, refs.autoOn, h('strong', {}, 'Auto-Crossfade')),
     h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Dauer'), refs.autoSec, h('span', { class: 'small muted' }, 's')),
     h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Start vor Songende: Player 1'), refs.before1, h('span', { class: 'small muted' }, 'Player 2'), refs.before2, h('span', { class: 'small muted' }, 's')),
@@ -137,10 +138,10 @@ function operationsCard() {
   refs.endInfo = h('div', { class: 'small muted' });
   return h('div', { class: 'card stack' },
     h('h2', {}, 'Betrieb'),
-    h('div', { class: 'small muted' }, 'Wunschmodus'), h('div', { class: 'row' }, ...refs.wishBtns),
+    h('div', { class: 'eyebrow' }, 'Wunschmodus'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     h('div', { class: 'small muted' }, 'Hinweis für Gäste (Pop-up vor dem Wunsch)'),
     refs.noticeText, h('div', { class: 'row' }, h('label', { class: 'check' }, refs.noticeOn, 'anzeigen'), refs.noticeSave),
-    h('hr', { style: 'border:0;border-top:1px solid var(--line);width:100%' }),
+    h('hr'),
     h('div', { class: 'row' }, refs.endBtn, refs.endInfo),
     h('div', { class: 'row' }, refs.panic, refs.panicClear));
 }
@@ -191,7 +192,7 @@ function render() {
   setVal(refs.before1, state.auto.startBeforeEndSec[1]); setVal(refs.before2, state.auto.startBeforeEndSec[2]); setVal(refs.curve, state.auto.curve);
   setCheck(refs.duckOn, state.ducking.enabled); setVal(refs.duckDb, state.ducking.db);
   refs.duckState.textContent = state.ducking.active ? 'Ducking aktiv' : 'bereit'; refs.duckState.className = `badge ${state.ducking.active ? 'warn' : ''}`;
-  for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'primary' : '';
+  for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'on' : '';
   setCheck(refs.noticeOn, state.notice.enabled); setVal(refs.noticeText, state.notice.text);
   refs.endBtn.textContent = state.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus';
   refs.panicClear.classList.toggle('hidden', !state.panic);
@@ -208,12 +209,12 @@ function render() {
 refs.badges = h('span', { class: 'row' });
 refs.ampel = h('div'); refs.errors = h('div');
 app.append(
-  topbar('Technik (FOH)', { right: [refs.badges, h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] }),
+  (refs.top = topbar('Technik · FOH', { right: [refs.badges, h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] })),
   h('div', { class: 'wrap stack' },
     h('div', { class: 'card' }, refs.ampel, refs.errors),
     h('div', { class: 'grid two' }, playerCard(1), playerCard(2)),
     h('div', { class: 'grid two' }, crossfadeCard(), ducking()),
     h('div', { class: 'grid two' }, wishesCard(), operationsCard())),
 );
-connect({ ping: true, onState: (s) => { state = s; render(); } });
+connect({ ping: true, onStatus: (ok) => refs.top.setLive(ok), onState: (s) => { state = s; render(); } });
 api('/state').then((s) => { if (!state) { state = s; render(); } }).catch(() => {});

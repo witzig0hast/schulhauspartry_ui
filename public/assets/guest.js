@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, modal, toast, $ } from '/assets/app.js';
+import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, $ } from '/assets/app.js';
 
 const app = $('#app');
 let state = null;
@@ -6,12 +6,14 @@ let searchTimer = null;
 let searchSeq = 0;
 
 const input = h('input', { type: 'search', placeholder: 'Song oder Interpret suchen …', maxlength: 80, autocomplete: 'off', 'aria-label': 'Song suchen' });
+const searchbox = h('div', { class: 'searchbox' }, icon('search'), input);
 const results = h('div', { class: 'list' });
 const nowEl = h('div', { class: 'np hidden' });
+const dots = h('div', { class: 'meter-dots' });
 const limitEl = h('div', { class: 'small muted' });
 const msgEl = h('div', { class: 'card hidden' });
 const mine = h('div', { class: 'list' });
-const mineWrap = h('div', { class: 'stack hidden' }, h('h2', {}, 'Deine Wünsche'), mine);
+const mineWrap = h('div', { class: 'card stack hidden' }, h('h2', {}, 'Deine Wünsche'), mine);
 
 const NOTICE_KEY = 'noticeSeen';
 function maybeShowNotice() {
@@ -39,7 +41,9 @@ function render() {
   if (!state) return;
   if (state.nowPlaying) {
     nowEl.classList.remove('hidden');
-    clear(nowEl).append(h('div', { class: 'muted small' }, 'Jetzt läuft'), h('div', { class: 'title' }, `${state.nowPlaying.title} – ${state.nowPlaying.artist}`));
+    clear(nowEl).append(h('div', { class: 'hero' }, cover(state.nowPlaying.title), h('div', { class: 'meta' },
+      h('div', { class: 'row', style: 'gap:8px' }, eq(true), h('span', { class: 'eyebrow' }, 'Jetzt läuft')),
+      h('div', { class: 'title', style: 'font-size:1.05rem;font-weight:700;letter-spacing:-.02em' }, state.nowPlaying.title), h('div', { class: 'a muted small' }, state.nowPlaying.artist))));
   } else nowEl.classList.add('hidden');
 
   const open = state.wishMode === 'open';
@@ -49,7 +53,8 @@ function render() {
   if (!open) clear(results);
 
   const l = state.limit;
-  limitEl.textContent = l.remaining > 0 ? `Du kannst noch ${l.remaining} von ${l.max} Wünschen abgeben (alle ${l.windowMin} Min.).` : `Limit erreicht – in ca. ${Math.ceil(l.retryAfterMs / 60000)} Min. geht es weiter.`;
+  limitEl.textContent = l.remaining > 0 ? `Noch ${l.remaining} von ${l.max} Wünschen frei · alle ${l.windowMin} Min.` : `Limit erreicht – in ca. ${Math.ceil(l.retryAfterMs / 60000)} Min. geht es weiter.`;
+  clear(dots).append(...Array.from({ length: Math.min(l.max, 10) }, (_, i) => h('i', { class: i < l.used ? 'used' : '' })));
 
   mineWrap.classList.toggle('hidden', !state.requests.length);
   clear(mine);
@@ -61,7 +66,7 @@ function render() {
     if (r.status === 'denied' && r.reason) extra.push(h('div', { class: 'small muted' }, `Grund: ${r.reason}`));
     if (r.votes > 1) extra.push(h('div', { class: 'small muted' }, `+${r.votes - 1} weitere wünschen sich das auch`));
     mine.append(h('div', { class: 'item' + (r.status === 'denied' ? ' denied' : '') },
-      h('div', { class: 'row between' }, h('div', {}, h('div', { class: 'title' }, r.title), h('div', { class: 'small muted' }, r.artist)), statusBadge(r)), ...extra));
+      h('div', { class: 'row between nowrap' }, h('div', { class: 'req-main grow' }, cover(r.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))), statusBadge(r)), ...extra));
   }
 }
 
@@ -75,9 +80,9 @@ async function search() {
     clear(results);
     if (!out.tracks.length) results.append(h('div', { class: 'muted' }, 'Nichts gefunden. Probier es mit einem anderen Suchwort.'));
     for (const t of out.tracks) {
-      results.append(h('div', { class: 'item row between' },
-        h('div', {}, h('div', { class: 'title' }, t.title), h('div', { class: 'small muted' }, t.artist)),
-        t.blocked ? h('span', { class: 'badge' }, 'nicht möglich') : h('button', { class: 'primary', onclick: () => send(t) }, 'Wünschen')));
+      results.append(h('div', { class: 'item row between nowrap' },
+        h('div', { class: 'req-main grow' }, cover(t.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, t.title), h('div', { class: 'a' }, t.artist))),
+        t.blocked ? h('span', { class: 'badge' }, 'nicht möglich') : h('button', { class: 'primary small', onclick: () => send(t) }, 'Wünschen')));
     }
   } catch (e) { if (seq === searchSeq) { clear(results).append(h('div', { class: 'muted' }, e.message)); } }
 }
@@ -98,12 +103,17 @@ async function send(t) {
 
 input.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 300); });
 
+const bar = topbar('Musikwunsch');
 app.append(
-  topbar('Musikwunsch'),
-  h('div', { class: 'wrap narrow stack' }, nowEl, msgEl, h('div', { class: 'card stack' }, input, limitEl, results), mineWrap),
+  bar,
+  h('div', { class: 'wrap narrow' },
+    h('div', { class: 'guest-hero' }, h('div', { class: 'eyebrow' }, 'Mach mit'), h('h2', {}, 'Wünsch dir was!')),
+    nowEl, msgEl,
+    h('div', { class: 'card stack' }, searchbox, h('div', { class: 'row between' }, limitEl, dots), results),
+    mineWrap),
 );
 
 // Erst den State holen (setzt das Geraete-Cookie), dann den WebSocket oeffnen
 api('/guest/state').then((s) => { state = s; render(); maybeShowNotice(); }).catch(() => {}).finally(() => {
-  connect({ onGuest: (g) => { state = g; render(); } });
+  connect({ onStatus: (ok) => bar.setLive(ok), onGuest: (g) => { state = g; render(); } });
 });

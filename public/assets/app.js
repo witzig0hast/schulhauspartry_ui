@@ -50,12 +50,36 @@ export function modal(content) {
 export const fmtTime = (ms) => { ms = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(ms / 60)}:${String(ms % 60).padStart(2, '0')}`; };
 export const fmtClock = (ts) => new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
+// ---- Icons (statische, vertrauenswuerdige SVG-Strings) ----
+const ICONS = {
+  logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 10v4M9 6v12M13 3v18M17 8v8M21 11v2"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.5-6.9A2 2 0 0016.8 4H7.2a2 2 0 00-1.7 1.1z"/></svg>',
+  note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+  contrast: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 010 18z" fill="currentColor"/></svg>',
+};
+export function icon(name) {
+  const span = document.createElement('span');
+  span.style.display = 'contents';
+  span.innerHTML = ICONS[name] || '';
+  return span.firstChild || span;
+}
+
+// Monogramm-Cover: stabile Farbe aus dem Titel
+export function cover(title = '?', size = '') {
+  let hash = 0;
+  for (const ch of title) hash = (hash * 31 + ch.codePointAt(0)) % 360;
+  const letters = (title.match(/[\p{L}\p{N}]+/gu) || ['?']).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return h('div', { class: `cover ${size}`, style: `--h:${hash}`, 'aria-hidden': 'true' }, letters);
+}
+export const eq = (on) => h('span', { class: `eq ${on ? '' : 'off'}`, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'));
+
 // ---- Dark-Mode: folgt dem System, manuell umschaltbar ----
 export function themeButton() {
   const labels = { system: 'Auto', light: 'Hell', dark: 'Dunkel' };
   const get = () => { try { return localStorage.getItem('theme') || 'system'; } catch { return 'system'; } };
-  const btn = h('button', { class: 'theme-btn ghost', title: 'Darstellung', type: 'button' });
-  const paint = () => { btn.textContent = `◐ ${labels[get()]}`; };
+  const btn = h('button', { class: 'theme-btn row nowrap', title: 'Darstellung', type: 'button' });
+  const paint = () => { btn.replaceChildren(icon('contrast'), labels[get()]); };
   btn.addEventListener('click', () => {
     const next = { system: 'dark', dark: 'light', light: 'system' }[get()];
     try { if (next === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); } catch { /* egal */ }
@@ -66,9 +90,15 @@ export function themeButton() {
   return btn;
 }
 
-export function topbar(title, { right = [], test = ENV === 'test' } = {}) {
-  const bar = h('div', { class: 'topbar' }, h('h1', { class: 'grow' }, title), ...right, themeButton());
-  const wrap = h('div', {}, test ? h('div', { class: 'testbanner' }, 'TESTMODUS – keine echte Party') : null, bar);
+// Kopfzeile mit Marke, Live-Status und Aktionen
+export function topbar(title, { right = [], test = ENV === 'test', live = true } = {}) {
+  const pill = h('span', { class: 'pill off', title: 'Verbindung' }, h('i', { class: 'dot' }), 'Verbinde …');
+  const bar = h('div', { class: 'topbar' },
+    h('div', { class: 'brand' }, h('div', { class: 'logo' }, icon('logo')), h('div', {}, h('div', { class: 'name' }, 'Schulhauspartry'), h('div', { class: 'sub' }, title))),
+    h('div', { class: 'grow' }), live ? pill : null, ...right, themeButton());
+  const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);
+  bar.style.position = 'static';
+  wrap.setLive = (ok) => { pill.className = `pill ${ok ? 'live' : 'off'}`; pill.lastChild.textContent = ok ? 'Live' : 'Getrennt'; };
   return wrap;
 }
 
