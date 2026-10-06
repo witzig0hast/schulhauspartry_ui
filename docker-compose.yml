@@ -1,0 +1,14 @@
+# Basis: nur die App. Nginx Proxy Manager und VPN kommen als Overrides dazu (siehe README).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - party-data:/data
+    ports:
+      - "3000:3000"
+volumes:
+  party-data:

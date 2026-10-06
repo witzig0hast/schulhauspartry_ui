@@ -1,0 +1,29 @@
+# WireGuard NUR im Container (kein Host-VPN, keine DNS-Aenderung am Server).
+# Die App teilt sich den Netzwerk-Namespace des wg-Containers; nur dessen Tunnel-Interface nutzt sie fuer 10.8.0.0/24.
+# Aufruf: docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.vpn.yml up -d
+services:
+  wg:
+    image: lscr.io/linuxserver/wireguard:latest
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/Berlin
+      SERVERPORT: 51820
+      PEERS: pi
+      INTERNAL_SUBNET: 10.8.0.0
+      PEERDNS: ""            # kein DNS ueberschreiben
+    volumes:
+      - wg-config:/config
+    ports:
+      - "51820:51820/udp"   # am Router/Hetzner-Firewall freigeben; DNS-Eintrag NICHT ueber Cloudflare-Proxy
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: 1
+    networks: [npm]
+  app:
+    network_mode: "service:wg"
+    networks: !reset null
+    depends_on: [wg]
+volumes:
+  wg-config:

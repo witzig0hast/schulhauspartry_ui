@@ -1,0 +1,11 @@
+# Haengt die App ins Docker-Netz deines Nginx Proxy Managers.
+# Aufruf: docker compose -f docker-compose.yml -f docker-compose.npm.yml up -d
+# Im NPM dann Proxy-Host -> Forward Hostname "app", Port 3000, Websockets AN.
+services:
+  app:
+    ports: !reset []
+    networks: [npm]
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK:-proxy}
