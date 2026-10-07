@@ -14,6 +14,8 @@ services:
       PEERS: pi
       INTERNAL_SUBNET: 10.8.0.0
       PEERDNS: ""            # kein DNS ueberschreiben
+      SERVERURL: ${WG_SERVERURL:-auto}   # Domain/IP, unter der der Pi den Server erreicht (DNS-only, nicht ueber Cloudflare-Proxy)
+      ALLOWEDIPS: 10.8.0.0/24            # der Pi routet NUR das Tunnelnetz
     volumes:
       - wg-config:/config
     ports:

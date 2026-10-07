@@ -107,9 +107,10 @@ docker compose -f docker-compose.yml -f docker-compose.npm.yml up -d
 Hinweis: Die Wiedergabe wird per „Play URI“ auf dem jeweiligen Gerät gestartet (deterministisch, kein Umsortieren der Spotify-Queue nötig).
 Die echte Spotify-Anbindung konnte hier mangels Zugangsdaten nicht live getestet werden; getestet ist die Logik mit dem Simulator.
 
-## Phase 2: Pi 5 / X32
+## Pi 5 / X32
 
-Die App spricht den Pi über ein kleines **HTTP-Relay** an (Admin → Verbindungen → „Pi 5 / X32 über HTTP-Relay“, URL im Tunnel + Token):
+Das **Relay** liegt in `pi-relay/` (läuft auf dem Pi, spricht OSC mit dem X32, HTTP mit der App über den VPN-Tunnel).
+Komplette Anleitung inkl. WireGuard: **[docs/PI-SETUP.md](docs/PI-SETUP.md)**.
 
 ```
 POST {piUrl}/x32/level   {"player":1,"channels":[1,2],"fader":0.75}   → setzt X32-Fader (0..1, 0.75 = 0 dB)
@@ -117,7 +118,7 @@ GET  {piUrl}/x32/state   → {"mics":[{"open":true,"level":0.4},…],"meters":{"
 Header: Authorization: Bearer <Token>
 ```
 
-Das Relay (Companion/OSC → X32) ist noch nicht Teil dieses Repos. Bis dahin: Anbindung „Simuliert“.
+Das Relay ist gegen einen simulierten X32 getestet, noch nicht gegen ein echtes Pult.
 
 ## Sicherheit
 

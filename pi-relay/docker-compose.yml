@@ -1,0 +1,7 @@
+# Laeuft auf dem Pi 5. Das Relay lauscht NUR im VPN-Tunnel (BIND = Tunnel-IP des Pi).
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    network_mode: host        # damit der Tunnel (wg0) und das X32-LAN erreichbar sind
+    env_file: .env
