@@ -167,6 +167,18 @@ test('Assets werden nicht gecacht (Updates sofort sichtbar)', async () => {
   assert.equal(r.headers.get('cdn-cache-control'), 'no-store');
 });
 
+test('Asset-URLs tragen die Build-ID, Module importieren versioniert', async () => {
+  const c = new Client(ctx.base);
+  const build = (await c.get('/healthz')).json.build;
+  assert.match(build, /^[0-9a-f]{8}$/);
+  const html = (await c.get('/')).text;
+  assert.ok(html.includes(`/assets/guest.js?v=${build}`));
+  assert.ok(html.includes(`data-build="${build}"`));
+  const js = (await c.get(`/assets/guest.js?v=${build}`)).text;
+  assert.ok(js.includes(`/assets/app.js?v=${build}`));
+  assert.equal((await c.get('/assets/app.js')).headers.get('cache-control'), 'no-cache, must-revalidate');
+});
+
 test('Login-Sperre nach zu vielen Fehlversuchen', async () => {
   const c = new Client(ctx.base);
   let last;

@@ -1,6 +1,7 @@
 // Gemeinsame Helfer fuer alle Ansichten
 export const BASE = document.documentElement.dataset.base || '';
 export const ENV = document.documentElement.dataset.env || 'live';
+export const BUILD = document.documentElement.dataset.build || '?';
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -116,10 +117,18 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   return wrap;
 }
 
+// Kleiner Versions-Hinweis unten links (hilft beim Debuggen: welche Version sieht welches Geraet?)
+export function buildTag() {
+  let el = document.getElementById('buildtag');
+  if (!el) { el = h('div', { class: 'ping', id: 'buildtag' }, `v${BUILD}`); document.body.append(el); }
+  return el;
+}
+addEventListener('DOMContentLoaded', () => buildTag());
+
 // ---- WebSocket mit Reconnect; optionaler Ping (nur Spezialansichten) ----
 export function connect({ onState, onGuest, onStatus, ping = false }) {
   let ws, retry = 0, closed = false, pingTimer, pingEl;
-  if (ping) { pingEl = h('div', { class: 'ping' }, 'Ping – ms'); document.body.append(pingEl); }
+  if (ping) { pingEl = buildTag(); pingEl.textContent = `Ping – ms · v${BUILD}`; }
   const open = () => {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}${BASE}/ws`);
@@ -135,11 +144,11 @@ export function connect({ onState, onGuest, onStatus, ping = false }) {
       const m = JSON.parse(e.data);
       if (m.type === 'state') onState?.(m.data);
       else if (m.type === 'guest') onGuest?.(m.data);
-      else if (m.type === 'pong' && pingEl) pingEl.textContent = `Ping ${Math.round(performance.now() - m.ts)} ms`;
+      else if (m.type === 'pong' && pingEl) pingEl.textContent = `Ping ${Math.round(performance.now() - m.ts)} ms · v${BUILD}`;
     };
     ws.onclose = (e) => {
       onStatus?.(false); clearInterval(pingTimer);
-      if (pingEl) pingEl.textContent = 'Ping – offline';
+      if (pingEl) pingEl.textContent = `Ping – offline · v${BUILD}`;
       if (closed || e.code === 4004) return;
       setTimeout(open, Math.min(8000, 500 * 2 ** retry++));
     };

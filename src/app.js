@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +16,19 @@ import { adminRouter, spotifyCallbackRouter } from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
+
+// Build-ID = Hash ueber alle Dateien in public/ -> aendert sich bei jedem Update; steckt in jeder Asset-URL
+function computeBuildId() {
+  const h = crypto.createHash('sha1');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).forEach((e) => {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) walk(f); else { h.update(e.name); h.update(fs.readFileSync(f)); }
+  });
+  walk(PUBLIC);
+  return h.digest('hex').slice(0, 8);
+}
+const BUILD = computeBuildId();
+const versioned = (text) => text.replace(/(["'])\/assets\/([\w.-]+)\1/g, `$1/assets/$2?v=${BUILD}$1`);
 
 // Seite -> benoetigte Berechtigung (null = oeffentlich)
 const PAGES = {
@@ -60,19 +74,30 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     next();
   });
 
-  app.get('/healthz', (req, res) => res.json({ ok: true }));
-  // Immer beim Server nachfragen (ETag), auch Cloudflare darf die Dateien nicht festhalten -> Updates sind sofort sichtbar
-  app.use('/assets', express.static(path.join(PUBLIC, 'assets'), {
-    index: false, etag: true, maxAge: 0,
-    setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, must-revalidate'); res.setHeader('CDN-Cache-Control', 'no-store'); res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store'); },
-  }));
+  app.get('/healthz', (req, res) => res.json({ ok: true, build: BUILD }));
+  // Immer beim Server nachfragen (ETag), auch Cloudflare darf die Dateien nicht festhalten.
+  // Zusaetzlich bekommt jede Asset-URL ?v=<Build>, damit alte Kopien (Browser, Proxy, CDN) nie passen.
+  const noCache = (res) => { res.setHeader('Cache-Control', 'no-cache, must-revalidate'); res.setHeader('CDN-Cache-Control', 'no-store'); res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store'); };
+  const jsCache = new Map();
+  app.get('/assets/:file', (req, res, next) => {
+    const f = req.params.file;
+    if (!/^[\w.-]+\.js$/.test(f)) return next();
+    let body = jsCache.get(f);
+    if (body == null) {
+      try { body = versioned(fs.readFileSync(path.join(PUBLIC, 'assets', f), 'utf8')); } catch { return next(); }
+      jsCache.set(f, body);
+    }
+    noCache(res);
+    res.type('text/javascript; charset=utf-8').send(body);
+  });
+  app.use('/assets', express.static(path.join(PUBLIC, 'assets'), { index: false, etag: true, maxAge: 0, setHeaders: (res) => noCache(res) }));
 
   app.use(spotifyCallbackRouter(() => { for (const e of Object.values(engines)) e.setReal(e.realConnections, true); }));
 
   const pageCache = {};
   const renderPage = (name, base, env) => {
-    pageCache[name] ??= fs.readFileSync(path.join(PUBLIC, name), 'utf8');
-    return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env);
+    pageCache[name] ??= versioned(fs.readFileSync(path.join(PUBLIC, name), 'utf8'));
+    return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env).replaceAll('__BUILD__', BUILD);
   };
 
   function mount(env, base) {
