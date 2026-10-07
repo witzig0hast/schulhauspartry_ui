@@ -38,6 +38,8 @@ const PAGES = {
   mod: { file: 'mod.html', perm: 'viewMod' },
   foh: { file: 'foh.html', perm: 'viewFoh' },
   admin: { file: 'admin.html', perm: 'viewAdmin' },
+  board: { file: 'board.html', perm: 'viewBoard' },
+  beamer: { file: 'beamer.html', perm: null },
 };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
@@ -84,7 +86,11 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     if (!/^[\w.-]+\.js$/.test(f)) return next();
     let body = jsCache.get(f);
     if (body == null) {
-      try { body = versioned(fs.readFileSync(path.join(PUBLIC, 'assets', f), 'utf8')); } catch { return next(); }
+      try {
+        // QR-Code-Bibliothek (MIT) kommt aus node_modules, alles andere aus public/assets
+        const file = f === 'qrcode.js' ? path.join(__dirname, '..', 'node_modules', 'qrcode-generator', 'dist', 'qrcode.mjs') : path.join(PUBLIC, 'assets', f);
+        body = versioned(fs.readFileSync(file, 'utf8'));
+      } catch { return next(); }
       jsCache.set(f, body);
     }
     noCache(res);
@@ -111,14 +117,14 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 
-    router.get(/^\/(tech|mod|foh|admin|login)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (page.perm && !can(req.session?.role, page.perm)) {
         if (!req.session) return res.redirect(`${base}/login?next=${encodeURIComponent(base + '/' + name)}`);
         return res.status(403).type('html').send('<!doctype html><meta charset="utf-8"><title>Kein Zugriff</title><p style="font:16px system-ui;padding:2rem">Kein Zugriff für diese Rolle. <a href="' + base + '/login">Anderen Code verwenden</a></p>');
       }
-      if (name === '') deviceMiddleware(req, res, () => {});
+      if (name === '' || name === 'beamer') deviceMiddleware(req, res, () => {});
       res.type('html').send(renderPage(page.file, base, env));
     });
     return router;

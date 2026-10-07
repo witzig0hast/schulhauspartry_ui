@@ -43,6 +43,8 @@ export function staffRouter(env, engine, hub) {
     res.json(staffState(engine, req.session.role, engine.snapshot(), { pending: rq.pending(env), recent: rq.recentDecisions(env) }));
   });
 
+  r.get('/stats', requireAnyPerm('viewStats'), (req, res) => res.json(rq.liveStats(env)));
+
   // ----- Moderation -----
   r.post('/mod/decide', requirePerm('moderate'), wrap((req, res) => {
     const { id, action, reason, player: pl } = req.body || {};

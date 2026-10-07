@@ -14,6 +14,8 @@ export const PERMS = {
   viewTech: ['admin', 'tech'],
   viewMod: ['admin', 'tech', 'mod', 'orga'],
   viewFoh: ['admin', 'tech', 'orga', 'display'],
+  viewBoard: ['admin', 'tech', 'mod', 'orga', 'display'],
+  viewStats: ['admin', 'tech', 'mod', 'orga', 'display'],
   viewAdmin: ['admin'],
   moderate: ['admin', 'tech', 'mod'],
   prioritize: ['admin', 'tech', 'mod'],

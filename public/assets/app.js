@@ -92,7 +92,7 @@ export function themeButton() {
 }
 
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
-const NAV = [['Technik', '/tech', ['admin', 'tech']], ['Moderation', '/mod', ['admin', 'tech', 'mod', 'orga']], ['Anzeige', '/foh', ['admin', 'tech', 'orga', 'display']], ['Admin', '/admin', ['admin']]];
+const NAV = [['Technik', '/tech', ['admin', 'tech']], ['Moderation', '/mod', ['admin', 'tech', 'mod', 'orga']], ['Anzeige', '/foh', ['admin', 'tech', 'orga', 'display']], ['Board', '/board', ['admin', 'tech', 'mod', 'orga', 'display']], ['Beamer', '/beamer', ['admin', 'tech', 'orga', 'display']], ['Admin', '/admin', ['admin']]];
 
 // Kopfzeile mit Marke, Navigation, Live-Status und Abmelden
 export function topbar(title, { right = [], test = ENV === 'test', live = true, nav = false } = {}) {
@@ -115,6 +115,15 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
     }).catch(() => {});
   }
   return wrap;
+}
+
+// QR-Code als SVG-Element (Bibliothek wird nur bei Bedarf geladen)
+export async function qrElement(text, { size = 220, cls = 'qr' } = {}) {
+  const { default: qrcode } = await import('/assets/qrcode.js');
+  const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+  const box = h('div', { class: cls, role: 'img', 'aria-label': 'QR-Code', style: `width:${size}px;height:${size}px` });
+  box.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 16, scalable: true }); // Ausgabe der Bibliothek, enthaelt nur Pfaddaten
+  return box;
 }
 
 // Kleiner Versions-Hinweis unten links (hilft beim Debuggen: welche Version sieht welches Geraet?)

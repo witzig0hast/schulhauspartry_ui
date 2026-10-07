@@ -179,6 +179,30 @@ test('Asset-URLs tragen die Build-ID, Module importieren versioniert', async () 
   assert.equal((await c.get('/assets/app.js')).headers.get('cache-control'), 'no-cache, must-revalidate');
 });
 
+test('Board, Beamer, Statistik und QR-Bibliothek', async () => {
+  const admin = new Client(ctx.base);
+  await admin.post('/api/login', { secret: ADMIN_PW });
+  const anon = new Client(ctx.base);
+  // Board nur mit Login, Beamer oeffentlich
+  assert.equal((await anon.get('/board')).status, 302);
+  assert.equal((await anon.get('/beamer')).status, 200);
+  assert.equal((await admin.get('/board')).status, 200);
+  // Display-Rolle darf Board und Statistik sehen, aber nicht steuern
+  const code = (await admin.post('/api/admin/accounts', { role: 'display', label: 'Beamer-PC' })).json.code;
+  const disp = new Client(ctx.base);
+  await disp.post('/api/login', { secret: code });
+  assert.equal((await disp.get('/board')).status, 200);
+  const st = await disp.get('/api/stats');
+  assert.equal(st.status, 200);
+  assert.ok(Array.isArray(st.json.series) && Array.isArray(st.json.top));
+  assert.equal((await disp.post('/api/control/crossfade', { sec: 3 })).status, 403);
+  assert.equal((await anon.get('/api/stats')).status, 401);
+  // QR-Bibliothek wird aus node_modules ausgeliefert
+  const qr = await anon.get('/assets/qrcode.js');
+  assert.equal(qr.status, 200);
+  assert.match(qr.text, /export default qrcode/);
+});
+
 test('Login-Sperre nach zu vielen Fehlversuchen', async () => {
   const c = new Client(ctx.base);
   let last;

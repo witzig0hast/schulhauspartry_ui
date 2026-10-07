@@ -173,3 +173,23 @@ export function resetEnv(env) {
   });
   logEvent(env, 'reset', {});
 }
+
+// Live-Statistik fuer Dashboards (ohne Bezug zu einzelnen Codes -> anonym)
+export function liveStats(env, now = Date.now()) {
+  const q = (sql, ...p) => db().prepare(sql).all(...p);
+  const since = now - 2 * 3600 * 1000;
+  const buckets = Object.fromEntries(q('SELECT (created_at / 600000) * 600000 AS b, COUNT(*) c FROM requests WHERE env = ? AND created_at > ? GROUP BY b', env, since).map((r) => [r.b, r.c]));
+  const start = Math.floor(since / 600000) * 600000;
+  const series = [];
+  for (let t = start; t <= now; t += 600000) series.push({ t, count: buckets[t] || 0 });
+  const total = q('SELECT COUNT(*) c FROM requests WHERE env = ?', env)[0].c;
+  const decided = q("SELECT COUNT(*) c FROM requests WHERE env = ? AND status IN ('approved','playing','played','removed','denied')", env)[0].c;
+  const ok = q("SELECT COUNT(*) c FROM requests WHERE env = ? AND status IN ('approved','playing','played')", env)[0].c;
+  return {
+    total, approvalRate: decided ? Math.round(100 * ok / decided) : null,
+    devices: q('SELECT COUNT(DISTINCT device_id) c FROM guest_actions WHERE env = ?', env)[0].c,
+    plays: q('SELECT COUNT(*) c FROM plays WHERE env = ?', env)[0].c,
+    top: q("SELECT title, artist, votes FROM requests WHERE env = ? AND status != 'denied' ORDER BY votes DESC, id ASC LIMIT 5", env),
+    series,
+  };
+}

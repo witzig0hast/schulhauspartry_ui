@@ -287,3 +287,52 @@ details.card.more > summary { font-size: 1rem; font-weight: 650; color: var(--te
 .linkrow .lbl { width: 120px; font-weight: 600; flex: none; }
 .linkrow .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; color: var(--muted); }
 .danger { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+
+/* ---------- Board (modular) ---------- */
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+.board .w.wide { grid-column: span 2; } .board .w.full { grid-column: 1 / -1; }
+@media (max-width: 760px) { .board .w.wide { grid-column: auto; } }
+.w .w-head { margin-bottom: 12px; min-height: 28px; } .w .w-head h2 { font-size: .86rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
+.w.editing { outline: 2px dashed var(--line-2); outline-offset: 3px; }
+.wctl { display: flex; gap: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { height: 34px; border-radius: 999px; padding: 0 14px; font-size: .86rem; background: transparent; }
+.chip.on { background: var(--ink); color: var(--ink-text); border-color: var(--ink); }
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 70px; padding: 4px 0; }
+.spark i { flex: 1; background: var(--ink); border-radius: 3px 3px 0 0; min-height: 3px; opacity: .85; }
+.cover.xl { width: 150px; height: 150px; border-radius: 28px; font-size: 3rem; }
+
+/* ---------- Beamer ---------- */
+.beamer { min-height: 100vh; display: grid; grid-template-columns: 1.4fr 1fr; gap: 6vw; padding: 6vh 6vw; align-items: center; }
+@media (max-width: 900px) { .beamer { grid-template-columns: 1fr; } }
+.bm-hero { display: flex; gap: 3vw; align-items: center; }
+.bm-title { font-size: clamp(2rem, 5vw, 5rem); font-weight: 780; letter-spacing: -.045em; line-height: 1.05; margin-top: 8px; overflow-wrap: anywhere; }
+.bm-artist { font-size: clamp(1.1rem, 2.4vw, 2.4rem); color: var(--muted); margin-top: 8px; }
+.bm-msg { margin-top: 5vh; padding: 24px 28px; border-radius: 22px; background: var(--card); border: 1px solid var(--line); }
+.bm-msgtext { font-size: clamp(1.2rem, 2.4vw, 2.2rem); font-weight: 650; margin-top: 6px; letter-spacing: -.02em; }
+.bm-right { display: grid; gap: 28px; justify-items: center; text-align: center; }
+.bm-h { font-size: clamp(2rem, 4.2vw, 4rem); letter-spacing: -.045em; font-weight: 780; margin: 6px 0; }
+.bm-sub { color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.5rem); }
+.bm-qr { display: grid; justify-items: center; gap: 14px; }
+.qr { background: #fff; padding: 14px; border-radius: 22px; box-shadow: var(--shadow-2); }
+.qr svg { width: 100%; height: 100%; display: block; }
+.bm-url { font-size: clamp(.9rem, 1.4vw, 1.3rem); color: var(--muted); letter-spacing: .02em; }
+
+/* ---------- Poster / Druck ---------- */
+.poster { background: #fff; color: #0b0b0c; border-radius: 18px; padding: 48px 40px; display: grid; justify-items: center; gap: 22px; text-align: center; border: 1px solid var(--line-2); }
+.poster h2 { font-size: 3rem; letter-spacing: -.05em; font-weight: 800; line-height: 1.05; }
+.poster .p-sub { font-size: 1.25rem; color: #4a4a4f; }
+.poster .steps { display: grid; gap: 8px; text-align: left; font-size: 1.15rem; }
+.poster .steps b { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #0b0b0c; color: #fff; margin-right: 10px; }
+.poster .p-url { font-size: 1rem; color: #6b6b70; }
+@media print {
+  body { background: #fff !important; }
+  .topbar, .testbanner, .tabs, .no-print, .ping, #buildtag { display: none !important; }
+  .wrap { padding: 0 !important; max-width: none !important; }
+  .poster { border: 0; border-radius: 0; min-height: 95vh; align-content: center; }
+}
+
+.w .player, .w .np { border: 0; box-shadow: none; padding: 0 0 0 14px; background: transparent; }
+.w .player::before { left: 0; }
+.spark i.z { opacity: .18; }
+.ping { background: color-mix(in srgb, var(--bg) 88%, transparent); padding: 2px 7px; border-radius: 6px; }

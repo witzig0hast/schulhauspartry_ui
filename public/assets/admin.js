@@ -1,10 +1,10 @@
-import { h, api, BASE, topbar, clear, safe, toast, modal, $, fmtClock } from '/assets/app.js';
+import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['start', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
-const tabLabels = { start: 'Start & Links', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+const tabs = ['start', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
+const tabLabels = { start: 'Start & Links', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
@@ -132,6 +132,8 @@ const PAGES = [
   ['Technik', '/tech', 'Fader, Crossfade, Not-Aus'],
   ['Moderation', '/mod', 'Wünsche annehmen / ablehnen'],
   ['Anzeige', '/foh', 'Nur ansehen (FOH-Bildschirm)'],
+  ['Board', '/board', 'Eigene Ansicht aus Bausteinen'],
+  ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
   ['Admin', '/admin', 'Diese Seite'],
 ];
 
@@ -179,6 +181,31 @@ function viewStart() {
         h('button', { class: 'primary', onclick: () => save({ test: { realEnv: real.value, mockSpeed: Number(speed.value) } }) }, 'Speichern'))));
 }
 
+// ---------- QR & Poster ----------
+function viewPoster() {
+  const t = data.settings.test;
+  const target = h('select', {}, h('option', { value: 'live' }, 'Live – Gäste-Seite'), t.enabled ? h('option', { value: 'test' }, 'Testmodus – Gäste-Seite') : null);
+  const head = h('input', { value: 'Wünsch dir was!', maxlength: 40 });
+  const sub = h('input', { value: 'Scanne den Code und such dir deinen Song aus.', maxlength: 90 });
+  const out = h('div', { class: 'poster' });
+  const urlOf = () => `${origin()}${target.value === 'test' ? `/${t.prefix}` : ''}/`;
+  async function paint() {
+    const url = urlOf();
+    const qr = await qrElement(url, { size: 340 });
+    clear(out).append(h('h2', {}, head.value), h('p', { class: 'p-sub' }, sub.value), qr,
+      h('div', { class: 'steps' }, h('div', {}, h('b', {}, '1'), 'QR-Code scannen'), h('div', {}, h('b', {}, '2'), 'Song suchen & antippen'), h('div', {}, h('b', {}, '3'), 'Wünschen – wir spielen ihn bald!')),
+      h('div', { class: 'p-url' }, url.replace(/^https?:\/\//, '')));
+  }
+  [target, head, sub].forEach((el) => el.addEventListener('input', () => paint().catch(() => {})));
+  paint().catch((e) => toast(e.message, true));
+  return h('div', { class: 'stack', style: 'gap:16px' },
+    h('div', { class: 'card stack no-print' }, h('h2', {}, 'QR-Code & Poster'), h('p', { class: 'small muted' }, 'Zum Ausdrucken (A4). Der Code führt auf die Gäste-Seite.'),
+      h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Ziel', target), h('label', { class: 'field' }, 'Überschrift', head)),
+      h('label', { class: 'field' }, 'Untertitel', sub),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => window.print() }, '🖨  Drucken / als PDF speichern'), h('a', { class: 'btn', href: `${BASE}/beamer`, target: '_blank', rel: 'noopener' }, 'Beamer-Ansicht öffnen'))),
+    out);
+}
+
 // ---------- Bericht ----------
 function viewReport() {
   const envSel = h('select', {}, h('option', { value: 'live' }, 'Live'), h('option', { value: 'test' }, 'Testmodus'));
@@ -204,7 +231,7 @@ function viewReport() {
 
 function render() {
   drawTabs();
-  clear(body).append({ start: viewStart, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append({ start: viewStart, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));

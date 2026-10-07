@@ -17,7 +17,9 @@ Ducking und Not-Aus. Alles ist rollenbasiert abgesichert und läuft in Docker.
 | `/mod` | Moderation, Orga (nur lesen) | Wünsche annehmen/ablehnen, Gesamt-Warteschlange |
 | `/tech` | Technik, Head-Admin | Player, Fader, Fades, Crossfade, Auto-Crossfade, Ducking, Mics, Not-Aus, Ende-Modus, Wunschmodus |
 | `/foh` | FOH-Anzeige, Technik, Orga, Admin | reine Anzeige (nichts bedienbar): Player, Pegel, Mics, Queue, Status |
-| `/admin` | nur Head-Admin | Einstellungen, Codes, Verbindungen, Testmodus, Bericht/CSV |
+| `/admin` | nur Head-Admin | Start & Links, QR & Poster, Einstellungen, Codes, Verbindungen, Bericht/CSV |
+| `/board` | alle Mitarbeitenden | **Modulares Board**: Bausteine an-/abwählen, sortieren, Größe wählen, eigene Ansichten speichern |
+| `/beamer` | öffentlich (großer Bildschirm) | „Jetzt läuft“ + QR-Code + Hinweis der Organisatoren – zeigt nichts Internes |
 
 Auf allen Spezialansichten steht unten links ein kleiner **Ping** (nicht auf der Gäste-Seite).
 Dark-Mode folgt der Systemeinstellung des Geräts und lässt sich per Knopf oben rechts umstellen.
@@ -140,3 +142,16 @@ test/           Integrations- und Engine-Tests (node:test)
 
 Admin → *Start & Links* → **Zurücksetzen**: löscht Wünsche, Warteschlange, Setlist und Zähler einer Umgebung und stoppt die Wiedergabe.
 Codes und Einstellungen bleiben. *Testmodus* ohne Rückfrage-Tippen, *Live* nur nach Eingabe von `ZURÜCKSETZEN`.
+
+## Board (modular)
+
+Unter `/board` stellt sich jede Person ihre eigene Ansicht zusammen. *Bearbeiten* → Bausteine antippen (ein/aus), am Baustein
+Reihenfolge (← →) und Größe (Klein/Breit/Voll) ändern. Vorlagen: Übersicht, Bühne, Moderation, Technik, Zahlen, Alles.
+Eigene Ansichten werden pro Gerät gespeichert. Jede Rolle sieht nur Bausteine, die sie benutzen darf.
+
+Bausteine: Jetzt läuft · Player 1/2 · Als Nächstes · Offene Wünsche · Zuletzt entschieden · Zahlen · Pegel · Mikrofone ·
+Übergang (Crossfade/Auto/Ducking) · Wunschmodus · Not-Aus/Ende-Modus · Verbindungen · Uhr & Ende · Statistik live.
+
+## QR-Code & Poster
+
+Admin → *QR & Poster*: QR-Code zur Gäste-Seite (live oder Test), Überschrift/Untertitel anpassbar, **Drucken / als PDF speichern** (A4).
