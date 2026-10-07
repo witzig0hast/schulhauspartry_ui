@@ -8,7 +8,7 @@ const mapRow = (r) => r && ({
   explicit: !!r.explicit, durationMs: r.duration_ms, createdAt: r.created_at, status: r.status,
   reason: r.reason, decidedBy: r.decided_by, decidedAt: r.decided_at, player: r.player, queuePos: r.queue_pos,
   votes: r.votes, prioritizedBy: r.prioritized_by, prioritizedAt: r.prioritized_at, playedAt: r.played_at,
-  deviceId: r.device_id,
+  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity,
 });
 
 export const getRequest = (id) => mapRow(db().prepare('SELECT * FROM requests WHERE id = ?').get(id));
@@ -66,8 +66,9 @@ export function submitWish(env, track, deviceId, now = Date.now()) {
       return { result: 'duplicate', request: getRequest(dup.id), alreadyVoted: !!voted, limit: limitState(env, deviceId, now) };
     }
 
-    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, deviceId, now);
+    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, artist_ids, genres, year, popularity)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, deviceId, now,
+      JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null);
     const id = Number(info.lastInsertRowid);
     db().prepare('INSERT INTO votes(request_id, device_id) VALUES(?,?)').run(id, deviceId);
     db().prepare('INSERT INTO guest_actions(env, device_id, ts) VALUES(?,?,?)').run(env, deviceId, now);
@@ -169,7 +170,7 @@ export function counts(env) {
 export function resetEnv(env) {
   transaction(() => {
     db().prepare('DELETE FROM votes WHERE request_id IN (SELECT id FROM requests WHERE env = ?)').run(env);
-    for (const t of ['requests', 'guest_actions', 'plays', 'events']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
+    for (const t of ['requests', 'guest_actions', 'plays', 'events', 'block_attempts']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
   });
   logEvent(env, 'reset', {});
 }
@@ -192,4 +193,28 @@ export function liveStats(env, now = Date.now()) {
     top: q("SELECT title, artist, votes FROM requests WHERE env = ? AND status != 'denied' ORDER BY votes DESC, id ASC LIMIT 5", env),
     series,
   };
+}
+
+// Genres nachtraeglich eintragen (kommen asynchron von Spotify)
+export function setGenres(id, genres) { db().prepare('UPDATE requests SET genres = ? WHERE id = ?').run(JSON.stringify(genres || []), id); }
+
+// Verlauf: gespielte Songs der Umgebung (neueste zuerst)
+export function history(env, limit = 40) {
+  return db().prepare("SELECT * FROM requests WHERE env = ? AND status IN ('played','playing') AND played_at IS NOT NULL ORDER BY played_at DESC LIMIT ?").all(env, limit).map(mapRow);
+}
+
+// Einen schon gespielten (oder abgelehnten/entfernten) Song erneut hinten in die Queue legen
+export function requeue(env, id, accountId, currentPlayer, now = Date.now()) {
+  return transaction(() => {
+    const r = db().prepare('SELECT * FROM requests WHERE id = ? AND env = ?').get(id, env);
+    if (!r) return { ok: false, status: 404, error: 'Song nicht gefunden' };
+    if (['pending', 'approved'].includes(r.status)) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange.' };
+    const inQueue = db().prepare("SELECT 1 FROM requests WHERE env = ? AND track_id = ? AND status IN ('pending','approved')").get(env, r.track_id);
+    if (inQueue) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange.' };
+    const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_by, decided_at, player, queue_pos, artist_ids, genres, year, popularity)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, r.track_id, r.uri, r.title, r.artist, r.album, r.explicit, r.duration_ms, 'staff', now, 'approved', accountId ?? null, now,
+      assignPlayer(env, currentPlayer), (max ?? 0) + 1, r.artist_ids, r.genres, r.year, r.popularity);
+    return { ok: true, request: getRequest(Number(info.lastInsertRowid)) };
+  });
 }

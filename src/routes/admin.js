@@ -78,7 +78,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     applyPatch(req.body || {}, { allow });

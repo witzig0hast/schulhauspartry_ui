@@ -32,6 +32,8 @@ function viewSettings() {
   const noticeOn = h('input', { type: 'checkbox', checked: s.notice.enabled }), noticeText = h('textarea', { rows: 2, maxlength: 400 }); noticeText.value = s.notice.text;
   const msgs = Object.fromEntries(['paused', 'closed', 'ended'].map((k) => { const i = h('input', { value: s.wishMessages[k], maxlength: 200 }); return [k, i]; }));
   const prio = num(s.priorityWithin, { min: 1, max: 10 });
+  const replayMode = h('select', {}, ...[['allow', 'Erlauben – Songs dürfen beliebig oft gewünscht werden'], ['cooldown', 'Pause – erst nach einer Wartezeit wieder wünschbar'], ['block', 'Sperren – schon gespielte Songs sind nicht mehr wünschbar']].map(([v, l]) => h('option', { value: v, selected: s.replay.mode === v }, l)));
+  const replayMin = num(s.replay.cooldownMin, { min: 1, max: 1440 });
   const presets = s.fadePresets.map((p) => ({ name: h('input', { value: p.name, maxlength: 20 }), sec: num(p.sec, { min: 0.5, max: 60, step: 0.5 }) }));
   return h('div', { class: 'grid two' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Wunsch-Limit pro Gerät'),
@@ -41,6 +43,9 @@ function viewSettings() {
     h('div', { class: 'card stack' }, h('h2', {}, 'Texte'),
       h('label', { class: 'check' }, noticeOn, 'Organisatoren-Hinweis anzeigen'), noticeText,
       field('Wenn Wünsche pausiert sind', msgs.paused), field('Wenn Wünsche geschlossen sind', msgs.closed), field('Ende-Modus', msgs.ended)),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Schon gespielte Songs'),
+      h('p', { class: 'small muted' }, 'Gilt für Wünsche der Gäste. Die Moderation kann gespielte Songs jederzeit manuell wieder einreihen oder sperren.'),
+      field('Regel', replayMode), h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Wartezeit bei „Pause“:'), replayMin, h('span', { class: 'small muted' }, 'Minuten'))),
     h('div', { class: 'card stack' }, h('h2', {}, 'Moderation'),
       field('Ablehnungsgründe (eine pro Zeile)', reasons),
       field('Priorisierte Songs kommen innerhalb der nächsten … Songs', prio)),
@@ -48,6 +53,7 @@ function viewSettings() {
       ...presets.map((p) => h('div', { class: 'row' }, p.name, p.sec, h('span', {}, 's')))),
     h('div', { class: 'row', style: 'grid-column:1/-1' }, h('button', { class: 'primary', onclick: () => save({
       limit: { count: Number(count.value), windowMin: Number(win.value) }, explicitMode: explicit.value,
+      replay: { mode: replayMode.value, cooldownMin: Number(replayMin.value) },
       rejectReasons: reasons.value.split('\n'), notice: { enabled: noticeOn.checked, text: noticeText.value },
       wishMessages: Object.fromEntries(Object.entries(msgs).map(([k, i]) => [k, i.value])), priorityWithin: Number(prio.value),
       fadePresets: presets.map((p) => ({ name: p.name.value, sec: Number(p.sec.value) })),
@@ -132,6 +138,9 @@ const PAGES = [
   ['Technik', '/tech', 'Fader, Crossfade, Not-Aus'],
   ['Moderation', '/mod', 'Wünsche annehmen / ablehnen'],
   ['Anzeige', '/foh', 'Nur ansehen (FOH-Bildschirm)'],
+  ['Fokus-Modus', '/focus', 'Schwarz, bis ein Wunsch kommt (Annehmen/Ablehnen)'],
+  ['Live-Wünsche', '/ticker', 'Live-Anzeige aller Wünsche und Entscheidungen'],
+  ['Analytics', '/analytics', 'Genres, Interpreten, Zeitverlauf …'],
   ['Board', '/board', 'Eigene Ansicht aus Bausteinen'],
   ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
   ['Admin', '/admin', 'Diese Seite'],

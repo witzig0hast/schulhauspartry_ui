@@ -19,6 +19,9 @@ Ducking und Not-Aus. Alles ist rollenbasiert abgesichert und läuft in Docker.
 | `/foh` | FOH-Anzeige, Technik, Orga, Admin | reine Anzeige (nichts bedienbar): Player, Pegel, Mics, Queue, Status |
 | `/admin` | nur Head-Admin | Start & Links, QR & Poster, Einstellungen, Codes, Verbindungen, Bericht/CSV |
 | `/board` | alle Mitarbeitenden | **Modulares Board**: Bausteine an-/abwählen, sortieren, Größe wählen, eigene Ansichten speichern |
+| `/focus` | Moderation, Technik, Admin | **Fokus-Modus**: komplett schwarz, bis ein Wunsch kommt – dann Annehmen / Ablehnen (Tasten A, D, 1–9, B, F) |
+| `/ticker` | Anzeige, Technik, Orga, Admin | **Live-Wünsche**: neue Wünsche erscheinen sofort, dann „Angenommen“ / „Abgelehnt“ |
+| `/analytics` | alle Mitarbeitenden | **Analytics** live: Genres, Interpreten, Jahrzehnte, Zeitverlauf, Annahme-Quote … |
 | `/beamer` | öffentlich (großer Bildschirm) | „Jetzt läuft“ + QR-Code + Hinweis der Organisatoren – zeigt nichts Internes |
 
 Auf allen Spezialansichten steht unten links ein kleiner **Ping** (nicht auf der Gäste-Seite).
@@ -155,3 +158,19 @@ Bausteine: Jetzt läuft · Player 1/2 · Als Nächstes · Offene Wünsche · Zul
 ## QR-Code & Poster
 
 Admin → *QR & Poster*: QR-Code zur Gäste-Seite (live oder Test), Überschrift/Untertitel anpassbar, **Drucken / als PDF speichern** (A4).
+
+## Sperren & schon gespielte Songs
+
+- **Sperren** (Moderation, Technik, Admin): bei jedem Wunsch „⛔ Sperren“ → *Song* oder *Interpret*. Gesperrt = Gäste sehen „nicht möglich“,
+  offene Wünsche werden abgelehnt, Einträge aus der Warteschlange entfernt. Reiter *Gesperrt*: Liste, direkt per Suche sperren, *Freigeben*.
+- **Schon gespielt** (Admin → Einstellungen): *Erlauben* · *Pause* (erst nach X Minuten wieder wünschbar) · *Sperren* (heute nicht mehr).
+  Die Moderation kann gespielte Songs im Reiter *Gespielt* trotzdem mit **↻ Nochmal** hinten einreihen oder sperren.
+- Blockierte Versuche werden gezählt und in den Analytics gezeigt.
+
+## Analytics
+
+`/analytics` und die Board-Bausteine *Genres live*, *Genre-Verlauf*, *Top-Interpreten*: Gewünscht vs. gespielt je Genre, Genre-Verlauf, Top-Interpreten,
+Jahrzehnte, Annahme-Quote je Genre, Wünsche im Zeitverlauf, Entscheidungsgeschwindigkeit, Beliebtheit, meistunterstützte Songs, Gäste-Aktivität,
+blockierte Versuche. Zeitraum wählbar (Gesamt / 15 Min / 1–6 Std), jede Grafik hat eine Tabellenansicht, alles anonym.
+Genres kommen von Spotify (über den Interpreten) und werden zu Familien zusammengefasst (Pop, Hip-Hop & Rap, Electronic & Dance, …).
+Liefert Spotify für eure App keine Genres, erscheinen die Wünsche unter „Unbekannt“ – alles andere funktioniert weiter.

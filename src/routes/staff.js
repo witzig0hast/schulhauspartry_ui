@@ -5,7 +5,9 @@ import {
 import { parseCookies } from '../security.js';
 import * as rq from '../requests.js';
 import { applyPatch, settings } from '../settings.js';
-import { staffState } from '../hub.js';
+import { staffState, staffExtra } from '../hub.js';
+import { addBlock, removeBlock, listBlacklist, isBlacklisted } from '../blocklist.js';
+import { buildAnalytics } from '../analytics.js';
 import { logEvent } from '../db.js';
 
 const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh' };
@@ -40,10 +42,14 @@ export function staffRouter(env, engine, hub) {
   });
 
   r.get('/state', requireAnyPerm('viewMod', 'viewFoh'), (req, res) => {
-    res.json(staffState(engine, req.session.role, engine.snapshot(), { pending: rq.pending(env), recent: rq.recentDecisions(env) }));
+    res.json(staffState(engine, req.session.role, engine.snapshot(), staffExtra(env)));
   });
 
   r.get('/stats', requireAnyPerm('viewStats'), (req, res) => res.json(rq.liveStats(env)));
+  r.get('/analytics', requireAnyPerm('viewStats'), (req, res) => {
+    const r = Number(req.query.range);
+    res.json(buildAnalytics(env, [0, 15, 60, 120, 360].includes(r) ? r : 0));
+  });
 
   // ----- Moderation -----
   r.post('/mod/decide', requirePerm('moderate'), wrap((req, res) => {
@@ -67,6 +73,38 @@ export function staffRouter(env, engine, hub) {
     const ok = rq.removeFromQueue(env, Number(req.body?.id), req.session.accountId);
     hub.pushEnv(env, { guests: true });
     res.json({ ok });
+  }));
+
+  // ----- Sperrliste & Wiederholungen -----
+  r.get('/mod/blacklist', requireAnyPerm('moderate', 'viewMod'), (req, res) => res.json({ blacklist: listBlacklist() }));
+  r.post('/mod/blacklist', requirePerm('moderate'), wrap((req, res) => {
+    const b = req.body || {};
+    const out = addBlock({ kind: b.kind, trackId: b.trackId, title: b.title, artist: b.artist, artistName: b.artistName, reason: b.reason }, req.session.accountId);
+    logEvent(env, 'blacklist', { kind: b.kind, label: out.label });
+    hub.pushEnv(env, { guests: true }); hub.pushEnv(env === 'live' ? 'test' : 'live', { guests: true });
+    res.json({ ok: true, ...out });
+  }));
+  r.post('/mod/blacklist/remove', requirePerm('moderate'), wrap((req, res) => {
+    const ok = removeBlock(Number(req.body?.id));
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok });
+  }));
+  // Suche fuer Mitarbeitende (z. B. um einen Song direkt zu sperren)
+  r.get('/mod/search', requirePerm('moderate'), wrap(async (req, res) => {
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    if (q.length < 2) return res.json({ tracks: [] });
+    const tracks = await engine.spotify.search(q, 8);
+    res.json({ tracks: tracks.map((t) => ({ id: t.id, title: t.title, artist: t.artist })) });
+  }));
+  // Schon gespielten (oder abgelehnten/entfernten) Song nochmal einreihen
+  r.post('/mod/requeue', requirePerm('moderate'), wrap((req, res) => {
+    const row = rq.getRequest(Number(req.body?.id));
+    if (!row) return res.status(404).json({ error: 'Song nicht gefunden' });
+    if (isBlacklisted(row.trackId, row.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
+    const out = rq.requeue(env, Number(req.body.id), req.session.accountId, engine.current);
+    hub.pushEnv(env, { guests: true });
+    if (!out.ok) return res.status(out.status).json({ error: out.error });
+    res.json({ ok: true, player: out.request.player });
   }));
 
   // ----- Technik -----

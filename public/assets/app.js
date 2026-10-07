@@ -92,7 +92,18 @@ export function themeButton() {
 }
 
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
-const NAV = [['Technik', '/tech', ['admin', 'tech']], ['Moderation', '/mod', ['admin', 'tech', 'mod', 'orga']], ['Anzeige', '/foh', ['admin', 'tech', 'orga', 'display']], ['Board', '/board', ['admin', 'tech', 'mod', 'orga', 'display']], ['Beamer', '/beamer', ['admin', 'tech', 'orga', 'display']], ['Admin', '/admin', ['admin']]];
+const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
+const NAV = [
+  { label: 'Technik', path: '/tech', roles: ['admin', 'tech'], main: true },
+  { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
+  { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
+  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod'], hint: 'Schwarz, bis ein Wunsch kommt' },
+  { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Neue Wünsche & Entscheidungen live' },
+  { label: 'Analytics', path: '/analytics', roles: STAFF, hint: 'Genres, Interpreten, Zeitverlauf …' },
+  { label: 'Board', path: '/board', roles: STAFF, hint: 'Eigene Ansicht aus Bausteinen' },
+  { label: 'Anzeige', path: '/foh', roles: ['admin', 'tech', 'orga', 'display'], hint: 'FOH-Status zum Ansehen' },
+  { label: 'Beamer', path: '/beamer', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Großer Bildschirm für Gäste' },
+];
 
 // Kopfzeile mit Marke, Navigation, Live-Status und Abmelden
 export function topbar(title, { right = [], test = ENV === 'test', live = true, nav = false } = {}) {
@@ -107,11 +118,17 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   wrap.setLive = (ok) => { pill.className = `pill ${ok ? 'live' : 'off'}`; pill.lastChild.textContent = ok ? 'Live' : 'Getrennt'; };
   if (nav) {
     api('/me').then((me) => {
-      for (const [label, path, roles] of NAV) {
-        if (!roles.includes(me.role)) continue;
-        navBox.append(h('a', { class: `navlink ${location.pathname.replace(/\/$/, '') === BASE + path ? 'on' : ''}`, href: BASE + path }, label));
+      const here = location.pathname.replace(/\/$/, '');
+      const mine = NAV.filter((n) => n.roles.includes(me.role));
+      for (const n of mine.filter((x) => x.main)) navBox.append(h('a', { class: `navlink ${here === BASE + n.path ? 'on' : ''}`, href: BASE + n.path }, n.label));
+      const more = mine.filter((x) => !x.main);
+      if (more.length) {
+        const active = more.find((x) => here === BASE + x.path);
+        const menu = h('details', { class: 'menu' }, h('summary', { class: `navlink ${active ? 'on' : ''}` }, active ? active.label : 'Ansichten', ' ▾'),
+          h('div', { class: 'menu-list' }, ...more.map((n) => h('a', { href: BASE + n.path, class: here === BASE + n.path ? 'on' : '' }, h('b', {}, n.label), h('span', {}, n.hint || '')))));
+        document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.removeAttribute('open'); });
+        navBox.append(menu);
       }
-      if (navBox.children.length < 2) navBox.remove();
     }).catch(() => {});
   }
   return wrap;

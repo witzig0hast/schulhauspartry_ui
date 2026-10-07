@@ -4,11 +4,12 @@ import { parseCookies, unsign } from './security.js';
 import * as rq from './requests.js';
 import { settings, guestSettings } from './settings.js';
 import { getDb } from './db.js';
+import { listBlacklist, artistNames } from './blocklist.js';
 
 const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE id = ?').get(id)?.label || null : null);
 const publicReq = (r) => ({
   id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, votes: r.votes, player: r.player, status: r.status,
-  createdAt: r.createdAt, reason: r.reason, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
+  createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
 });
 
 // Baut den Zustand, den eine Rolle sehen darf.
@@ -32,11 +33,13 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
     out.ducking = snap.ducking;
   }
   if (can(role, 'connections')) { out.mics = snap.mics; out.connections = snap.connections; out.errors = snap.errors; }
-  if (can(role, 'viewMod') || can(role, 'viewFoh')) {
+  if (can(role, 'viewMod') || can(role, 'viewFoh') || can(role, 'viewTicker')) {
     out.pending = extra.pending.map(publicReq); out.recent = extra.recent.map(publicReq);
+    out.history = (extra.history || []).map(publicReq); out.blacklist = extra.blacklist || [];
     out.nowPlayingTitle = engine.nowPlaying();
   }
-  if (!can(role, 'viewMod')) { delete out.pending; delete out.recent; }
+  if (!can(role, 'viewMod')) { delete out.history; delete out.blacklist; }
+  if (!can(role, 'viewMod') && !can(role, 'viewTicker')) { delete out.pending; delete out.recent; }
   out.notice = { enabled: settings().notice.enabled, text: settings().notice.text };
   return out;
 }
@@ -56,6 +59,8 @@ export function guestState(engine, deviceId) {
     requests: rq.guestRequests(engine.env, deviceId, !!np),
   };
 }
+
+export const staffExtra = (env) => ({ pending: rq.pending(env), recent: rq.recentDecisions(env, 40), history: rq.history(env, 40), blacklist: listBlacklist() });
 
 export function createHub(server, engines, { testPrefix, testEnabled, allowedOrigin }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
@@ -96,7 +101,7 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
     const engine = engines[c.env];
     if (c.session) {
       const snap = cache?.snap || engine.snapshot();
-      const extra = cache?.extra || { pending: rq.pending(c.env), recent: rq.recentDecisions(c.env) };
+      const extra = cache?.extra || staffExtra(c.env);
       c.ws.send(JSON.stringify({ type: 'state', data: staffState(engine, c.session.role, snap, extra) }));
     } else if (c.deviceId) {
       c.ws.send(JSON.stringify({ type: 'guest', data: guestState(engine, c.deviceId) }));
@@ -107,7 +112,7 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
   function pushEnv(env, { staff = true, guests = false } = {}) {
     const engine = engines[env];
     if (staff) {
-      const cache = { snap: engine.snapshot(), extra: { pending: rq.pending(env), recent: rq.recentDecisions(env) } };
+      const cache = { snap: engine.snapshot(), extra: staffExtra(env) };
       for (const c of clients) if (c.env === env && c.session) sendTo(c, cache);
     }
     if (guests) {

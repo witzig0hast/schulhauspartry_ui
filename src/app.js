@@ -40,6 +40,9 @@ const PAGES = {
   admin: { file: 'admin.html', perm: 'viewAdmin' },
   board: { file: 'board.html', perm: 'viewBoard' },
   beamer: { file: 'beamer.html', perm: null },
+  focus: { file: 'focus.html', perm: 'moderate' },
+  ticker: { file: 'ticker.html', perm: 'viewTicker' },
+  analytics: { file: 'analytics.html', perm: 'viewStats' },
 };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
@@ -117,7 +120,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (page.perm && !can(req.session?.role, page.perm)) {

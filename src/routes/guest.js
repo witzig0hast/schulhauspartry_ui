@@ -3,6 +3,7 @@ import { randomToken, sign, unsign, parseCookies, cookieString, isSecure, client
 import { settings } from '../settings.js';
 import * as rq from '../requests.js';
 import { guestState } from '../hub.js';
+import { blockReason, logAttempt } from '../blocklist.js';
 
 const ipLimiter = new RateLimiter(900, 60000);
 const searchLimiter = new RateLimiter(25, 20000);
@@ -47,9 +48,11 @@ export function guestRouter(env, engine, hub) {
     }
     const mode = settings().explicitMode;
     res.json({
-      tracks: tracks.list.map((t) => ({
-        id: t.id, title: t.title, artist: t.artist, blocked: mode === 'block' && t.explicit,
-      })),
+      tracks: tracks.list.map((t) => {
+        const br = blockReason(env, t);
+        const explicitBlock = mode === 'block' && t.explicit;
+        return { id: t.id, title: t.title, artist: t.artist, blocked: !!br || explicitBlock, blockedText: br ? br.short : explicitBlock ? 'nicht möglich' : null };
+      }),
     });
   });
 
@@ -61,7 +64,10 @@ export function guestRouter(env, engine, hub) {
     let track;
     try { track = await engine.spotify.getTrack(trackId); } catch { return res.status(502).json({ error: 'Spotify ist gerade nicht erreichbar.' }); }
     if (!track) return res.status(404).json({ error: 'Song nicht gefunden.' });
-    if (settings().explicitMode === 'block' && track.explicit) return res.status(403).json({ error: 'Dieser Song ist hier leider nicht möglich.' });
+    if (settings().explicitMode === 'block' && track.explicit) { logAttempt(env, 'explicit', track.id); return res.status(403).json({ error: 'Dieser Song ist hier leider nicht möglich.' }); }
+    // Gesperrte oder (je nach Regel) schon gespielte Songs: nicht annehmen. Laeuft er gerade, greift der Duplikat-Pfad unten.
+    const br = blockReason(env, track);
+    if (br) { logAttempt(env, br.kind, track.id); return res.status(403).json({ error: br.text }); }
 
     const out = rq.submitWish(env, track, req.deviceId);
     if (out.result === 'limit') {
@@ -69,6 +75,10 @@ export function guestRouter(env, engine, hub) {
       return res.status(429).json({ error: `Du hast dein Limit erreicht. Versuch es in ca. ${min} Min. wieder.`, limit: out.limit });
     }
     hub.pushEnv(env, { guests: true });
+    // Genres kommen vom Interpreten und werden nachgeladen (blockiert den Wunsch nie)
+    if (out.result === 'created' && !track.genres && engine.spotify.getGenres) {
+      engine.spotify.getGenres(track).then((g) => { rq.setGenres(out.request.id, g); }).catch(() => {});
+    } else if (out.result === 'created' && track.genres) rq.setGenres(out.request.id, track.genres);
     const np = engine.nowPlaying();
     if (out.result === 'duplicate') {
       const ahead = rq.songsAhead(env, out.request, !!np);

@@ -70,6 +70,8 @@ async function call(tokens, method, path, { body, query } = {}) {
 const mapTrack = (t) => ({
   id: t.id, uri: t.uri, title: t.name, artist: t.artists.map((a) => a.name).join(', '),
   album: t.album?.name || '', explicit: !!t.explicit, durationMs: t.duration_ms,
+  artistIds: t.artists.map((a) => a.id).filter(Boolean), year: Number(String(t.album?.release_date || '').slice(0, 4)) || null,
+  popularity: Number.isFinite(t.popularity) ? t.popularity : null,
 });
 
 // Suche und Track-Lookup laufen ueber die App-Credentials (Client Credentials), ohne Gast-Login.
@@ -91,7 +93,23 @@ export class RealSpotify {
     try { return mapTrack(await call(this.tokens, 'GET', `/tracks/${id}`, { query: { market: 'DE' } })); }
     catch (e) { if (e.status === 404 || e.status === 400) return null; throw e; }
   }
-  health() { return this.lastError ? { ok: false, detail: this.lastError } : { ok: true, detail: 'Spotify-Suche' }; }
+  // Genres gehoeren bei Spotify zum Interpreten. Fehler (z. B. eingeschraenkte API) -> leer, nie blockierend.
+  async getGenres(track) {
+    this.genreCache ??= new Map();
+    const ids = (track.artistIds || []).slice(0, 5);
+    const out = new Set();
+    for (const id of ids) {
+      if (!/^[A-Za-z0-9]{22}$/.test(id)) continue;
+      let g = this.genreCache.get(id);
+      if (!g) {
+        try { g = (await call(this.tokens, 'GET', `/artists/${id}`)).genres || []; this.genreCache.set(id, g); this.genresOk = true; }
+        catch (e) { this.genresOk = false; this.genreError = e.message; g = []; }
+      }
+      g.forEach((x) => out.add(x));
+    }
+    return [...out];
+  }
+  health() { return this.lastError ? { ok: false, detail: this.lastError } : { ok: true, detail: this.genresOk === false ? 'Spotify-Suche (Genres nicht verfügbar)' : 'Spotify-Suche' }; }
 }
 
 export class RealPlayer {

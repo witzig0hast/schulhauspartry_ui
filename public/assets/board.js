@@ -1,5 +1,6 @@
 import { h, api, connect, topbar, clear, safe, toast, cover, eq, fmtTime, $ } from '/assets/app.js';
-import { pendingList, upcomingList, recentList, playerSummary, ampel, bar, kpi, empty } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, recentList, historyList, blacklistPanel, playerSummary, ampel, bar, kpi, empty } from '/assets/staff-ui.js';
+import { hbars, stackedColumns, entityColor, COLORS } from '/assets/viz.js';
 
 // ============================================================
 // Modulares Board: Bausteine (Widgets) an-/abwaehlen, sortieren, Groesse waehlen.
@@ -62,6 +63,39 @@ const WIDGETS = {
   recent: {
     title: 'Zuletzt entschieden', desc: 'Letzte Entscheidungen der Moderation', roles: ['admin', 'tech', 'mod', 'orga'],
     make() { const box = h('div'); return { el: box, update(s) { memo(box, JSON.stringify(s.recent.map((r) => [r.id, r.status])), () => recentList(s)); } }; },
+  },
+  history: {
+    title: 'Gespielt', desc: 'Schon gespielte Songs: nochmal einreihen oder sperren', roles: ['admin', 'tech', 'mod', 'orga'],
+    make() { const box = h('div'); return { el: box, update(s) { const c = can.moderate(); memo(box, JSON.stringify([s.history?.map((r) => [r.id, r.status]), c, (s.blacklist || []).length]), () => historyList(s, { canAct: c })); } }; },
+  },
+  blacklist: {
+    title: 'Gesperrt', desc: 'Gesperrte Songs und Interpreten, Song suchen & sperren', roles: ['admin', 'tech', 'mod', 'orga'],
+    make() { const box = h('div'); return { el: box, update(s) { const c = can.moderate(); memo(box, JSON.stringify([s.blacklist, c]), () => blacklistPanel(s, { canAct: c })); } }; },
+  },
+  ticker: {
+    title: 'Live-Wünsche', desc: 'Neue Wünsche und ihre Entscheidung', roles: ['admin', 'tech', 'orga', 'display'], size: 'wide',
+    make() {
+      const box = h('div');
+      return { el: box, update(s) {
+        const byId = new Map(); for (const r of [...(s.recent || []), ...(s.pending || [])]) byId.set(r.id, r);
+        const feed = [...byId.values()].filter((r) => r.status !== 'removed').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
+        memo(box, JSON.stringify(feed.map((r) => [r.id, r.status, r.votes])), () => feed.length ? h('div', {}, ...feed.map((r) => h('div', { class: 'q-row' }, cover(r.title, 'sm'),
+          h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)),
+          h('span', { class: `badge ${r.status === 'pending' ? 'warn' : r.status === 'denied' ? 'bad' : 'ok'}` }, r.status === 'pending' ? 'wartet' : r.status === 'denied' ? 'abgelehnt' : 'angenommen')))) : empty('Noch keine Wünsche.'));
+      } };
+    },
+  },
+  genres: {
+    title: 'Genres live', desc: 'Gewünschte vs. gespielte Genres', roles: ALL, size: 'wide',
+    make() { return analyticsWidget((a) => { const labels = a.genres.requested.slice(0, 6).map(([f]) => f); const play = new Map(a.genres.played); return h('div', { class: 'stack' }, h('div', { class: 'legend' }, h('span', {}, h('i', { style: `background:${COLORS[0]}` }), 'Gewünscht'), h('span', {}, h('i', { style: `background:${COLORS[1]}` }), 'Gespielt')), hbars(labels, [{ name: 'Gewünscht', color: COLORS[0], values: a.genres.requested.slice(0, 6).map(([, n]) => n) }, { name: 'Gespielt', color: COLORS[1], values: labels.map((l) => play.get(l) || 0) }])); }); },
+  },
+  genretrend: {
+    title: 'Genre-Verlauf', desc: 'Top-Genres über die Zeit', roles: ALL, size: 'wide',
+    make() { return analyticsWidget((a) => { const fams = a.genreTimeline.families; const series = fams.map((f) => ({ name: f, color: entityColor(f, fams) })); return h('div', { class: 'stack' }, h('div', { class: 'legend' }, ...series.map((s) => h('span', {}, h('i', { style: `background:${s.color}` }), s.name))), stackedColumns(a.genreTimeline.columns.map((c) => ({ label: new Date(c.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }), values: c.values })), series)); }); },
+  },
+  artists: {
+    title: 'Top-Interpreten', desc: 'Meistgewünschte Interpreten', roles: ALL,
+    make() { return analyticsWidget((a) => hbars(a.artists.requested.slice(0, 6).map(([n]) => n), [{ name: 'Gewünscht', color: COLORS[0], values: a.artists.requested.slice(0, 6).map(([, v]) => v) }])); },
   },
   kpis: {
     title: 'Zahlen', desc: 'Offen, in Queue, gespielt, abgelehnt', roles: ALL,
@@ -159,6 +193,13 @@ const WIDGETS = {
   },
 };
 
+// Baustein, der /analytics alle 10 s nachlaedt und mit `draw` darstellt
+function analyticsWidget(draw) {
+  const box = h('div'); let last = 0;
+  const load = safe(async () => { clear(box).append(draw(await api('/analytics?range=0'))); });
+  return { el: box, update() { if (Date.now() - last > 10000) { last = Date.now(); load(); } } };
+}
+
 function playerWidget(n) {
   const box = h('div');
   return { el: box, update(s) { clear(box).append(playerSummary(n, s.players[n], { onAir: s.current === n && s.players[n].playing })); } };
@@ -171,6 +212,9 @@ const PRESETS = {
   'Moderation': ['now', 'pending', 'queue', 'recent'],
   'Technik': ['p1', 'p2', 'transition', 'mics', 'wishmode', 'panic', 'status'],
   'Zahlen': ['kpis', 'stats', 'clock', 'recent'],
+  'Wünsche live': ['ticker', 'now', 'kpis'],
+  'Genres': ['genres', 'genretrend', 'artists', 'kpis'],
+  'Gespielt & Gesperrt': ['history', 'blacklist', 'queue'],
   'Alles': Object.keys(WIDGETS),
 };
 const defaultPreset = () => ({ admin: 'Bühne', tech: 'Technik', mod: 'Moderation', orga: 'Übersicht', display: 'Übersicht' }[role] || 'Übersicht');
@@ -257,4 +301,4 @@ function onState(s) {
 }
 connect({ ping: true, onStatus: (ok) => top.setLive(ok), onState });
 api('/state').then((s) => { if (!state) onState(s); }).catch(() => {});
-setInterval(() => { if (state) for (const l of store.layout) if (WIDGETS[l.id]?.roles.includes(role) && ['clock', 'stats'].includes(l.id)) mounted.get(l.id)?.update(state); }, 1000);
+setInterval(() => { if (state) for (const l of store.layout) if (WIDGETS[l.id]?.roles.includes(role) && ['clock', 'stats', 'genres', 'genretrend', 'artists'].includes(l.id)) mounted.get(l.id)?.update(state); }, 1000);

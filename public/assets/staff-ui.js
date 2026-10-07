@@ -27,6 +27,23 @@ export function cardHead(title, count) {
   return h('div', { class: 'card-head' }, h('div', { class: 'title-wrap' }, h('h2', {}, title), count != null ? h('span', { class: `count ${count ? '' : 'soft'}` }, String(count)) : null));
 }
 
+// ---- Sperren (Blacklist) ----
+export async function ban(body, label, onAfter) {
+  try {
+    const out = await api('/mod/blacklist', { method: 'POST', body });
+    toast(`${label} gesperrt${out.denied || out.removed ? ` – ${out.denied + out.removed} Eintrag/Einträge entfernt` : ''}`);
+    onAfter?.();
+  } catch (e) { toast(e.message, true); }
+}
+
+// Kleines Menue: Song sperren / Interpret sperren (pro Interpret ein Knopf)
+export function banMenu(r, onAfter, reason = '') {
+  const menu = h('div', { class: 'reasons hidden' },
+    h('button', { class: 'outline-bad', onclick: () => ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason }, `„${r.title}“`, onAfter) }, '⛔ Song sperren'),
+    ...(r.artists || []).map((a) => h('button', { class: 'outline-bad', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren? Alle Songs von ${a} sind dann nicht mehr wünschbar.`)) ban({ kind: 'artist', artistName: a, reason }, a, onAfter); } }, `⛔ Interpret: ${a}`)));
+  return menu;
+}
+
 // ---- Warteschlange ----
 export function upcomingList(state, { canAct, onAfter } = {}) {
   if (!state.upcoming.length) return empty('Die Warteschlange ist leer.', 'note');
@@ -42,7 +59,8 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
         u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `★ Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
         h('span', { class: `badge p${u.player}` }, `P${u.player}`),
         canAct ? h('button', { class: 'small icon ghost', title: 'Priorisieren', 'aria-label': 'Priorisieren', onclick: safe(async () => { const o = await api('/mod/prioritize', { method: 'POST', body: { id: u.id } }); toast(`Priorisiert – kommt auf Platz ${o.position}`); onAfter?.(); }) }, '★') : null,
-        canAct ? h('button', { class: 'small icon ghost', title: 'Entfernen', 'aria-label': 'Entfernen', onclick: safe(async () => { await api('/mod/remove', { method: 'POST', body: { id: u.id } }); onAfter?.(); }) }, '✕') : null)));
+        canAct ? h('button', { class: 'small icon ghost', title: 'Entfernen', 'aria-label': 'Entfernen', onclick: safe(async () => { await api('/mod/remove', { method: 'POST', body: { id: u.id } }); onAfter?.(); }) }, '✕') : null,
+        canAct ? h('button', { class: 'small icon ghost', title: 'Song sperren', 'aria-label': 'Song sperren', onclick: () => { if (confirm(`„${u.title}“ sperren und aus der Warteschlange nehmen?`)) ban({ kind: 'track', trackId: u.trackId, title: u.title, artist: u.artist }, `„${u.title}“`, onAfter); } }, '⛔') : null)));
   });
   return box;
 }
@@ -53,7 +71,7 @@ export function pendingList(state, { canAct, assign, onAfter }) {
   const box = h('div', { class: 'list' });
   for (const r of state.pending) {
     const age = Math.max(0, Math.round((Date.now() - r.createdAt) / 60000));
-    let reasonBox = null;
+    let reasonBox = null; const banBox = banMenu(r, onAfter);
     const decide = (action, reason) => safe(async () => {
       try {
         const body = { id: r.id, action, reason };
@@ -73,10 +91,12 @@ export function pendingList(state, { canAct, assign, onAfter }) {
           h('span', { class: 'muted tiny' }, age < 1 ? 'gerade eben' : `vor ${age} Min.`))),
       canAct ? h('div', { class: 'req-actions' },
         h('button', { class: 'ok', onclick: () => decide('approve') }, '✓  Annehmen'),
-        h('button', { class: 'outline-bad', onclick: () => reasonBox.classList.toggle('hidden') }, 'Ablehnen')) : null,
+        h('button', { class: 'outline-bad', onclick: () => { reasonBox.classList.toggle('hidden'); banBox.classList.add('hidden'); } }, 'Ablehnen'),
+        h('button', { class: 'ghost', title: 'Song oder Interpret sperren', onclick: () => { banBox.classList.toggle('hidden'); reasonBox.classList.add('hidden'); } }, '⛔ Sperren')) : null,
       canAct ? (reasonBox = h('div', { class: 'reasons hidden' },
         ...state.settings.rejectReasons.map((reason) => h('button', { onclick: () => decide('deny', reason) }, reason)),
-        h('button', { class: 'ghost', onclick: () => decide('deny') }, 'Ohne Grund'))) : null));
+        h('button', { class: 'ghost', onclick: () => decide('deny') }, 'Ohne Grund'))) : null,
+      canAct ? banBox : null));
   }
   return box;
 }
@@ -95,6 +115,48 @@ export function recentList(state) {
 }
 
 // Player-Karte (Hero-Stil) fuer Moderation und FOH-Anzeige
+const ago = (ts) => { const m = Math.max(0, Math.round((Date.now() - ts) / 60000)); return m < 1 ? 'gerade eben' : m < 60 ? `vor ${m} Min.` : `vor ${Math.floor(m / 60)} h ${m % 60} min`; };
+
+// Verlauf: schon gespielte Songs -> nochmal einreihen oder sperren
+export function historyList(state, { canAct, onAfter } = {}) {
+  if (!state.history?.length) return empty('Noch nichts gespielt.', 'note');
+  const blocked = new Set((state.blacklist || []).filter((b) => b.kind === 'track').map((b) => b.key));
+  const box = h('div', {});
+  for (const r of state.history) {
+    const isBlocked = blocked.has(r.trackId);
+    box.append(h('div', { class: 'q-row' },
+      cover(r.title, 'sm'),
+      h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, `${r.artist} · ${r.status === 'playing' ? 'läuft jetzt' : ago(r.playedAt)}`)),
+      isBlocked ? h('span', { class: 'badge bad' }, 'gesperrt') : null,
+      canAct && r.status !== 'playing' && !isBlocked ? h('button', { class: 'small', title: 'Nochmal hinten einreihen', onclick: safe(async () => { const o = await api('/mod/requeue', { method: 'POST', body: { id: r.id } }); toast(`Wieder eingereiht (${playerName(o.player)})`); onAfter?.(); }) }, '↻ Nochmal') : null,
+      canAct && !isBlocked ? h('button', { class: 'small icon ghost', title: 'Song sperren (schon gespielt)', onclick: () => { if (confirm(`„${r.title}“ sperren, weil schon gespielt?`)) ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason: 'Schon gespielt' }, `„${r.title}“`, onAfter); } }, '⛔') : null));
+  }
+  return box;
+}
+
+// Sperrliste + Suche, um direkt etwas zu sperren
+export function blacklistPanel(state, { canAct, onAfter } = {}) {
+  const wrap = h('div', { class: 'stack' });
+  if (canAct) {
+    const results = h('div', { class: 'list' });
+    let t = null;
+    const input = h('input', { type: 'search', placeholder: 'Song suchen, um ihn zu sperren …', maxlength: 80, oninput: () => { clearTimeout(t); t = setTimeout(safe(async () => {
+      const q = input.value.trim(); if (q.length < 2) return clear(results);
+      const { tracks } = await api(`/mod/search?q=${encodeURIComponent(q)}`);
+      clear(results).append(...tracks.map((x) => h('div', { class: 'item row between nowrap' }, h('div', { class: 'req-main grow' }, cover(x.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, x.artist))),
+        h('button', { class: 'small outline-bad', onclick: () => ban({ kind: 'track', trackId: x.id, title: x.title, artist: x.artist }, `„${x.title}“`, () => { input.value = ''; clear(results); onAfter?.(); }) }, '⛔ Sperren'))));
+    }), 300); } });
+    wrap.append(input, results);
+  }
+  const list = state.blacklist || [];
+  wrap.append(list.length ? h('div', {}, ...list.map((b) => h('div', { class: 'q-row' },
+    h('span', { class: 'badge' }, b.kind === 'artist' ? 'Interpret' : 'Song'),
+    h('div', { class: 'grow' }, h('div', { class: 't' }, b.kind === 'artist' ? b.artist : b.title), h('div', { class: 'a' }, `${b.kind === 'track' ? `${b.artist} · ` : ''}${b.reason || 'gesperrt'} · ${ago(b.createdAt)}`)),
+    canAct ? h('button', { class: 'small', onclick: safe(async () => { await api('/mod/blacklist/remove', { method: 'POST', body: { id: b.id } }); toast('Freigegeben'); onAfter?.(); }) }, 'Freigeben') : null)))
+    : empty('Nichts gesperrt.', 'note'));
+  return wrap;
+}
+
 export function playerSummary(n, p, { fohStyle = false, onAir = false } = {}) {
   const pct = p.durationMs ? p.positionMs / p.durationMs : 0;
   const idle = !p.title;

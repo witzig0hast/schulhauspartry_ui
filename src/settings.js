@@ -12,6 +12,7 @@ export const DEFAULTS = {
     ended: 'Das war es für heute - danke fürs Feiern!',
   },
   priorityWithin: 3,
+  replay: { mode: 'allow', cooldownMin: 60 }, // allow | cooldown | block: bereits gespielte Songs
   fadePresets: [
     { name: 'Kurz', sec: 3 },
     { name: 'Normal', sec: 8 },
@@ -77,6 +78,10 @@ export function applyPatch(patch, { allow }) {
   }
   if (has('wishMessages')) {
     for (const k of ['paused', 'closed', 'ended']) if (k in (patch.wishMessages || {})) s.wishMessages[k] = str(patch.wishMessages[k], 200);
+  }
+  if (has('replay')) {
+    if (['allow', 'cooldown', 'block'].includes(patch.replay.mode)) s.replay.mode = patch.replay.mode;
+    if ('cooldownMin' in patch.replay) s.replay.cooldownMin = Math.round(clamp(patch.replay.cooldownMin, 1, 1440, s.replay.cooldownMin));
   }
   if (has('priorityWithin')) s.priorityWithin = Math.round(clamp(patch.priorityWithin, 1, 10, s.priorityWithin));
   if (has('fadePresets') && Array.isArray(patch.fadePresets)) {

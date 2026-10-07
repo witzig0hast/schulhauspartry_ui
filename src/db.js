@@ -70,6 +70,23 @@ export function openDb(dataDir) {
       artist TEXT NOT NULL,
       request_id INTEGER
     );
+    CREATE TABLE IF NOT EXISTS blacklist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,            -- 'track' | 'artist'
+      key TEXT NOT NULL,             -- Track-ID bzw. normalisierter Interpretenname
+      title TEXT,
+      artist TEXT,
+      reason TEXT,
+      created_by INTEGER,
+      created_at INTEGER NOT NULL,
+      UNIQUE(kind, key)
+    );
+    CREATE TABLE IF NOT EXISTS block_attempts (
+      env TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      kind TEXT NOT NULL,            -- 'blacklist' | 'played' | 'explicit'
+      key TEXT
+    );
     CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       env TEXT NOT NULL,
@@ -78,6 +95,14 @@ export function openDb(dataDir) {
       data TEXT
     );
   `);
+  // Spaltenmigration fuer bestehende Datenbanken
+  const addColumn = (table, col, def) => {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  };
+  addColumn('requests', 'artist_ids', 'TEXT');
+  addColumn('requests', 'genres', 'TEXT');
+  addColumn('requests', 'year', 'INTEGER');
+  addColumn('requests', 'popularity', 'INTEGER');
   return db;
 }
 
