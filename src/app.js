@@ -61,7 +61,11 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   });
 
   app.get('/healthz', (req, res) => res.json({ ok: true }));
-  app.use('/assets', express.static(path.join(PUBLIC, 'assets'), { maxAge: '5m', index: false }));
+  // Immer beim Server nachfragen (ETag), auch Cloudflare darf die Dateien nicht festhalten -> Updates sind sofort sichtbar
+  app.use('/assets', express.static(path.join(PUBLIC, 'assets'), {
+    index: false, etag: true, maxAge: 0,
+    setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, must-revalidate'); res.setHeader('CDN-Cache-Control', 'no-store'); res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store'); },
+  }));
 
   app.use(spotifyCallbackRouter(() => { for (const e of Object.values(engines)) e.setReal(e.realConnections, true); }));
 

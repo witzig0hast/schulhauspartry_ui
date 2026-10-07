@@ -159,6 +159,14 @@ test('Zuruecksetzen: loescht Wuensche/Queue, behaelt Codes, live braucht Bestaet
   assert.equal((await tech.post('/api/admin/reset', { env: 'test' })).status, 403);
 });
 
+test('Assets werden nicht gecacht (Updates sofort sichtbar)', async () => {
+  const c = new Client(ctx.base);
+  const r = await c.get('/assets/style.css');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('cache-control'), /no-cache/);
+  assert.equal(r.headers.get('cdn-cache-control'), 'no-store');
+});
+
 test('Login-Sperre nach zu vielen Fehlversuchen', async () => {
   const c = new Client(ctx.base);
   let last;
