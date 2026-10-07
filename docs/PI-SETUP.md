@@ -59,7 +59,7 @@ Admin → **Verbindungen** → *X32 / Pi 5*:
 - Pi-URL: `http://10.8.0.2:8080`
 - Token: derselbe wie `RELAY_TOKEN`
 - Kanäle wie am X32, **Speichern**.
-- Admin → **Testmodus** → „Echte Verbindungen nutzt“ auf die Umgebung stellen, die den Pi steuern soll (live oder test).
+- Admin → **Start & Links** → Testmodus-Optionen → „Echte Verbindungen nutzt“ auf die Umgebung stellen, die den Pi steuern soll (live oder test).
 
 In der Verbindungsampel (Technik/FOH) werden **X32** und **Pi** grün. Teste zuerst mit Musik auf **niedriger Lautstärke**:
 Fader in der Technik-Ansicht bewegen → am X32 müssen sich die Fader der Player-Kanäle mitbewegen; Mic aufdrehen → Mic-Anzeige reagiert, Ducking senkt die Player.

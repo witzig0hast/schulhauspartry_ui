@@ -136,6 +136,29 @@ test('CSV-Export und Bericht nur fuer Admin', async () => {
   assert.equal((await anon.get('/api/admin/setlist.csv')).status, 401);
 });
 
+test('Zuruecksetzen: loescht Wuensche/Queue, behaelt Codes, live braucht Bestaetigung', async () => {
+  const admin = new Client(ctx.base);
+  await admin.post('/api/login', { secret: ADMIN_PW });
+  const before = (await admin.get('/api/admin/accounts')).json.accounts.length;
+  assert.ok(before >= 1);
+  assert.ok((await admin.get('/api/state')).json.counts.played + (await admin.get('/api/state')).json.counts.approved + (await admin.get('/api/state')).json.counts.pending + (await admin.get('/api/state')).json.counts.denied > 0);
+  assert.equal((await admin.post('/api/admin/reset', { env: 'live' })).status, 400);
+  assert.equal((await admin.post('/api/admin/reset', { env: 'live', confirm: 'nein' })).status, 400);
+  assert.equal((await admin.post('/api/admin/reset', { env: 'live', confirm: 'ZURÜCKSETZEN' })).status, 200);
+  const st = (await admin.get('/api/state')).json;
+  assert.deepEqual(st.counts, { pending: 0, approved: 0, denied: 0, played: 0 });
+  assert.equal(st.upcomingTotal, 0);
+  assert.equal(st.players[1].playing || st.players[2].playing, false);
+  assert.equal((await admin.get('/api/admin/accounts')).json.accounts.length, before);
+  // Gaeste duerfen wieder wuenschen (Limit zurueckgesetzt)
+  const g = new Client(ctx.base);
+  assert.equal((await g.get('/api/guest/state')).json.limit.used, 0);
+  const tech = new Client(ctx.base);
+  const tcode = (await admin.post('/api/admin/accounts', { role: 'tech', label: 'x' })).json.code;
+  await tech.post('/api/login', { secret: tcode });
+  assert.equal((await tech.post('/api/admin/reset', { env: 'test' })).status, 403);
+});
+
 test('Login-Sperre nach zu vielen Fehlversuchen', async () => {
   const c = new Client(ctx.base);
   let last;

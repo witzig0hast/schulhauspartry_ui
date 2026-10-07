@@ -61,9 +61,9 @@ beim Erstellen angezeigt (gespeichert wird nur ein Hash).
 ## Testmodus
 
 Gleiche Ansichten wie live, aber unter einer **geheimen URL** (`/t-xxxxxxxxxxxx/…`) mit **eigenen Daten**.
-Ein-/Ausschalten und URL erneuern im Admin → *Testmodus*. Ist er aus, liefert die URL `404`.
+Ein-/Ausschalten, URL erneuern und alle Test-Links (Gäste, Technik, Moderation, Anzeige) findest du im Admin unter *Start & Links*. Ist er aus, liefert die URL `404`.
 Alle Seiten zeigen im Test ein rotes „TESTMODUS“-Banner. *Simulations-Tempo* lässt Songs im Test schneller laufen.
-Echte Verbindungen (Spotify/Pi) nutzt immer nur **eine** Umgebung (Admin → Testmodus → „Echte Verbindungen nutzt“), die andere bleibt simuliert.
+Echte Verbindungen (Spotify/Pi) nutzt immer nur **eine** Umgebung (Admin → Start & Links → Testmodus-Optionen), die andere bleibt simuliert.
 
 ## Nach dem Abend (nur Head-Admin)
 
@@ -135,3 +135,8 @@ src/            Server (Express + ws), Engine (Fades/Crossfade/Ducking), Adapter
 public/         Seiten (HTML) und Assets (vanilla JS/CSS, kein Build-Schritt)
 test/           Integrations- und Engine-Tests (node:test)
 ```
+
+## Zurücksetzen
+
+Admin → *Start & Links* → **Zurücksetzen**: löscht Wünsche, Warteschlange, Setlist und Zähler einer Umgebung und stoppt die Wiedergabe.
+Codes und Einstellungen bleiben. *Testmodus* ohne Rückfrage-Tippen, *Live* nur nach Eingabe von `ZURÜCKSETZEN`.

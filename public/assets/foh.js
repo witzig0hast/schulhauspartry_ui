@@ -4,7 +4,7 @@ import { playerSummary, ampel, bar, kpi } from '/assets/staff-ui.js';
 const app = $('#app');
 let state = null;
 const clock = h('span', { class: 'pill mono' });
-const top = topbar('FOH-Anzeige', { right: [clock] });
+const top = topbar('Anzeige', { nav: true, right: [clock] });
 const root = h('div', { class: 'wrap foh' });
 const playersBox = h('div', { class: 'grid two' });
 const kpiBox = h('div', { class: 'kpis' });

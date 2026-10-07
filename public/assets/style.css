@@ -268,3 +268,22 @@ tr:last-child td { border-bottom: 0; }
 @media (min-width: 1100px) { .foh .hero .t { font-size: 2.4rem; } }
 .theme-btn svg { width: 14px; height: 14px; }
 .player > .title, .player .stack > .title { font-size: 1.2rem; font-weight: 700; letter-spacing: -.03em; line-height: 1.2; }
+
+/* ---------- Navigation & "Mehr"-Bereiche ---------- */
+.nav { display: flex; gap: 2px; margin-left: 14px; overflow-x: auto; scrollbar-width: none; }
+.navlink { padding: 7px 12px; border-radius: 9px; font-size: .86rem; font-weight: 550; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.navlink:hover { color: var(--text); background: var(--bg-2); }
+.navlink.on { color: var(--text); background: var(--bg-2); }
+@media (max-width: 760px) { .nav { margin-left: 4px; } .topbar .brand .name { display: none; } }
+details.more > summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--text-2); list-style: none; display: flex; align-items: center; gap: 8px; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 1.2rem; line-height: 1; color: var(--muted); }
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.card.more > summary { font-size: 1rem; font-weight: 650; color: var(--text); }
+.step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+.step .n { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--ink-text); display: grid; place-items: center; font-weight: 700; font-size: .85rem; }
+.linkrow { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.linkrow:last-child { border-bottom: 0; }
+.linkrow .lbl { width: 120px; font-weight: 600; flex: none; }
+.linkrow .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; color: var(--muted); }
+.danger { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }

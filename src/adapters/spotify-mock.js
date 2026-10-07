@@ -47,6 +47,7 @@ export class MockPlayer {
     this.lastTs = now;
   }
   async play(track) { this._advance(); this.track = track; this.posMs = 0; this.playing = true; this.lastTs = Date.now(); }
+  reset() { this.track = null; this.playing = false; this.posMs = 0; }
   async pause() { this._advance(); this.playing = false; }
   async resume() { this._advance(); if (this.track) this.playing = true; }
   async poll() { this._advance(); }

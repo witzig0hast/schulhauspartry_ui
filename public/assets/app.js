@@ -90,15 +90,29 @@ export function themeButton() {
   return btn;
 }
 
-// Kopfzeile mit Marke, Live-Status und Aktionen
-export function topbar(title, { right = [], test = ENV === 'test', live = true } = {}) {
+// Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
+const NAV = [['Technik', '/tech', ['admin', 'tech']], ['Moderation', '/mod', ['admin', 'tech', 'mod', 'orga']], ['Anzeige', '/foh', ['admin', 'tech', 'orga', 'display']], ['Admin', '/admin', ['admin']]];
+
+// Kopfzeile mit Marke, Navigation, Live-Status und Abmelden
+export function topbar(title, { right = [], test = ENV === 'test', live = true, nav = false } = {}) {
   const pill = h('span', { class: 'pill off', title: 'Verbindung' }, h('i', { class: 'dot' }), 'Verbinde …');
+  const navBox = h('nav', { class: 'nav' });
   const bar = h('div', { class: 'topbar' },
     h('div', { class: 'brand' }, h('div', { class: 'logo' }, icon('logo')), h('div', {}, h('div', { class: 'name' }, 'Schulhauspartry'), h('div', { class: 'sub' }, title))),
-    h('div', { class: 'grow' }), live ? pill : null, ...right, themeButton());
+    navBox, h('div', { class: 'grow' }), live ? pill : null, ...right,
+    nav ? h('button', { class: 'small ghost', onclick: logout }, 'Abmelden') : null, themeButton());
   const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);
   bar.style.position = 'static';
   wrap.setLive = (ok) => { pill.className = `pill ${ok ? 'live' : 'off'}`; pill.lastChild.textContent = ok ? 'Live' : 'Getrennt'; };
+  if (nav) {
+    api('/me').then((me) => {
+      for (const [label, path, roles] of NAV) {
+        if (!roles.includes(me.role)) continue;
+        navBox.append(h('a', { class: `navlink ${location.pathname.replace(/\/$/, '') === BASE + path ? 'on' : ''}`, href: BASE + path }, label));
+      }
+      if (navBox.children.length < 2) navBox.remove();
+    }).catch(() => {});
+  }
   return wrap;
 }
 

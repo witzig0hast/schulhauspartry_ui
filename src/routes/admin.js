@@ -131,12 +131,15 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     res.setHeader('Content-Disposition', `attachment; filename="setlist-${e}.csv"`);
     res.send(setlistCsv(e));
   });
-  r.post('/admin/reset-test', wrap((req, res) => {
-    if (env !== 'test' && req.body?.env !== 'test') throw new Error('Nur der Testmodus kann zurückgesetzt werden.');
-    rq.resetEnv('test');
-    engines.test.current = null;
-    engines.test.state.ended = false; engines.test.state.panic = false; engines.test.state.wishMode = 'open';
-    engines.test.persist();
+  // Zuruecksetzen: loescht Wuensche, Queue, Setlist und Zaehler einer Umgebung und stoppt die Wiedergabe.
+  // Codes und Einstellungen bleiben erhalten. Fuer "live" ist eine getippte Bestaetigung noetig.
+  r.post('/admin/reset', wrap((req, res) => {
+    const target = req.body?.env === 'test' ? 'test' : req.body?.env === 'live' ? 'live' : null;
+    if (!target) throw new Error('Umgebung fehlt');
+    if (target === 'live' && req.body?.confirm !== 'ZURÜCKSETZEN') throw new Error('Bestätigung fehlt');
+    rq.resetEnv(target);
+    engines[target].resetAll();
+    hub.pushEnv(target, { guests: true });
     res.json({ ok: true });
   }));
   return r;

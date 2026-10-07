@@ -291,6 +291,16 @@ export class Engine extends EventEmitter {
   }
   endClear() { this.state.ended = false; this.persist(); logEvent(this.env, 'end-clear', {}); this.emit('change'); }
 
+  // Setzt den Abend zurueck: Wiedergabe stoppen, Zustand leeren (Daten loescht requests.resetEnv)
+  resetAll() {
+    this.crossfade = null; this.ramps = {}; this.pendingStart = []; this.current = null;
+    this.gain = { 1: 1, 2: 1 }; this.duckMul = 1;
+    this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
+    this.state = { wishMode: 'open', ended: false, panic: false }; this.persist();
+    for (const p of [1, 2]) { this.players[p].reset?.(); this.players[p].pause().catch(() => {}); }
+    this.emit('change');
+  }
+
   setWishMode(mode) {
     if (!['open', 'paused', 'closed'].includes(mode)) throw new Error('Ungültiger Modus');
     this.state.wishMode = mode; this.persist(); this.emit('change');

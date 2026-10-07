@@ -1,11 +1,11 @@
-import { h, api, BASE, topbar, clear, logout, safe, toast, modal, $, fmtClock } from '/assets/app.js';
+import { h, api, BASE, topbar, clear, safe, toast, modal, $, fmtClock } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['einstellungen', 'codes', 'verbindungen', 'testmodus', 'bericht'];
-const tabLabels = { einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', testmodus: 'Testmodus', bericht: 'Bericht & Export' };
-let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'einstellungen';
+const tabs = ['start', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
+const tabLabels = { start: 'Start & Links', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
 
@@ -122,30 +122,61 @@ function viewConnections() {
       field('Anbindung', adapter), field('Pi-URL (Relay)', piUrl), field('Token', piToken),
       h('div', { class: 'grid three' }, field('Player 1 (L/R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (L/R)', h('div', { class: 'row' }, ...p2)), field('Mic-Kanäle', h('div', { class: 'row' }, ...mics))),
       h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, channels: { p1: p1.map((i) => Number(i.value)), p2: p2.map((i) => Number(i.value)), mics: mics.map((i) => Number(i.value)) } } }) }, 'Speichern'),
-      h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Testmodus" gewählte Umgebung; die andere läuft simuliert.')));
+      h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
 
-// ---------- Testmodus ----------
-function viewTest() {
+// ---------- Start: Links, Testmodus, Zuruecksetzen ----------
+const PAGES = [
+  ['Gäste-Seite', '/', 'Dahin kommt der QR-Code'],
+  ['Anmeldung', '/login', 'Für alle Mitarbeitenden'],
+  ['Technik', '/tech', 'Fader, Crossfade, Not-Aus'],
+  ['Moderation', '/mod', 'Wünsche annehmen / ablehnen'],
+  ['Anzeige', '/foh', 'Nur ansehen (FOH-Bildschirm)'],
+  ['Admin', '/admin', 'Diese Seite'],
+];
+
+function linkTable(prefix) {
+  return h('div', {}, ...PAGES.map(([label, path, hint]) => {
+    const url = `${origin()}${prefix}${path === '/' ? '/' : path}`;
+    return h('div', { class: 'linkrow' },
+      h('div', { class: 'lbl' }, label),
+      h('div', { class: 'url', title: hint }, url),
+      h('button', { class: 'small', onclick: safe(async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert'); } catch { toast(url); } }) }, 'Kopieren'),
+      h('a', { class: 'btn small', href: url, target: '_blank', rel: 'noopener', style: 'height:32px;padding:0 12px;font-size:.82rem;border-radius:9px' }, 'Öffnen'));
+  }));
+}
+
+function viewStart() {
   const t = data.settings.test;
-  const url = `${origin()}/${t.prefix}/`;
   const speed = num(t.mockSpeed, { min: 1, max: 60, step: 1 });
   const real = h('select', {}, h('option', { value: 'live', selected: t.realEnv === 'live' }, 'Live (Party)'), h('option', { value: 'test', selected: t.realEnv === 'test' }, 'Testmodus'));
-  return h('div', { class: 'grid two' },
-    h('div', { class: 'card stack' }, h('h2', {}, 'Testmodus'),
-      h('p', { class: 'small muted' }, 'Gleiche Ansichten wie live, aber unter einer geheimen URL und mit eigenen Daten. Ist der Testmodus aus, liefert die URL 404.'),
-      h('div', { class: 'row' }, h('span', { class: `badge ${t.enabled ? 'ok' : ''}` }, t.enabled ? 'AN' : 'AUS'),
-        h('button', { class: t.enabled ? '' : 'primary', onclick: () => save({ test: { enabled: !t.enabled } }) }, t.enabled ? 'Ausschalten' : 'Einschalten')),
-      h('div', { class: 'small muted' }, 'Test-URL (Gäste-Seite):'), h('code', { style: 'user-select:all;word-break:break-all' }, url),
-      h('div', { class: 'row' }, h('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener' }, 'Öffnen'),
-        h('button', { onclick: () => { if (confirm('Neue Test-URL erzeugen? Die alte funktioniert dann nicht mehr.')) save({ test: { regeneratePrefix: true } }); } }, 'URL neu erzeugen'))),
-    h('div', { class: 'card stack' }, h('h2', {}, 'Optionen'),
-      field('Echte Verbindungen (Spotify/Pi) nutzt', real),
-      field('Simulations-Tempo (nur Testmodus, Faktor)', speed),
-      h('button', { class: 'primary', onclick: () => save({ test: { realEnv: real.value, mockSpeed: Number(speed.value) } }) }, 'Speichern'),
-      h('hr', { style: 'border:0;border-top:1px solid var(--line);width:100%' }),
-      h('div', { class: 'small muted' }, `Testdaten: ${data.counts.test.pending} offen, ${data.counts.test.approved} in Queue, ${data.counts.test.played} gespielt`),
-      h('button', { class: 'bad', onclick: safe(async () => { if (confirm('Alle Testdaten löschen?')) { await api('/admin/reset-test', { method: 'POST', body: { env: 'test' } }); toast('Testdaten gelöscht'); load(); } }) }, 'Testdaten zurücksetzen')));
+  const resetTest = () => { if (confirm('Alle Testdaten löschen (Wünsche, Queue, Setlist) und die Test-Wiedergabe stoppen?')) safe(async () => { await api('/admin/reset', { method: 'POST', body: { env: 'test' } }); toast('Testmodus zurückgesetzt'); await load(); })(); };
+  const resetLive = () => {
+    const typed = prompt('ACHTUNG: Das löscht ALLE Live-Wünsche, die Warteschlange und die Setlist und stoppt die Wiedergabe.\nCodes und Einstellungen bleiben.\n\nZur Bestätigung tippe: ZURÜCKSETZEN');
+    if (typed === 'ZURÜCKSETZEN') safe(async () => { await api('/admin/reset', { method: 'POST', body: { env: 'live', confirm: 'ZURÜCKSETZEN' } }); toast('Live-Daten zurückgesetzt'); await load(); })();
+    else if (typed != null) toast('Nicht bestätigt – nichts gelöscht', true);
+  };
+  const c = data.counts;
+  return h('div', { class: 'stack', style: 'gap:16px' },
+    h('div', { class: 'card stack' }, h('h2', {}, 'Links – Live'), h('p', { class: 'small muted' }, 'Diese Adressen sind die echte Party. Zugang bekommt man mit einem Code (außer die Gäste-Seite).'), linkTable('')),
+    h('div', { class: 'card stack' },
+      h('div', { class: 'row between' }, h('h2', {}, 'Links – Testmodus'), h('span', { class: `badge ${t.enabled ? 'ok' : ''}` }, t.enabled ? 'AN' : 'AUS')),
+      h('p', { class: 'small muted' }, 'Gleiche Seiten wie live, aber mit eigenen Testdaten und rotem Banner. Mitarbeitende nutzen dieselben Codes wie live.'),
+      t.enabled ? linkTable(`/${t.prefix}`) : h('div', { class: 'empty' }, h('div', { class: 'small' }, 'Der Testmodus ist ausgeschaltet – die Test-Adressen sind gesperrt.')),
+      h('div', { class: 'row' },
+        h('button', { class: t.enabled ? '' : 'primary', onclick: () => save({ test: { enabled: !t.enabled } }) }, t.enabled ? 'Testmodus ausschalten' : 'Testmodus einschalten'),
+        t.enabled ? h('button', { onclick: () => { if (confirm('Neue Test-Adresse erzeugen? Die alte funktioniert dann nicht mehr.')) save({ test: { regeneratePrefix: true } }); } }, 'Test-Adresse erneuern') : null)),
+    h('div', { class: 'card stack danger' },
+      h('h2', {}, 'Zurücksetzen'),
+      h('p', { class: 'small muted' }, 'Löscht Wünsche, Warteschlange, Setlist und Zähler und stoppt die Wiedergabe. Codes und Einstellungen bleiben erhalten.'),
+      h('div', { class: 'row between' }, h('div', {}, h('strong', {}, 'Testmodus'), h('div', { class: 'small muted' }, `${c.test.pending} offen · ${c.test.approved} in Queue · ${c.test.played} gespielt`)), h('button', { class: 'outline-bad', onclick: resetTest }, 'Testmodus zurücksetzen')),
+      h('hr'),
+      h('div', { class: 'row between' }, h('div', {}, h('strong', {}, 'Live'), h('div', { class: 'small muted' }, `${c.live.pending} offen · ${c.live.approved} in Queue · ${c.live.played} gespielt`)), h('button', { class: 'bad', onclick: resetLive }, 'Live zurücksetzen …'))),
+    h('details', { class: 'card more' }, h('summary', {}, 'Testmodus-Optionen'),
+      h('div', { class: 'stack', style: 'margin-top:12px' },
+        field('Echte Verbindungen (Spotify/Pi) nutzt', real),
+        field('Simulations-Tempo im Testmodus (Faktor)', speed),
+        h('button', { class: 'primary', onclick: () => save({ test: { realEnv: real.value, mockSpeed: Number(speed.value) } }) }, 'Speichern'))));
 }
 
 // ---------- Bericht ----------
@@ -173,8 +204,8 @@ function viewReport() {
 
 function render() {
   drawTabs();
-  clear(body).append({ einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, testmodus: viewTest, bericht: viewReport }[tab]());
+  clear(body).append({ start: viewStart, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
-app.append(topbar('Admin', { live: false, right: [h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] }), h('div', { class: 'wrap' }, tabBar, body));
+app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));
 load().catch((e) => toast(e.message, true));

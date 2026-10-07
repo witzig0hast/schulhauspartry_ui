@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, logout, safe, toast, $, fmtTime, eq } from '/assets/app.js';
+import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq } from '/assets/app.js';
 import { pendingList, upcomingList, ampel, bar, playerName } from '/assets/staff-ui.js';
 
 const app = $('#app');
@@ -47,16 +47,17 @@ function playerCard(n) {
   return h('div', { class: `card stack player ${n === 2 ? 'p2' : ''}`, style: 'padding-left:24px' },
     h('div', { class: 'row between' }, h('h2', {}, playerName(n)), h('div', { class: 'row', style: 'gap:8px' }, r.eq, r.status)),
     r.title, r.artist, r.prog, h('div', { class: 'row between tiny muted' }, r.pos, r.rem),
-    h('div', { class: 'eyebrow' }, 'Pegel'), r.meter,
-    h('div', { class: 'row between small' }, h('span', { class: 'eyebrow' }, 'Fader'), r.faderVal), r.fader,
     h('div', { class: 'row' },
       h('button', { onclick: () => post('/control/play', { player: n }) }, '▶ Play'),
-      h('button', { onclick: () => post('/control/pause', { player: n }) }, '⏸ Pause')),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Fade-Zeit'), r.fadeSec, h('span', { class: 'small muted' }, 's')),
-    presetRow(r.fadeSec),
-    h('div', { class: 'row' },
-      h('button', { class: 'primary', onclick: () => post('/control/fade-in', { player: n, sec: Number(r.fadeSec.value) }) }, '↗ Fade-In'),
-      h('button', { onclick: () => post('/control/fade-out', { player: n, sec: Number(r.fadeSec.value) }) }, '↘ Fade-Out')));
+      h('button', { onclick: () => post('/control/pause', { player: n }) }, '⏸ Pause'),
+      h('button', { onclick: () => post('/control/fade-out', { player: n, sec: Number(r.fadeSec.value) }) }, '↘ Ausblenden')),
+    h('details', { class: 'more' }, h('summary', {}, 'Fader & Fade-Zeit'),
+      h('div', { class: 'stack', style: 'margin-top:10px' },
+        h('div', { class: 'eyebrow' }, 'Pegel'), r.meter,
+        h('div', { class: 'row between small' }, h('span', { class: 'eyebrow' }, 'Fader'), r.faderVal), r.fader,
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Fade-Zeit'), r.fadeSec, h('span', { class: 'small muted' }, 's')),
+        presetRow(r.fadeSec),
+        h('button', { class: 'primary', onclick: () => post('/control/fade-in', { player: n, sec: Number(r.fadeSec.value) }) }, '↗ Einblenden (Fade-In)'))));
 }
 
 function updatePlayer(n) {
@@ -76,36 +77,49 @@ function updatePlayer(n) {
 function crossfadeCard() {
   refs.cfSec = numInput(8);
   refs.cfBar = bar(0); refs.cfInfo = h('div', { class: 'small muted' });
+  refs.cfNext = h('div', { class: 'small' });
+  refs.cfSeg = h('div', { class: 'seg' });
   refs.autoOn = h('input', { type: 'checkbox' });
+  refs.duckOn = h('input', { type: 'checkbox' });
+  refs.autoOn.addEventListener('change', () => post('/settings/tech', { auto: { enabled: refs.autoOn.checked } }));
+  refs.duckOn.addEventListener('change', () => post('/settings/tech', { ducking: { enabled: refs.duckOn.checked } }));
+  refs.micChips = h('div', { class: 'row', style: 'gap:6px' });
+  return h('div', { class: 'card stack' },
+    h('h2', {}, 'Übergang'),
+    refs.cfNext,
+    h('button', { class: 'primary', style: 'height:56px;font-size:1.05rem', onclick: () => post('/control/crossfade', { sec: Number(refs.cfSec.value) }) }, '⇄  Crossfade zum nächsten Song'),
+    h('div', { class: 'row between' }, h('span', { class: 'small muted' }, 'Dauer'), refs.cfSeg),
+    refs.cfBar, refs.cfInfo,
+    h('hr'),
+    h('label', { class: 'check' }, refs.autoOn, h('span', {}, 'Auto-Crossfade ', h('span', { class: 'muted small' }, '(wechselt am Songende von selbst)'))),
+    h('label', { class: 'check' }, refs.duckOn, h('span', {}, 'Ducking ', h('span', { class: 'muted small' }, '(Musik leiser, wenn ein Mic offen ist)'))),
+    refs.micChips);
+}
+
+function advancedCard() {
   refs.autoSec = numInput(8, { onchange: (v) => post('/settings/tech', { auto: { crossfadeSec: v } }) });
   refs.before1 = numInput(20, { min: 1, max: 180, step: 1, onchange: (v) => post('/settings/tech', { auto: { startBeforeEndSec: { 1: v } } }) });
   refs.before2 = numInput(20, { min: 1, max: 180, step: 1, onchange: (v) => post('/settings/tech', { auto: { startBeforeEndSec: { 2: v } } }) });
   refs.curve = h('select', { onchange: (e) => post('/settings/tech', { auto: { curve: e.target.value } }) }, h('option', { value: 'equalPower' }, 'Gleiche Lautheit (empfohlen)'), h('option', { value: 'linear' }, 'Linear'));
-  refs.autoOn.addEventListener('change', () => post('/settings/tech', { auto: { enabled: refs.autoOn.checked } }));
-  return h('div', { class: 'card stack' },
-    h('h2', {}, 'Crossfade'),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Manuell, Dauer'), refs.cfSec, h('span', { class: 'small muted' }, 's')),
-    presetRow(refs.cfSec),
-    h('button', { class: 'primary', onclick: () => post('/control/crossfade', { sec: Number(refs.cfSec.value) }) }, '⇄ Crossfade zum nächsten Song'),
-    refs.cfBar, refs.cfInfo,
-    h('hr'),
-    h('label', { class: 'check' }, refs.autoOn, h('strong', {}, 'Auto-Crossfade')),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Dauer'), refs.autoSec, h('span', { class: 'small muted' }, 's')),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Start vor Songende: Player 1'), refs.before1, h('span', { class: 'small muted' }, 'Player 2'), refs.before2, h('span', { class: 'small muted' }, 's')),
-    h('label', { class: 'field' }, 'Kurve', refs.curve));
-}
-
-function ducking() {
-  refs.duckOn = h('input', { type: 'checkbox' });
   refs.duckDb = numInput(-12, { min: -40, max: -1, step: 1, onchange: (v) => post('/settings/tech', { ducking: { db: v } }) });
-  refs.duckOn.addEventListener('change', () => post('/settings/tech', { ducking: { enabled: refs.duckOn.checked } }));
   refs.duckState = h('span', { class: 'badge' });
   refs.micBox = h('div', { class: 'stack' });
-  return h('div', { class: 'card stack' },
-    h('div', { class: 'row between' }, h('h2', {}, 'Mikrofone & Ducking'), refs.duckState),
-    h('label', { class: 'check' }, refs.duckOn, h('strong', {}, 'Ducking (Musik leiser bei offenem Mic)')),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Absenkung'), refs.duckDb, h('span', { class: 'small muted' }, 'dB')),
-    refs.micBox);
+  refs.noticeOn = h('input', { type: 'checkbox' });
+  refs.noticeText = h('textarea', { rows: 2, maxlength: 400, placeholder: 'z. B. Macht Stimmung! 🎉' });
+  refs.noticeSave = h('button', { class: 'small', onclick: () => post('/settings/tech', { notice: { enabled: refs.noticeOn.checked, text: refs.noticeText.value } }).then(() => toast('Hinweis gespeichert')) }, 'Hinweis speichern');
+  return h('details', { class: 'card more' }, h('summary', {}, 'Erweiterte Einstellungen'),
+    h('div', { class: 'grid two', style: 'margin-top:14px' },
+      h('div', { class: 'stack' }, h('h3', {}, 'Auto-Crossfade'),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Dauer'), refs.autoSec, h('span', { class: 'small muted' }, 's')),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Start vor Songende: P1'), refs.before1, h('span', { class: 'small muted' }, 'P2'), refs.before2, h('span', { class: 'small muted' }, 's')),
+        h('label', { class: 'field' }, 'Kurve', refs.curve),
+        h('label', { class: 'field' }, 'Manuelle Crossfade-Dauer (s)', refs.cfSec)),
+      h('div', { class: 'stack' }, h('div', { class: 'row between' }, h('h3', {}, 'Mikrofone & Ducking'), refs.duckState),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Absenkung'), refs.duckDb, h('span', { class: 'small muted' }, 'dB')),
+        refs.micBox),
+      h('div', { class: 'stack' }, h('h3', {}, 'Hinweis für Gäste'), h('div', { class: 'small muted' }, 'Pop-up vor dem Wunsch'),
+        refs.noticeText, h('div', { class: 'row' }, h('label', { class: 'check' }, refs.noticeOn, 'anzeigen'), refs.noticeSave)),
+      h('div', { class: 'stack' }, h('h3', {}, 'Verbindungen'), refs.ampel, refs.errors)));
 }
 
 function updateMics() {
@@ -129,21 +143,14 @@ function operationsCard() {
     const b = h('button', { onclick: () => post('/control/wishmode', { mode: m }) }, { open: 'Offen', paused: 'Pausiert', closed: 'Geschlossen' }[m]);
     b.dataset.mode = m; return b;
   });
-  refs.noticeOn = h('input', { type: 'checkbox' });
-  refs.noticeText = h('textarea', { rows: 2, maxlength: 400, placeholder: 'z. B. Macht Stimmung! 🎉' });
-  refs.noticeSave = h('button', { class: 'small', onclick: () => post('/settings/tech', { notice: { enabled: refs.noticeOn.checked, text: refs.noticeText.value } }).then(() => toast('Hinweis gespeichert')) }, 'Hinweis speichern');
   refs.endBtn = h('button', { onclick: onEnd }, '🏁 Ende-Modus');
-  refs.panic = h('button', { class: 'bad', style: 'font-size:1.1rem;padding:14px', onclick: onPanic }, '⛔ NOT-AUS');
+  refs.panic = h('button', { class: 'bad', style: 'height:56px;font-size:1.05rem', onclick: onPanic }, '⛔  NOT-AUS');
   refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
-  refs.endInfo = h('div', { class: 'small muted' });
   return h('div', { class: 'card stack' },
     h('h2', {}, 'Betrieb'),
-    h('div', { class: 'eyebrow' }, 'Wunschmodus'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
-    h('div', { class: 'small muted' }, 'Hinweis für Gäste (Pop-up vor dem Wunsch)'),
-    refs.noticeText, h('div', { class: 'row' }, h('label', { class: 'check' }, refs.noticeOn, 'anzeigen'), refs.noticeSave),
+    h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     h('hr'),
-    h('div', { class: 'row' }, refs.endBtn, refs.endInfo),
-    h('div', { class: 'row' }, refs.panic, refs.panicClear));
+    refs.panic, refs.panicClear, refs.endBtn);
 }
 
 let panicTimer = null;
@@ -172,9 +179,27 @@ function wishesCard() {
   refs.pendingBox = h('div'); refs.upBox = h('div');
   refs.assign = h('select', { onchange: (e) => { assignMode = e.target.value; } }, h('option', { value: 'auto' }, 'Auto-Zuweisung'), h('option', { value: '1' }, 'Player 1'), h('option', { value: '2' }, 'Player 2'));
   refs.pendingTitle = h('summary', { style: 'cursor:pointer;font-weight:600' }, 'Wünsche');
-  return h('details', { class: 'card stack', open: true }, refs.pendingTitle,
+  return h('details', { class: 'card stack more', open: true }, refs.pendingTitle,
     h('div', { class: 'stack', style: 'margin-top:10px' }, h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Zuweisung:'), refs.assign),
       refs.pendingBox, h('h3', {}, 'Warteschlange'), refs.upBox));
+}
+
+function updateNext() {
+  const n = state.upcoming[0];
+  refs.cfNext.textContent = n ? `Als Nächstes: ${n.title} – ${n.artist} (Player ${n.player})` : 'Die Warteschlange ist leer – nimm zuerst Wünsche an.';
+  refs.cfNext.className = `small ${n ? '' : 'muted'}`;
+  // Dauer-Presets als Schalter
+  const key = JSON.stringify(state.settings.fadePresets) + refs.cfSec.value;
+  if (refs.cfSeg.dataset.k !== key) {
+    refs.cfSeg.dataset.k = key;
+    clear(refs.cfSeg).append(...state.settings.fadePresets.map((p) => h('button', { class: Number(refs.cfSec.value) === p.sec ? 'on' : '', onclick: () => { refs.cfSec.value = p.sec; refs.cfSeg.dataset.k = ''; updateNext(); } }, `${p.name} · ${p.sec}s`)));
+  }
+  // Mic-Chips
+  const mk = (state.mics || []).map((m) => m.open).join();
+  if (refs.micChips.dataset.k !== mk) {
+    refs.micChips.dataset.k = mk;
+    clear(refs.micChips).append(...(state.mics || []).map((m) => h('span', { class: `badge ${m.open ? 'ok' : ''}` }, `${m.name}: ${m.open ? 'offen' : 'stumm'}`)));
+  }
 }
 
 function memoSet(box, key, build) {
@@ -184,10 +209,10 @@ function memoSet(box, key, build) {
 
 function render() {
   if (!state) return;
-  updatePlayer(1); updatePlayer(2); fillPresets(); updateMics();
+  updatePlayer(1); updatePlayer(2); fillPresets(); updateMics(); updateNext();
   const cf = state.crossfade;
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
-  refs.cfInfo.textContent = cf ? `Crossfade läuft: Player ${cf.from} → Player ${cf.to}` : `Warteschlange: ${state.upcomingTotal} Song(s)`;
+  refs.cfInfo.textContent = cf ? `Crossfade läuft: Player ${cf.from} → Player ${cf.to}` : '';
   setCheck(refs.autoOn, state.auto.enabled); setVal(refs.autoSec, state.auto.crossfadeSec);
   setVal(refs.before1, state.auto.startBeforeEndSec[1]); setVal(refs.before2, state.auto.startBeforeEndSec[2]); setVal(refs.curve, state.auto.curve);
   setCheck(refs.duckOn, state.ducking.enabled); setVal(refs.duckDb, state.ducking.db);
@@ -208,13 +233,10 @@ function render() {
 
 refs.badges = h('span', { class: 'row' });
 refs.ampel = h('div'); refs.errors = h('div');
+const mainCards = [h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), advancedCard()];
 app.append(
-  (refs.top = topbar('Technik · FOH', { right: [refs.badges, h('button', { class: 'ghost small', onclick: logout }, 'Abmelden')] })),
-  h('div', { class: 'wrap stack' },
-    h('div', { class: 'card' }, refs.ampel, refs.errors),
-    h('div', { class: 'grid two' }, playerCard(1), playerCard(2)),
-    h('div', { class: 'grid two' }, crossfadeCard(), ducking()),
-    h('div', { class: 'grid two' }, wishesCard(), operationsCard())),
+  (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges] })),
+  h('div', { class: 'wrap stack' }, ...mainCards),
 );
 connect({ ping: true, onStatus: (ok) => refs.top.setLive(ok), onState: (s) => { state = s; render(); } });
 api('/state').then((s) => { if (!state) { state = s; render(); } }).catch(() => {});
