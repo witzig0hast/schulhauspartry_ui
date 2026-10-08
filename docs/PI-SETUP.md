@@ -8,6 +8,13 @@ Bitfocus Companion ist dafür **nicht nötig** (kann zusätzlich auf dem Pi lauf
 App-Container (Heimserver) ──WireGuard──► Pi 5 (10.8.0.2:8080, Relay) ──OSC/UDP 10023──► X32
 ```
 
+## Schnellweg (empfohlen)
+1. **Server:** in der `.env` `WG_SERVERURL=wg.deine-domain.de` setzen (DNS ohne Cloudflare-Proxy, Router: UDP 51820 → Server), dann
+   `docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.vpn.yml up -d` und `./scripts/vpn-peer.sh` – das erzeugt `pi.conf`.
+2. `pi.conf` auf den Pi kopieren (`scp pi.conf pi@<pi>:~/`), dort das Repo klonen und: `cd schulhauspartry_ui/pi-relay && sudo ./install.sh ~/pi.conf`.
+   Das Skript richtet WireGuard (mit Auto-Neustart-Watchdog), das Relay (Docker, nur im Tunnel erreichbar) und die Firewall (ufw) ein und zeigt am Ende die Werte für die App an (URL + Token).
+3. In der App: Admin → Verbindungen → X32 / Pi 5 eintragen, fertig. Die Schritte unten sind die manuelle Variante / Hintergrund.
+
 ## 0. Vorbereitung am X32
 1. **Feste IP** vergeben: Setup → Network (z. B. `192.168.1.50`). Pi und X32 müssen im selben Netz sein (Kabel/Switch).
 2. Die Player-Audioquellen und Mics liegen auf **Eingangskanälen** (`ch/01`–`ch/32`). Standard in der App:

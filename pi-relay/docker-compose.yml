@@ -5,3 +5,8 @@ services:
     restart: unless-stopped
     network_mode: host        # damit der Tunnel (wg0) und das X32-LAN erreichbar sind
     env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://$${BIND:-127.0.0.1}:$${PORT:-8080}/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
