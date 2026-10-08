@@ -84,7 +84,12 @@ async function search() {
         h('div', { class: 'req-main grow' }, cover(t.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, t.title), h('div', { class: 'a' }, t.artist))),
         t.blocked ? h('span', { class: 'badge' }, 'nicht möglich') : h('button', { class: 'primary small', onclick: () => send(t) }, 'Wünschen')));
     }
-  } catch (e) { if (seq === searchSeq) { clear(results).append(h('div', { class: 'muted' }, e.message)); } }
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    clear(results).append(h('div', { class: 'muted' }, e.message));
+    // Spotify-Limit: kurz warten und die Suche von selbst wiederholen
+    if (e.status === 503 && e.data?.retryAfterSec) setTimeout(() => { if (input.value.trim() === q) search(); }, Math.min(20, e.data.retryAfterSec) * 1000 + 300);
+  }
 }
 
 async function send(t) {

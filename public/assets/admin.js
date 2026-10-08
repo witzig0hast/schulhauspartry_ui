@@ -95,6 +95,8 @@ function showDecisions(a, decisions) {
 // ---------- Verbindungen ----------
 function viewConnections() {
   const s = data.settings;
+  const apiInfo = data.connections.live.api || data.connections.test.api;
+  const budget = num(s.spotify.apiBudget, { min: 20, max: 300 });
   const cid = h('input', { value: s.spotify.clientId, placeholder: 'Client ID', autocomplete: 'off' });
   const csec = h('input', { type: 'password', placeholder: s.spotify.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password' });
   const playerBox = (n) => {
@@ -123,6 +125,15 @@ function viewConnections() {
       h('p', { class: 'small muted' }, 'Redirect-URI im Spotify-Dashboard eintragen: ', h('code', {}, data.redirectUri)),
       field('Client ID', cid), field('Client Secret', csec),
       h('button', { class: 'primary', onclick: () => save({ spotify: { clientId: cid.value, clientSecret: csec.value } }) }, 'Speichern')),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Spotify-API-Auslastung'),
+      h('p', { class: 'small muted' }, 'Spotify begrenzt Anfragen pro App (gleitendes 30-Sekunden-Fenster) und lässt sich nicht abschalten. Die App bleibt deshalb weit darunter: Suchergebnisse werden gemerkt, gleiche Anfragen zusammengefasst, der Player-Status nur bei Bedarf abgefragt. Steuerbefehle haben Vorrang. Meldet Spotify doch ein Limit, pausiert die App automatisch und der Cache übernimmt.'),
+      apiInfo ? h('div', { class: 'stack', style: 'gap:8px' },
+        h('div', { class: 'row between small' }, h('span', {}, `${apiInfo.used} von ${apiInfo.budget} Anfragen in den letzten ${apiInfo.windowSec} s`), apiInfo.pausedSec ? h('span', { class: 'badge warn' }, `Limit – Pause ${apiInfo.pausedSec} s`) : h('span', { class: 'badge ok' }, 'in Ordnung')),
+        h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * apiInfo.used / apiInfo.budget))}%` })),
+        h('div', { class: 'small muted' }, `Seit Start: ${apiInfo.total} Anfragen · ${apiInfo.cacheHits} aus dem Cache · ${apiInfo.coalesced} zusammengefasst · ${apiInfo.rate429} × Limit von Spotify`))
+        : h('div', { class: 'small muted' }, 'Sobald echte Spotify-Verbindungen aktiv sind, erscheint hier die Auslastung.'),
+      h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Eigenes Budget'), budget, h('span', { class: 'small muted' }, 'Anfragen pro 30 s (Standard 60)'),
+        h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
       field('Anbindung', adapter), field('Pi-URL (Relay)', piUrl), field('Token', piToken),

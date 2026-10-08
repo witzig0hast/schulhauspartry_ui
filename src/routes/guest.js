@@ -4,6 +4,9 @@ import { settings } from '../settings.js';
 import * as rq from '../requests.js';
 import { guestState } from '../hub.js';
 import { blockReason, logAttempt } from '../blocklist.js';
+import { RateLimitError } from '../adapters/spotify-governor.js';
+
+const limited = (res, e) => res.status(503).set('Retry-After', String(Math.ceil(e.retryAfterMs / 1000))).json({ error: 'Spotify macht gerade eine kurze Pause. Gleich geht’s weiter …', retryAfterSec: Math.max(1, Math.ceil(e.retryAfterMs / 1000)) });
 
 const ipLimiter = new RateLimiter(900, 60000);
 const searchLimiter = new RateLimiter(25, 20000);
@@ -38,13 +41,13 @@ export function guestRouter(env, engine, hub) {
     if (!searchLimiter.check(req.deviceId).ok) return res.status(429).json({ error: 'Bitte kurz warten.' });
     const key = q.toLowerCase();
     let tracks = searchCache.get(key);
-    if (!tracks || Date.now() - tracks.ts > 60000) {
+    if (!tracks || Date.now() - tracks.ts > 5 * 60000) {
       try {
         const found = await engine.spotify.search(q, 8);
         tracks = { ts: Date.now(), list: found };
         searchCache.set(key, tracks);
         if (searchCache.size > 300) searchCache.delete(searchCache.keys().next().value);
-      } catch { return res.status(502).json({ error: 'Die Suche ist gerade nicht erreichbar.' }); }
+      } catch (e) { if (e instanceof RateLimitError) return limited(res, e); return res.status(502).json({ error: 'Die Suche ist gerade nicht erreichbar.' }); }
     }
     const mode = settings().explicitMode;
     res.json({
@@ -62,7 +65,7 @@ export function guestRouter(env, engine, hub) {
     const trackId = String(req.body?.trackId || '');
     if (!/^[A-Za-z0-9_-]{4,40}$/.test(trackId)) return res.status(400).json({ error: 'Ungültiger Song.' });
     let track;
-    try { track = await engine.spotify.getTrack(trackId); } catch { return res.status(502).json({ error: 'Spotify ist gerade nicht erreichbar.' }); }
+    try { track = await engine.spotify.getTrack(trackId); } catch (e) { if (e instanceof RateLimitError) return limited(res, e); return res.status(502).json({ error: 'Spotify ist gerade nicht erreichbar.' }); }
     if (!track) return res.status(404).json({ error: 'Song nicht gefunden.' });
     if (settings().explicitMode === 'block' && track.explicit) { logAttempt(env, 'explicit', track.id); return res.status(403).json({ error: 'Dieser Song ist hier leider nicht möglich.' }); }
     // Gesperrte oder (je nach Regel) schon gespielte Songs: nicht annehmen. Laeuft er gerade, greift der Duplikat-Pfad unten.

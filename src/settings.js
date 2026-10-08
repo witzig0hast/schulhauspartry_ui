@@ -27,7 +27,7 @@ export const DEFAULTS = {
     channels: { p1: [1, 2], p2: [3, 4], mics: [5, 6, 7] },
   },
   test: { enabled: false, prefix: null, realEnv: 'live', mockSpeed: 1 },
-  spotify: { clientId: '', clientSecret: '', players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '' } } },
+  spotify: { clientId: '', clientSecret: '', apiBudget: 60, players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '' } } },
 };
 
 const listeners = new Set();
@@ -124,6 +124,7 @@ export function applyPatch(patch, { allow }) {
     const sp = patch.spotify;
     if ('clientId' in sp) s.spotify.clientId = str(sp.clientId, 100).trim();
     if (sp.clientSecret) s.spotify.clientSecret = encrypt(str(sp.clientSecret, 100).trim());
+    if ('apiBudget' in sp) s.spotify.apiBudget = Math.round(clamp(sp.apiBudget, 20, 300, 60));
     if (sp.players) for (const p of [1, 2]) {
       const pp = sp.players[p];
       if (!pp) continue;

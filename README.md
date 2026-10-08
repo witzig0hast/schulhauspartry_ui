@@ -174,3 +174,17 @@ Jahrzehnte, Annahme-Quote je Genre, Wünsche im Zeitverlauf, Entscheidungsgeschw
 blockierte Versuche. Zeitraum wählbar (Gesamt / 15 Min / 1–6 Std), jede Grafik hat eine Tabellenansicht, alles anonym.
 Genres kommen von Spotify (über den Interpreten) und werden zu Familien zusammengefasst (Pop, Hip-Hop & Rap, Electronic & Dance, …).
 Liefert Spotify für eure App keine Genres, erscheinen die Wünsche unter „Unbekannt“ – alles andere funktioniert weiter.
+
+## Spotify-Rate-Limits
+
+Spotify begrenzt die Web-API pro App (gleitendes ~30-Sekunden-Fenster, bei Überschreitung `429` mit `Retry-After`). Das Limit lässt sich nicht
+abschalten – die App ist deshalb so gebaut, dass sie es praktisch nie erreicht und sauber reagiert, falls doch:
+
+- **Weniger Aufrufe:** Suchergebnisse 10 Min. im Speicher, gleiche gleichzeitige Suchen werden zu **einem** Aufruf zusammengefasst, Suchtreffer füllen
+  den Song-Cache (der Wunsch danach braucht keinen weiteren Aufruf), Interpreten-Genres werden gebündelt geholt und gemerkt.
+- **Player-Status sparsam:** mitten im Song alle ~6 s (die Position wird zwischendurch selbst hochgerechnet), kurz vor Songende und nach Befehlen ~1 s,
+  bei Pause/leer ~8 s.
+- **Gemeinsames Budget** (Admin → Verbindungen, Standard 60 Anfragen/30 s) mit Vorrang: Steuerbefehle (Play/Pause/Queue) > Player-Status > Suche.
+- **Bei `429`:** alle unkritischen Anfragen ruhen bis `Retry-After` vorbei ist, Gäste bekommen „Spotify macht kurz Pause“ (und die Suche wiederholt sich
+  von selbst), Steuerbefehle warten und werden automatisch wiederholt, der Player-Status bleibt auf dem letzten Stand (kein „getrennt“).
+- Anzeige der Auslastung im Admin und in der Verbindungsampel (gelb bei Pause).

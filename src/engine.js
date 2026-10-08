@@ -6,6 +6,7 @@ import * as rq from './requests.js';
 import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
 import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
 import { MockX32, HttpX32 } from './adapters/x32.js';
+import { governor } from './adapters/spotify-governor.js';
 
 const TICK_MS = 100;
 const BROADCAST_MS = 250;
@@ -62,6 +63,7 @@ export class Engine extends EventEmitter {
   }
 
   syncSettings() {
+    governor.setBudget(settings().spotify.apiBudget);
     for (const p of [1, 2]) this.players[p].setDevice?.(settings().spotify.players[p].deviceId);
     if (this.realConnections) {
       const wantHttp = settings().x32.adapter === 'http';
@@ -210,6 +212,7 @@ export class Engine extends EventEmitter {
     logEvent(this.env, 'play', { player: target, title: next.title, auto });
     const track = { uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs };
     await this.players[target].play(track);
+    this.players[this.current ?? target]?.boost?.(20000); this.players[target].boost?.(20000);
 
     const begin = () => {
       const t = Date.now();
@@ -333,6 +336,7 @@ export class Engine extends EventEmitter {
       player1: pl(1),
       player2: pl(2),
       mode: this.realConnections ? 'echte Verbindungen' : 'simuliert',
+      api: this.realConnections ? governor.snapshot() : null,
     };
   }
 
