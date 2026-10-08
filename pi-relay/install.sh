@@ -10,6 +10,16 @@ CONF_SRC="${1:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUN_USER="${SUDO_USER:-pi}"
 
+# Sicherung: dieses Skript gehoert NUR auf den Pi neben dem X32, nie auf den Heimserver mit der App.
+if [ -f "$HERE/../docker-compose.npm.yml" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qiE 'nginx|npm|app-1|wg-1|schulhauspartry'; then
+  echo "ABBRUCH: Auf diesem Rechner laeuft die App (oder der Nginx Proxy Manager) in Docker."
+  echo "Dieses Skript ist nur fuer den Pi am X32. Es aendert Firewall und Netzwerk und wuerde den Server aussperren."
+  exit 1
+fi
+echo "Dieses Skript aendert Netzwerk (WireGuard) und Firewall dieses Geraets: $(hostname)"
+read -r -p "Ist das der Pi, der neben dem X32 steht? (ja/nein) " A </dev/tty
+[ "$A" = "ja" ] || { echo "Abgebrochen."; exit 1; }
+
 ask() { local var="$1" prompt="$2" def="$3"; if [ -z "${!var:-}" ]; then read -r -p "$prompt [$def]: " v </dev/tty; export "$var"="${v:-$def}"; fi; }
 
 echo "==> Pakete installieren"
@@ -79,8 +89,8 @@ chown "$RUN_USER" "$HERE/.env" 2>/dev/null || true
 ( cd "$HERE" && docker compose up -d --build )
 
 echo "==> Firewall (nur SSH aus dem LAN, Relay nur im Tunnel)"
-ufw --force reset >/dev/null
 ufw default deny incoming; ufw default allow outgoing
+ufw allow in on tailscale0 2>/dev/null || true
 ufw allow 22/tcp                                  # SSH (bei Bedarf auf dein LAN beschraenken: ufw allow from 192.168.1.0/24 to any port 22)
 ufw allow in on wg0 to any port 8080 proto tcp    # Relay nur ueber den Tunnel
 ufw --force enable
