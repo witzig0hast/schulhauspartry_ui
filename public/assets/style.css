@@ -274,7 +274,7 @@ tr:last-child td { border-bottom: 0; }
 .navlink { padding: 7px 12px; border-radius: 9px; font-size: .86rem; font-weight: 550; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .navlink:hover { color: var(--text); background: var(--bg-2); }
 .navlink.on { color: var(--text); background: var(--bg-2); }
-@media (max-width: 760px) { .nav { margin-left: 4px; } .topbar .brand .name { display: none; } }
+@media (max-width: 760px) { .nav { margin-left: 4px; } .brand .name { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 details.more > summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--text-2); list-style: none; display: flex; align-items: center; gap: 8px; }
 details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 1.2rem; line-height: 1; color: var(--muted); }
@@ -430,3 +430,32 @@ html.fx, html.fx body { background: #000 !important; color: #fff; }
 .menu-list a:hover, .menu-list a.on { background: var(--bg-2); }
 .menu-list a b { font-weight: 620; font-size: .9rem; } .menu-list a span { color: var(--muted); font-size: .76rem; }
 .nav { overflow: visible; }
+
+/* ---------- Tastenkuerzel, Chat, Zusatz-Marken ---------- */
+.kbd { font: 600 .8rem ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 7px; padding: 2px 9px; color: var(--text); }
+.chat { display: grid; gap: 10px; }
+.chat-list { display: grid; gap: 8px; max-height: 46vh; overflow: auto; padding-right: 4px; }
+.chat-msg { padding: 8px 12px; border-radius: 12px; background: var(--bg-2); max-width: 88%; justify-self: start; }
+.chat-msg.mine { background: var(--ink); color: var(--ink-text); justify-self: end; }
+.chat-msg .who { font-size: .72rem; opacity: .7; margin-bottom: 2px; font-weight: 600; }
+.chat-form { display: flex; gap: 8px; }
+.claimed { opacity: .55; position: relative; }
+.claim-tag { font-size: .74rem; color: var(--warn); font-weight: 650; }
+.online-dots { display: inline-flex; gap: 6px; align-items: center; font-size: .78rem; color: var(--muted); }
+.soon { position: sticky; top: 70px; z-index: 6; background: var(--ink); color: var(--ink-text); border-radius: 16px; padding: 16px 20px; display: flex; gap: 14px; align-items: center; box-shadow: var(--shadow-2); animation: rise .3s ease; }
+.soon b { font-size: 1.05rem; } .soon .big-ic { font-size: 1.8rem; }
+.prep-grp { margin-top: 6px; }
+.prep-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.prep-row:last-child { border-bottom: 0; }
+.prep-ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .85rem; font-weight: 800; background: var(--bg-2); color: var(--muted); }
+.prep-ic.ok { background: var(--ok-bg); color: var(--ok); } .prep-ic.warn { background: var(--warn-bg); color: var(--warn); } .prep-ic.fail { background: var(--bad-bg); color: var(--bad); }
+.ready { border-radius: 20px; padding: 22px 26px; display: flex; align-items: center; gap: 18px; background: var(--card); border: 2px solid var(--line); }
+.ready.ok { border-color: var(--ok); background: var(--ok-bg); } .ready.warn { border-color: var(--warn); background: var(--warn-bg); } .ready.fail { border-color: var(--bad); background: var(--bad-bg); }
+.ready .big { font-size: 1.5rem; }
+.phase-row { display: grid; grid-template-columns: 1.2fr 130px 130px 2fr auto; gap: 8px; align-items: center; }
+@media (max-width: 760px) { .phase-row { grid-template-columns: 1fr 1fr; } }
+.logo-prev { width: 72px; height: 72px; border-radius: 16px; background: #fff; border: 1px solid var(--line-2); display: grid; place-items: center; overflow: hidden; }
+.logo-prev img, .brand .logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.brand .logo.has-img { background: #fff; padding: 3px; }
+
+.fx-btns + .fx-later, .fx-later { height: clamp(56px, 9vh, 90px); font-size: clamp(1.1rem, 2vw, 1.7rem); border-radius: 18px; background: #151518; color: #cfcfd3; border: 1px solid #34343a; width: 100%; }

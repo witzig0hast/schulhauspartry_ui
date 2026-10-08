@@ -2,6 +2,7 @@
 export const BASE = document.documentElement.dataset.base || '';
 export const ENV = document.documentElement.dataset.env || 'live';
 export const BUILD = document.documentElement.dataset.build || '?';
+export const BRAND = { name: document.documentElement.dataset.brandName || 'Schulhauspartry', tagline: document.documentElement.dataset.brandTag || '', logo: document.documentElement.dataset.brandLogo || '' };
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -91,12 +92,20 @@ export function themeButton() {
   return btn;
 }
 
+// Logo der Veranstaltung (eigenes Bild oder Standard-Symbol)
+export function brandLogo(size = '') {
+  const box = h('div', { class: `logo ${BRAND.logo ? 'has-img' : ''}`, style: size });
+  if (BRAND.logo) box.append(h('img', { src: BRAND.logo, alt: BRAND.name })); else box.append(icon('logo'));
+  return box;
+}
+
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
   { label: 'Technik', path: '/tech', roles: ['admin', 'tech'], main: true },
   { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
   { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
+  { label: 'Vorbereitung', path: '/prep', roles: ['admin', 'tech'], hint: 'Alles vor der Party prüfen & testen' },
   { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod'], hint: 'Schwarz, bis ein Wunsch kommt' },
   { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Neue Wünsche & Entscheidungen live' },
   { label: 'Analytics', path: '/analytics', roles: STAFF, hint: 'Genres, Interpreten, Zeitverlauf …' },
@@ -110,7 +119,7 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   const pill = h('span', { class: 'pill off', title: 'Verbindung' }, h('i', { class: 'dot' }), 'Verbinde …');
   const navBox = h('nav', { class: 'nav' });
   const bar = h('div', { class: 'topbar' },
-    h('div', { class: 'brand' }, h('div', { class: 'logo' }, icon('logo')), h('div', {}, h('div', { class: 'name' }, 'Schulhauspartry'), h('div', { class: 'sub' }, title))),
+    h('div', { class: 'brand' }, brandLogo(), h('div', {}, h('div', { class: 'name' }, BRAND.name), h('div', { class: 'sub' }, title))),
     navBox, h('div', { class: 'grow' }), live ? pill : null, ...right,
     nav ? h('button', { class: 'small ghost', onclick: logout }, 'Abmelden') : null, themeButton());
   const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);

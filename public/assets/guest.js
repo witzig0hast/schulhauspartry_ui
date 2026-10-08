@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, $ } from '/assets/app.js';
+import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, BRAND, $ } from '/assets/app.js';
 
 const app = $('#app');
 let state = null;
@@ -37,8 +37,21 @@ function statusBadge(r) {
   return h('span', { class: 'badge' }, 'Entfernt');
 }
 
+// "Gleich dran": eigener Song ist der naechste oder uebernaechste in der Warteschlange
+const soonBox = h('div', { class: 'hidden' });
+let lastSoon = '';
+function renderSoon() {
+  const mineNext = state.requests.filter((r) => r.status === 'approved' && r.position != null && r.position <= 1).sort((a, b) => a.position - b.position)[0];
+  const key = mineNext ? `${mineNext.id}:${mineNext.position}` : '';
+  soonBox.classList.toggle('hidden', !mineNext);
+  if (!mineNext) { lastSoon = ''; return; }
+  clear(soonBox).append(h('div', { class: 'soon' }, h('span', { class: 'big-ic' }, '🎶'), h('div', {}, h('b', {}, mineNext.position === 0 ? 'Dein Song ist als Nächstes dran!' : 'Gleich dran – noch ein Song davor'), h('div', { class: 'small', style: 'opacity:.8' }, `${mineNext.title} – ${mineNext.artist}`))));
+  if (key !== lastSoon) { lastSoon = key; try { navigator.vibrate?.([120, 80, 120]); } catch { /* egal */ } }
+}
+
 function render() {
   if (!state) return;
+  renderSoon();
   if (state.nowPlaying) {
     nowEl.classList.remove('hidden');
     clear(nowEl).append(h('div', { class: 'hero' }, cover(state.nowPlaying.title), h('div', { class: 'meta' },
@@ -112,8 +125,8 @@ const bar = topbar('Musikwunsch');
 app.append(
   bar,
   h('div', { class: 'wrap narrow' },
-    h('div', { class: 'guest-hero' }, h('div', { class: 'eyebrow' }, 'Mach mit'), h('h2', {}, 'Wünsch dir was!')),
-    nowEl, msgEl,
+    h('div', { class: 'guest-hero' }, h('div', { class: 'eyebrow' }, BRAND.tagline || 'Mach mit'), h('h2', {}, 'Wünsch dir was!')),
+    soonBox, nowEl, msgEl,
     h('div', { class: 'card stack' }, searchbox, h('div', { class: 'row between' }, limitEl, dots), results),
     mineWrap),
 );

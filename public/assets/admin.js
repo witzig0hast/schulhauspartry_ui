@@ -3,8 +3,8 @@ import { ampel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['start', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
-const tabLabels = { start: 'Start & Links', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+const tabs = ['start', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
+const tabLabels = { start: 'Start & Links', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
@@ -33,7 +33,7 @@ function viewSettings() {
   const msgs = Object.fromEntries(['paused', 'closed', 'ended'].map((k) => { const i = h('input', { value: s.wishMessages[k], maxlength: 200 }); return [k, i]; }));
   const prio = num(s.priorityWithin, { min: 1, max: 10 });
   const replayMode = h('select', {}, ...[['allow', 'Erlauben – Songs dürfen beliebig oft gewünscht werden'], ['cooldown', 'Pause – erst nach einer Wartezeit wieder wünschbar'], ['block', 'Sperren – schon gespielte Songs sind nicht mehr wünschbar']].map(([v, l]) => h('option', { value: v, selected: s.replay.mode === v }, l)));
-  const replayMin = num(s.replay.cooldownMin, { min: 1, max: 1440 });
+  const replayMin = num(s.replay.cooldownMin, { min: 1, max: 1440, class: 'num' });
   const presets = s.fadePresets.map((p) => ({ name: h('input', { value: p.name, maxlength: 20 }), sec: num(p.sec, { min: 0.5, max: 60, step: 0.5 }) }));
   return h('div', { class: 'grid two' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Wunsch-Limit pro Gerät'),
@@ -96,7 +96,7 @@ function showDecisions(a, decisions) {
 function viewConnections() {
   const s = data.settings;
   const apiInfo = data.connections.live.api || data.connections.test.api;
-  const budget = num(s.spotify.apiBudget, { min: 20, max: 300 });
+  const budget = num(s.spotify.apiBudget, { min: 20, max: 300, class: 'num' });
   const cid = h('input', { value: s.spotify.clientId, placeholder: 'Client ID', autocomplete: 'off' });
   const csec = h('input', { type: 'password', placeholder: s.spotify.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password' });
   const playerBox = (n) => {
@@ -146,6 +146,7 @@ function viewConnections() {
 const PAGES = [
   ['Gäste-Seite', '/', 'Dahin kommt der QR-Code'],
   ['Anmeldung', '/login', 'Für alle Mitarbeitenden'],
+  ['Vorbereitung', '/prep', 'Alles vor der Party prüfen & testen'],
   ['Technik', '/tech', 'Fader, Crossfade, Not-Aus'],
   ['Moderation', '/mod', 'Wünsche annehmen / ablehnen'],
   ['Anzeige', '/foh', 'Nur ansehen (FOH-Bildschirm)'],
@@ -201,11 +202,128 @@ function viewStart() {
         h('button', { class: 'primary', onclick: () => save({ test: { realEnv: real.value, mockSpeed: Number(speed.value) } }) }, 'Speichern'))));
 }
 
+// ---------- Automatik ----------
+const FAMILIES = ['Pop', 'Hip-Hop & Rap', 'Electronic & Dance', 'Rock & Metal', 'R&B & Soul', 'Schlager & Deutsch', 'Latin', 'Funk & Disco', 'Reggae & Dancehall', 'Country & Folk', 'Jazz & Klassik'];
+const chk = (checked) => h('input', { type: 'checkbox', checked });
+
+function viewAutomation() {
+  const s = data.settings;
+  const ao = s.autoOrder, fi = s.filler, em = s.emergency, nt = s.notify, bk = s.backup;
+  const aoOn = chk(ao.enabled), moodOn = chk(ao.mood), maxRep = num(ao.maxRepeat, { min: 1, max: 10 }), win = num(ao.window, { min: 2, max: 10 });
+  const tz = h('input', { value: s.timezone, placeholder: 'Europe/Berlin' });
+  const smart = chk(s.auto.smartOutro);
+  // Phasen der Stimmungskurve
+  let phases = ao.phases.map((p) => ({ ...p, prefer: [...p.prefer] }));
+  const phaseBox = h('div', { class: 'stack' });
+  const paintPhases = () => clear(phaseBox).append(...phases.map((p, i) => h('div', { class: 'item stack' },
+    h('div', { class: 'phase-row' },
+      h('input', { value: p.name, maxlength: 30, placeholder: 'Name, z. B. Aufwärmen', oninput: (e) => { p.name = e.target.value; } }),
+      h('input', { type: 'time', value: p.from, oninput: (e) => { p.from = e.target.value; } }), h('input', { type: 'time', value: p.to, oninput: (e) => { p.to = e.target.value; } }),
+      h('span', { class: 'small muted' }, p.prefer.length ? `bevorzugt: ${p.prefer.join(', ')}` : 'keine Vorliebe gewählt'),
+      h('button', { class: 'small ghost', onclick: () => { phases.splice(i, 1); paintPhases(); } }, '✕')),
+    h('div', { class: 'chips' }, ...FAMILIES.map((f) => h('button', { class: `chip ${p.prefer.includes(f) ? 'on' : ''}`, onclick: () => { p.prefer = p.prefer.includes(f) ? p.prefer.filter((x) => x !== f) : [...p.prefer, f]; paintPhases(); } }, f))))),
+    h('button', { class: 'small', onclick: () => { phases.push({ name: 'Neue Phase', from: '20:00', to: '22:00', prefer: [] }); paintPhases(); } }, '+ Phase hinzufügen'));
+  paintPhases();
+
+  const fOn = chk(fi.enabled), fPl = h('input', { value: fi.playlist, placeholder: 'Playlist-Link oder -ID' }), fMin = num(fi.minQueue, { min: 0, max: 10, class: 'num' }), fAvoid = num(fi.avoidMin, { min: 5, max: 1440, class: 'num' });
+  const ePl = h('input', { value: em.playlist, placeholder: 'Playlist-Link oder -ID' });
+  const ePlayer = h('select', {}, h('option', { value: '1', selected: em.player === 1 }, 'Player 1'), h('option', { value: '2', selected: em.player === 2 }, 'Player 2'));
+  const eShuf = chk(em.shuffle);
+  const nOn = chk(nt.enabled), nUrl = h('input', { value: nt.url, placeholder: 'https://ntfy.sh oder eigener Server' }), nTopic = h('input', { value: nt.topic, placeholder: 'geheimes-topic-name' });
+  const nTok = h('input', { type: 'password', placeholder: nt.token ? '(gesetzt – leer lassen zum Behalten)' : 'Zugriffstoken (optional)', autocomplete: 'new-password' }), nDown = num(nt.downSec, { min: 5, max: 300 });
+  const EVLABEL = { x32: 'X32/Pi nicht erreichbar', spotify: 'Spotify-Problem oder -Limit', player: 'Player getrennt', panic: 'Not-Aus ausgelöst', queueEmpty: 'Warteschlange leer', emergency: 'Notfall-Playlist gestartet', backup: 'Backup fehlgeschlagen' };
+  const evs = Object.fromEntries(Object.keys(nt.events).map((k) => [k, chk(nt.events[k])]));
+  const bOn = chk(bk.enabled), bEvery = num(bk.everyMin, { min: 5, max: 1440, class: 'num' }), bKeep = num(bk.keep, { min: 1, max: 200, class: 'num' });
+  const bList = h('div', { class: 'stack', style: 'gap:6px' });
+  const loadBackups = async () => {
+    const { backups } = await api('/admin/backups');
+    clear(bList).append(...(backups.length ? backups.slice(0, 8).map((b) => h('div', { class: 'row between small' }, h('span', {}, `${new Date(b.ts).toLocaleString('de-DE')} · ${(b.size / 1024).toFixed(0)} KB`),
+      h('a', { class: 'btn small', href: `${BASE}/api/admin/backups/${b.name}`, style: 'height:30px;font-size:.8rem;padding:0 10px' }, '⬇ Laden'))) : [h('div', { class: 'muted small' }, 'Noch keine Backups.')]));
+  };
+  loadBackups().catch(() => {});
+
+  const saveAll = () => save({
+    timezone: tz.value,
+    auto: { smartOutro: smart.checked },
+    autoOrder: { enabled: aoOn.checked, mood: moodOn.checked, maxRepeat: Number(maxRep.value), window: Number(win.value), phases },
+    filler: { enabled: fOn.checked, playlist: fPl.value, minQueue: Number(fMin.value), avoidMin: Number(fAvoid.value) },
+    emergency: { playlist: ePl.value, player: Number(ePlayer.value), shuffle: eShuf.checked },
+    notify: { enabled: nOn.checked, url: nUrl.value, topic: nTopic.value, token: nTok.value, downSec: Number(nDown.value), events: Object.fromEntries(Object.entries(evs).map(([k, i]) => [k, i.checked])) },
+    backup: { enabled: bOn.checked, everyMin: Number(bEvery.value), keep: Number(bKeep.value) },
+  });
+  const row = (el, text) => h('label', { class: 'check' }, el, text);
+  return h('div', { class: 'stack', style: 'gap:16px' },
+    h('div', { class: 'card stack' }, h('h2', {}, 'Warteschlange automatisch sortieren'),
+      h('p', { class: 'small muted' }, 'Läuft von selbst: Priorisierte Songs bleiben, alle anderen werden sanft umsortiert. Fair bleibt es, weil nur die ersten Wünsche in der Reihe betrachtet werden.'),
+      row(aoOn, 'Automatische Ordnung an'),
+      h('div', { class: 'grid two' },
+        h('label', { class: 'field' }, 'Genre-Balance: höchstens so viele gleiche Genre-Familien hintereinander', maxRep),
+        h('label', { class: 'field' }, 'Betrachtete Wünsche pro Platz (Fairness-Fenster)', win)),
+      row(moodOn, 'Stimmungskurve verwenden'),
+      h('div', { class: 'small muted' }, 'Stimmungskurve: Zu jeder Uhrzeit können Genres bevorzugt werden (nur Vorrang, nichts wird abgelehnt).'),
+      phaseBox,
+      h('label', { class: 'field' }, 'Zeitzone der Party', tz)),
+    h('div', { class: 'grid two' },
+      h('div', { class: 'card stack' }, h('h2', {}, 'Smarter Übergang'), row(smart, 'Auto-Crossfade beginnt, wenn der Song ausklingt'),
+        h('p', { class: 'small muted' }, 'Nutzt Intro-/Outro-Zeiten aus Spotify (falls für eure App verfügbar). Sonst gilt die feste Vorlaufzeit aus der Technik-Ansicht.')),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Lückenfüller'), row(fOn, 'Bei leerer Warteschlange automatisch Songs einreihen'),
+        h('label', { class: 'field' }, 'Playlist (öffentlich oder dein eigenes Konto)', fPl),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Auffüllen, wenn weniger als'), fMin, h('span', { class: 'small muted' }, 'Songs warten · Wiederholung frühestens nach'), fAvoid, h('span', { class: 'small muted' }, 'Min.')))),
+    h('div', { class: 'card stack' }, h('h2', {}, '🆘 Notfall-Playlist'), h('p', { class: 'small muted' }, 'Ein Knopf in der Technik stoppt alles und startet diese Playlist (gemischt) – falls etwas ausfällt.'),
+      h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Playlist', ePl), h('label', { class: 'field' }, 'Auf Player', ePlayer)), row(eShuf, 'Gemischt abspielen')),
+    h('div', { class: 'card stack' }, h('h2', {}, '🔔 Alarm aufs Handy (ntfy)'),
+      h('p', { class: 'small muted' }, 'Die App meldet Probleme per ntfy – auf ntfy.sh oder deinem eigenen ntfy-Server. In der ntfy-App denselben Topic abonnieren (am besten einen schwer zu erratenden Namen wählen).'),
+      row(nOn, 'Benachrichtigungen an'),
+      h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Server', nUrl), h('label', { class: 'field' }, 'Topic', nTopic), h('label', { class: 'field' }, 'Zugriffstoken (nur bei geschütztem Server)', nTok),
+        h('label', { class: 'field' }, 'Alarm erst nach … Sekunden Störung', nDown)),
+      h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'eyebrow' }, 'Wann alarmieren?'), ...Object.keys(evs).map((k) => row(evs[k], EVLABEL[k] || k))),
+      h('div', { class: 'row' }, h('button', { onclick: safe(async () => { await saveAll(); await api('/admin/notify/test', { method: 'POST', body: {} }); toast('Test gesendet – schau aufs Handy'); }) }, 'Speichern & Test senden'))),
+    h('div', { class: 'card stack' }, h('h2', {}, '💾 Automatische Backups'),
+      row(bOn, 'Datenbank regelmäßig sichern'),
+      h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'alle'), bEvery, h('span', { class: 'small muted' }, 'Minuten · behalte die letzten'), bKeep),
+      bList,
+      h('div', { class: 'row' }, h('button', { onclick: safe(async () => { const b = await api('/admin/backups', { method: 'POST', body: {} }); toast(`Gesichert: ${b.name}`); loadBackups(); }) }, 'Jetzt sichern'),
+        h('span', { class: 'small muted' }, 'Wiederherstellen: Datei als „party.db“ ins Datenverzeichnis legen, App neu starten.'))),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveAll }, 'Alles speichern')));
+}
+
+// ---------- Design ----------
+function viewDesign() {
+  const b = data.settings.brand;
+  const name = h('input', { value: b.name, maxlength: 40 }), tag = h('input', { value: b.tagline, maxlength: 90, placeholder: 'z. B. Sommerfest 2026' });
+  const color = h('input', { type: 'color', value: b.accent || '#0b0b0c', style: 'width:64px;padding:2px;height:42px' });
+  let useColor = !!b.accent;
+  const colorState = h('span', { class: 'small muted' }, b.accent ? b.accent : 'Standard (Schwarz/Weiß)');
+  color.addEventListener('input', () => { useColor = true; colorState.textContent = color.value; });
+  const logoBox = h('div', { class: 'logo-prev' });
+  const hasLogo = !!document.documentElement.dataset.brandLogo;
+  logoBox.append(hasLogo ? h('img', { src: document.documentElement.dataset.brandLogo, alt: 'Logo' }) : h('span', { class: 'muted small' }, 'kein Logo'));
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', style: 'display:none', onchange: async () => {
+    const f = file.files[0]; if (!f) return;
+    try {
+      const res = await fetch(`${BASE}/api/admin/brand/logo`, { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f, credentials: 'same-origin' });
+      const j = await res.json().catch(() => ({})); if (!res.ok) throw new Error(j.error || `Fehler ${res.status}`);
+      toast('Logo gespeichert – Seite neu laden'); setTimeout(() => location.reload(), 600);
+    } catch (e) { toast(e.message, true); }
+  } });
+  return h('div', { class: 'grid two' },
+    h('div', { class: 'card stack' }, h('h2', {}, 'Name & Farbe'),
+      h('label', { class: 'field' }, 'Name der Veranstaltung', name), h('label', { class: 'field' }, 'Untertitel', tag),
+      h('div', { class: 'row' }, h('label', { class: 'field' }, 'Akzentfarbe (Buttons, Zähler …)', color), colorState,
+        h('button', { class: 'small ghost', onclick: () => { useColor = false; colorState.textContent = 'Standard (Schwarz/Weiß)'; } }, 'Zurücksetzen')),
+      h('p', { class: 'small muted' }, 'Wirkt auf Gäste-Seite, Beamer, Poster, Moderation und PDF. Im Dunkelmodus wird die Farbe automatisch aufgehellt.'),
+      h('button', { class: 'primary', onclick: async () => { await save({ brand: { name: name.value, tagline: tag.value, accent: useColor ? color.value : '' } }, 'Design gespeichert – Seite neu laden'); setTimeout(() => location.reload(), 600); } }, 'Speichern')),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Logo'), logoBox, file,
+      h('p', { class: 'small muted' }, 'PNG, JPG, WebP oder SVG, bis 1 MB. Quadratisch oder mit transparentem Hintergrund sieht es am besten aus.'),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => file.click() }, 'Logo hochladen'),
+        hasLogo ? h('button', { onclick: safe(async () => { await api('/admin/brand/logo/remove', { method: 'POST', body: {} }); toast('Logo entfernt'); setTimeout(() => location.reload(), 500); }) }, 'Entfernen') : null)));
+}
+
 // ---------- QR & Poster ----------
 function viewPoster() {
   const t = data.settings.test;
   const target = h('select', {}, h('option', { value: 'live' }, 'Live – Gäste-Seite'), t.enabled ? h('option', { value: 'test' }, 'Testmodus – Gäste-Seite') : null);
-  const head = h('input', { value: 'Wünsch dir was!', maxlength: 40 });
+  const head = h('input', { value: document.documentElement.dataset.brandTag || 'Wünsch dir was!', maxlength: 40 });
   const sub = h('input', { value: 'Scanne den Code und such dir deinen Song aus.', maxlength: 90 });
   const out = h('div', { class: 'poster' });
   const urlOf = () => `${origin()}${target.value === 'test' ? `/${t.prefix}` : ''}/`;
@@ -231,8 +349,9 @@ function viewReport() {
   const envSel = h('select', {}, h('option', { value: 'live' }, 'Live'), h('option', { value: 'test' }, 'Testmodus'));
   const out = h('div', { class: 'stack' });
   const csv = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.csv?env=live` }, '⬇ Setlist als CSV');
+  const pdf = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.pdf?env=live` }, '⬇ Setlist als PDF');
   async function run() {
-    csv.href = `${BASE}/api/admin/setlist.csv?env=${envSel.value}`;
+    csv.href = `${BASE}/api/admin/setlist.csv?env=${envSel.value}`; pdf.href = `${BASE}/api/admin/setlist.pdf?env=${envSel.value}`;
     const r = await api(`/admin/report?env=${envSel.value}`);
     const t = r.totals;
     const stat = (k, v) => h('div', { class: 'card' }, h('div', { class: 'muted tiny' }, k), h('div', { class: 'big' }, String(v ?? '–')));
@@ -246,12 +365,12 @@ function viewReport() {
   }
   envSel.addEventListener('change', safe(run));
   run().catch((e) => toast(e.message, true));
-  return h('div', { class: 'stack' }, h('div', { class: 'row' }, envSel, csv), out);
+  return h('div', { class: 'stack' }, h('div', { class: 'row' }, envSel, pdf, csv), out);
 }
 
 function render() {
   drawTabs();
-  clear(body).append({ start: viewStart, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append({ start: viewStart, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));

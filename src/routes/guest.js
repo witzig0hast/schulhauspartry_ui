@@ -80,7 +80,7 @@ export function guestRouter(env, engine, hub) {
     hub.pushEnv(env, { guests: true });
     // Genres kommen vom Interpreten und werden nachgeladen (blockiert den Wunsch nie)
     if (out.result === 'created' && !track.genres && engine.spotify.getGenres) {
-      engine.spotify.getGenres(track).then((g) => { rq.setGenres(out.request.id, g); }).catch(() => {});
+      engine.spotify.getGenres(track).then((g) => { rq.setGenres(out.request.id, g); hub.pushEnv(env); }).catch(() => {});
     } else if (out.result === 'created' && track.genres) rq.setGenres(out.request.id, track.genres);
     const np = engine.nowPlaying();
     if (out.result === 'duplicate') {

@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, safe, toast, cover, eq, fmtTime, $ } from '/assets/app.js';
-import { pendingList, upcomingList, recentList, historyList, blacklistPanel, playerSummary, ampel, bar, kpi, empty } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, recentList, historyList, blacklistPanel, chatPanel, playerSummary, ampel, bar, kpi, empty } from '/assets/staff-ui.js';
 import { hbars, stackedColumns, entityColor, COLORS } from '/assets/viz.js';
 
 // ============================================================
@@ -71,6 +71,14 @@ const WIDGETS = {
   blacklist: {
     title: 'Gesperrt', desc: 'Gesperrte Songs und Interpreten, Song suchen & sperren', roles: ['admin', 'tech', 'mod', 'orga'],
     make() { const box = h('div'); return { el: box, update(s) { const c = can.moderate(); memo(box, JSON.stringify([s.blacklist, c]), () => blacklistPanel(s, { canAct: c })); } }; },
+  },
+  chat: {
+    title: 'Team-Chat', desc: 'Nachrichten an das Team (Name ist Pflicht)', roles: ['admin', 'tech', 'mod', 'orga'],
+    make() { const box = h('div'); return { el: box, update(s) { memo(box, JSON.stringify([s.chat?.map((m) => m.id), can.moderate()]), () => chatPanel(s, { canWrite: can.moderate() })); } }; },
+  },
+  later: {
+    title: 'Später', desc: 'Zurückgestellte Wünsche', roles: ['admin', 'tech', 'mod', 'orga'],
+    make() { const box = h('div'); return { el: box, update(s) { const c = can.moderate(); memo(box, JSON.stringify([(s.later || []).map((p) => [p.id, p.votes]), c, s.settings.rejectReasons]), () => pendingList(s, { canAct: c, assign: () => assignMode, list: 'later', me: s.me })); } }; },
   },
   ticker: {
     title: 'Live-Wünsche', desc: 'Neue Wünsche und ihre Entscheidung', roles: ['admin', 'tech', 'orga', 'display'], size: 'wide',
@@ -153,8 +161,9 @@ const WIDGETS = {
         const n = nonce; reset(); await post('/control/panic', { nonce: n });
       } }, '⛔  NOT-AUS');
       const clearBtn = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
+      const emBtn = h('button', { class: 'outline-bad', onclick: async () => { if (state.emergency) return post('/control/emergency-clear'); if (confirm('Notfall-Playlist starten? Alles andere wird gestoppt.')) await post('/control/emergency'); } }, '🆘 Notfall-Playlist');
       const endBtn = h('button', { onclick: async () => { if (state.ended) return post('/control/end-clear'); if (confirm('Ende-Modus starten? Musik wird ausgeblendet, Wünsche werden geschlossen.')) await post('/control/end', { sec: 10 }); } }, '🏁 Ende-Modus');
-      return { el: h('div', { class: 'stack' }, btn, clearBtn, endBtn), update(s) { clearBtn.classList.toggle('hidden', !s.panic); endBtn.textContent = s.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus'; } };
+      return { el: h('div', { class: 'stack' }, btn, clearBtn, emBtn, endBtn), update(s) { emBtn.textContent = s.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist'; clearBtn.classList.toggle('hidden', !s.panic); endBtn.textContent = s.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus'; } };
     },
   },
   status: {
@@ -209,7 +218,7 @@ function playerWidget(n) {
 const PRESETS = {
   'Übersicht': ['now', 'queue', 'kpis', 'clock'],
   'Bühne': ['now', 'p1', 'p2', 'queue', 'mics', 'meters', 'panic'],
-  'Moderation': ['now', 'pending', 'queue', 'recent'],
+  'Moderation': ['now', 'pending', 'later', 'queue', 'chat'],
   'Technik': ['p1', 'p2', 'transition', 'mics', 'wishmode', 'panic', 'status'],
   'Zahlen': ['kpis', 'stats', 'clock', 'recent'],
   'Wünsche live': ['ticker', 'now', 'kpis'],

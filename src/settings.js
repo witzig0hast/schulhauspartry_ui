@@ -2,6 +2,7 @@ import { getSetting, setSetting } from './db.js';
 import { randomToken, encrypt, decrypt } from './security.js';
 
 export const DEFAULTS = {
+  timezone: 'Europe/Berlin',
   limit: { count: 2, windowMin: 15 },
   explicitMode: 'mark', // off | mark | block
   rejectReasons: ['Zu explizit', 'Passt nicht zur Party', 'Läuft schon / wurde gespielt', 'Nicht verfügbar'],
@@ -18,7 +19,14 @@ export const DEFAULTS = {
     { name: 'Normal', sec: 8 },
     { name: 'Lang', sec: 15 },
   ],
-  auto: { enabled: false, crossfadeSec: 8, startBeforeEndSec: { 1: 20, 2: 20 }, curve: 'equalPower' },
+  auto: { enabled: false, crossfadeSec: 8, startBeforeEndSec: { 1: 20, 2: 20 }, curve: 'equalPower', smartOutro: true },
+  // Automatik rund um die Warteschlange
+  autoOrder: { enabled: true, maxRepeat: 2, window: 4, mood: true, phases: [] }, // phases: [{name, from:'HH:MM', to:'HH:MM', prefer:[Genre-Familien]}]
+  filler: { enabled: false, playlist: '', minQueue: 1, avoidMin: 90 },
+  emergency: { playlist: '', player: 1, shuffle: true },
+  notify: { enabled: false, url: 'https://ntfy.sh', topic: '', token: '', downSec: 20, events: { x32: true, spotify: true, player: true, panic: true, queueEmpty: true, emergency: true, backup: true } },
+  backup: { enabled: true, everyMin: 60, keep: 24 },
+  brand: { name: 'Schulhauspartry', tagline: '', accent: '', logo: null },
   ducking: { enabled: false, db: -12, attackMs: 250, releaseMs: 900 },
   x32: {
     adapter: 'mock', // mock | http
@@ -79,6 +87,53 @@ export function applyPatch(patch, { allow }) {
   if (has('wishMessages')) {
     for (const k of ['paused', 'closed', 'ended']) if (k in (patch.wishMessages || {})) s.wishMessages[k] = str(patch.wishMessages[k], 200);
   }
+  if (has('timezone')) { try { new Intl.DateTimeFormat('de-DE', { timeZone: String(patch.timezone) }); s.timezone = String(patch.timezone); } catch { /* ungueltig: ignorieren */ } }
+  if (has('autoOrder')) {
+    const a = patch.autoOrder, o = s.autoOrder;
+    if ('enabled' in a) o.enabled = !!a.enabled;
+    if ('mood' in a) o.mood = !!a.mood;
+    if ('maxRepeat' in a) o.maxRepeat = Math.round(clamp(a.maxRepeat, 1, 10, o.maxRepeat));
+    if ('window' in a) o.window = Math.round(clamp(a.window, 2, 10, o.window));
+    if (Array.isArray(a.phases)) {
+      const hhmm = (v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v)) ? String(v) : null);
+      o.phases = a.phases.slice(0, 12).map((p) => ({ name: str(p.name, 30) || 'Phase', from: hhmm(p.from), to: hhmm(p.to), prefer: (Array.isArray(p.prefer) ? p.prefer : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 8) })).filter((p) => p.from && p.to);
+    }
+  }
+  if (has('filler')) {
+    const f = patch.filler;
+    if ('enabled' in f) s.filler.enabled = !!f.enabled;
+    if ('playlist' in f) s.filler.playlist = str(f.playlist, 200).trim();
+    if ('minQueue' in f) s.filler.minQueue = Math.round(clamp(f.minQueue, 0, 10, s.filler.minQueue));
+    if ('avoidMin' in f) s.filler.avoidMin = Math.round(clamp(f.avoidMin, 5, 1440, s.filler.avoidMin));
+  }
+  if (has('emergency')) {
+    const e = patch.emergency;
+    if ('playlist' in e) s.emergency.playlist = str(e.playlist, 200).trim();
+    if ([1, 2].includes(Number(e.player))) s.emergency.player = Number(e.player);
+    if ('shuffle' in e) s.emergency.shuffle = !!e.shuffle;
+  }
+  if (has('notify')) {
+    const n = patch.notify;
+    if ('enabled' in n) s.notify.enabled = !!n.enabled;
+    if ('url' in n) { const u = str(n.url, 200).trim().replace(/\/$/, ''); if (/^https?:\/\/[^\s]+$/i.test(u)) s.notify.url = u; }
+    if ('topic' in n) s.notify.topic = str(n.topic, 80).trim().replace(/[^\w.-]/g, '');
+    if (n.token) s.notify.token = encrypt(str(n.token, 200));
+    if (n.clearToken) s.notify.token = '';
+    if ('downSec' in n) s.notify.downSec = Math.round(clamp(n.downSec, 5, 300, s.notify.downSec));
+    if (n.events) for (const k of Object.keys(s.notify.events)) if (k in n.events) s.notify.events[k] = !!n.events[k];
+  }
+  if (has('backup')) {
+    const b = patch.backup;
+    if ('enabled' in b) s.backup.enabled = !!b.enabled;
+    if ('everyMin' in b) s.backup.everyMin = Math.round(clamp(b.everyMin, 5, 1440, s.backup.everyMin));
+    if ('keep' in b) s.backup.keep = Math.round(clamp(b.keep, 1, 200, s.backup.keep));
+  }
+  if (has('brand')) {
+    const b = patch.brand;
+    if ('name' in b) s.brand.name = str(b.name, 40).trim() || 'Schulhauspartry';
+    if ('tagline' in b) s.brand.tagline = str(b.tagline, 90).trim();
+    if ('accent' in b) s.brand.accent = /^#[0-9a-fA-F]{6}$/.test(String(b.accent)) ? String(b.accent).toLowerCase() : '';
+  }
   if (has('replay')) {
     if (['allow', 'cooldown', 'block'].includes(patch.replay.mode)) s.replay.mode = patch.replay.mode;
     if ('cooldownMin' in patch.replay) s.replay.cooldownMin = Math.round(clamp(patch.replay.cooldownMin, 1, 1440, s.replay.cooldownMin));
@@ -93,6 +148,7 @@ export function applyPatch(patch, { allow }) {
     if ('crossfadeSec' in a) s.auto.crossfadeSec = clamp(a.crossfadeSec, 0.5, 60, s.auto.crossfadeSec);
     if (a.startBeforeEndSec) for (const p of [1, 2]) if (p in a.startBeforeEndSec) s.auto.startBeforeEndSec[p] = clamp(a.startBeforeEndSec[p], 1, 180, s.auto.startBeforeEndSec[p]);
     if (['equalPower', 'linear'].includes(a.curve)) s.auto.curve = a.curve;
+    if ('smartOutro' in a) s.auto.smartOutro = !!a.smartOutro;
   }
   if (has('ducking')) {
     const d = patch.ducking;
@@ -158,6 +214,7 @@ export const playerRefreshToken = (p) => {
   const t = settings().spotify.players[p].refreshToken;
   return t ? decrypt(t) : null;
 };
+export const notifyToken = () => (settings().notify.token ? decrypt(settings().notify.token) : '');
 export const piToken = () => (settings().x32.piToken ? decrypt(settings().x32.piToken) : '');
 
 // Geheimnisse maskiert fuer die Admin-UI
@@ -169,6 +226,7 @@ export function publicSettings() {
     delete s.spotify.players[p].refreshToken;
   }
   s.x32.piToken = s.x32.piToken ? '***' : '';
+  s.notify.token = s.notify.token ? '***' : '';
   return s;
 }
 

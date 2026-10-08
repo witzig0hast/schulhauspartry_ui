@@ -3,8 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 let db;
+export let dataDirPath = null;
 
 export function openDb(dataDir) {
+  dataDirPath = dataDir === ':memory:' ? null : dataDir;
   if (dataDir !== ':memory:') fs.mkdirSync(dataDir, { recursive: true });
   db = new DatabaseSync(dataDir === ':memory:' ? ':memory:' : path.join(dataDir, 'party.db'));
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
@@ -86,6 +88,27 @@ export function openDb(dataDir) {
       ts INTEGER NOT NULL,
       kind TEXT NOT NULL,            -- 'blacklist' | 'played' | 'explicit'
       key TEXT
+    );
+    CREATE TABLE IF NOT EXISTS brand_assets (
+      name TEXT PRIMARY KEY,
+      mime TEXT NOT NULL,
+      data BLOB NOT NULL,
+      ver INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chat (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      env TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      account_id INTEGER,
+      name TEXT NOT NULL,
+      text TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS track_meta (
+      track_id TEXT PRIMARY KEY,
+      intro_ms INTEGER,              -- Ende des Intros (ms), falls bekannt
+      outro_ms INTEGER,              -- Beginn des Outros (ms), falls bekannt
+      src TEXT,
+      ts INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

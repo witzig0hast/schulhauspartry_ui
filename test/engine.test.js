@@ -43,7 +43,7 @@ test('Start per Fade-In, danach Auto-Crossfade am Songende', async () => {
   const first = engine.current;
   assert.ok(first);
   assert.equal(engine.gain[first], 1);
-  applyPatch({ auto: { enabled: true, crossfadeSec: 0.5, startBeforeEndSec: { 1: 20, 2: 20 } } }, { allow: ['auto'] });
+  applyPatch({ auto: { enabled: true, crossfadeSec: 0.5, startBeforeEndSec: { 1: 20, 2: 20 }, smartOutro: false } }, { allow: ['auto'] });
   const st = engine.players[first].status();
   engine.players[first].seekTo(st.durationMs - 19000);
   await ticks(1200);

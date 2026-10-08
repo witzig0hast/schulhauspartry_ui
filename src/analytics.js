@@ -10,7 +10,7 @@ const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort(
 export function buildAnalytics(env, rangeMin = 0, now = Date.now()) {
   const db = getDb();
   const since = rangeMin > 0 ? now - rangeMin * 60000 : 0;
-  const reqs = db.prepare("SELECT * FROM requests WHERE env = ? AND created_at >= ? AND device_id != 'staff'").all(env, since);
+  const reqs = db.prepare("SELECT * FROM requests WHERE env = ? AND created_at >= ? AND device_id NOT IN ('staff','auto')").all(env, since);
   const playedRows = db.prepare("SELECT * FROM requests WHERE env = ? AND played_at IS NOT NULL AND played_at >= ? AND status IN ('played','playing')").all(env, since);
   const plays = db.prepare('SELECT COUNT(*) c FROM plays WHERE env = ? AND ts >= ?').get(env, since).c;
   const attempts = db.prepare('SELECT kind, COUNT(*) c FROM block_attempts WHERE env = ? AND ts >= ? GROUP BY kind').all(env, since);
@@ -20,7 +20,7 @@ export function buildAnalytics(env, rangeMin = 0, now = Date.now()) {
   const waits = [];
   let votes = 0, explicit = 0, popSum = 0, popN = 0, durSum = 0;
   for (const r of reqs) {
-    if (r.status === 'pending') by.pending++;
+    if (r.status === 'pending' || r.status === 'later') by.pending++;
     else if (r.status === 'denied') by.denied++;
     else by.approved++; // approved, playing, played, removed
     votes += r.votes; if (r.explicit) explicit++;
@@ -41,7 +41,7 @@ export function buildAnalytics(env, rangeMin = 0, now = Date.now()) {
     const genres = parse(r.genres);
     for (const f of familiesOf(genres)) {
       inc(famReq, f, r.votes);
-      if (r.status !== 'pending') { const a = famAcc.get(f) || { approved: 0, denied: 0 }; if (r.status === 'denied') a.denied++; else a.approved++; famAcc.set(f, a); }
+      if (r.status !== 'pending' && r.status !== 'later') { const a = famAcc.get(f) || { approved: 0, denied: 0 }; if (r.status === 'denied') a.denied++; else a.approved++; famAcc.set(f, a); }
     }
     for (const g of genres || []) inc(detail, g, r.votes);
     for (const a of String(r.artist).split(', ')) inc(artReq, a, r.votes);
@@ -64,7 +64,7 @@ export function buildAnalytics(env, rangeMin = 0, now = Date.now()) {
   const bucketOf = (ts) => buckets[Math.min(buckets.length - 1, Math.max(0, Math.floor((ts - t0) / stepMs)))];
   for (const r of reqs) {
     const b = bucketOf(r.created_at);
-    if (r.status === 'pending') b.pending++; else if (r.status === 'denied') b.denied++; else b.approved++;
+    if (r.status === 'pending' || r.status === 'later') b.pending++; else if (r.status === 'denied') b.denied++; else b.approved++;
     for (const f of familiesOf(parse(r.genres))) inc(b.fam, f, r.votes);
   }
   const topFam = top(famReq, 5).map(([f]) => f);

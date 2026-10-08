@@ -7,6 +7,9 @@ import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
 import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
 import { MockX32, HttpX32 } from './adapters/x32.js';
 import { governor } from './adapters/spotify-governor.js';
+import { maybeFill } from './filler.js';
+import { applyAutoOrder } from './autoorder.js';
+import { ensureMeta, getMeta } from './trackmeta.js';
 
 const TICK_MS = 100;
 const BROADCAST_MS = 250;
@@ -32,6 +35,8 @@ export class Engine extends EventEmitter {
     this.crossfade = null; // {from,to,start,dur}
     this.expectedUri = { 1: null, 2: null };
     this.lastSeenUri = { 1: null, 2: null };
+    this.trackIdOf = { 1: null, 2: null }; // welcher Wunsch/Song laeuft auf welchem Player
+    this.lastFillCheck = 0;
     this.pendingStart = [];
     this.panicNonce = null; this.panicNonceExp = 0;
     this.x32State = { mics: [], meters: { 1: 0, 2: 0 } };
@@ -101,6 +106,7 @@ export class Engine extends EventEmitter {
     this.runDucking(now, cfg);
     this.maybeAutoCrossfade(now, cfg);
     this.applyLevels();
+    if (now - this.lastFillCheck >= 5000) { this.lastFillCheck = now; maybeFill(this, now).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
 
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;
@@ -187,7 +193,11 @@ export class Engine extends EventEmitter {
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
-    if (remaining > cfg.auto.startBeforeEndSec[this.current] * 1000) return;
+    let lead = cfg.auto.startBeforeEndSec[this.current] * 1000;
+    // Smart: den Uebergang beginnen, wenn der Song ausklingt (Outro), nicht mitten im Refrain
+    const meta = cfg.auto.smartOutro ? getMeta(this.trackIdOf[this.current]) : null;
+    if (meta?.outro_ms && st.durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, st.durationMs - meta.outro_ms + 1000));
+    if (remaining > lead) return;
     if (!rq.upcoming(this.env).length) return;
     const dur = Math.max(0.5, Math.min(cfg.auto.crossfadeSec, remaining / 1000));
     this.startCrossfade(dur, cfg.auto.curve, { auto: true }).catch((e) => this.fail('auto-crossfade', e));
@@ -209,11 +219,13 @@ export class Engine extends EventEmitter {
     this.gain[target] = 0;
     delete this.ramps[target];
     rq.markPlaying(this.env, next.id, target);
+    this.trackIdOf[target] = next.trackId;
     logEvent(this.env, 'play', { player: target, title: next.title, auto });
     const track = { uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs };
     await this.players[target].play(track);
     this.players[this.current ?? target]?.boost?.(20000); this.players[target].boost?.(20000);
 
+    this.afterTrackStart(target);
     const begin = () => {
       const t = Date.now();
       if (curPlaying) {
@@ -228,6 +240,19 @@ export class Engine extends EventEmitter {
     return { player: target, title: next.title };
   }
 
+  // Nach jeder Aenderung der Warteschlange: automatisch sortieren (Genre-Balance/Stimmung) und Meta des naechsten Songs holen
+  afterQueueChange() {
+    try { applyAutoOrder(this.env, this.current); } catch (e) { this.fail('auto-order', e); }
+    const next = rq.upcoming(this.env)[0];
+    if (next) ensureMeta(this.spotify, { id: next.trackId }).catch(() => {});
+    this.emit('change');
+  }
+  afterTrackStart(player) {
+    const cur = this.trackIdOf[player ?? this.current ?? 1];
+    if (cur) ensureMeta(this.spotify, { id: cur }).catch(() => {});
+    this.afterQueueChange();
+  }
+
   async play(player, { startGain = 1 } = {}) {
     const st = this.players[player].status();
     if (st.uri && !st.ended) { await this.players[player].resume(); if (!this.current) this.current = player; }
@@ -238,6 +263,8 @@ export class Engine extends EventEmitter {
       this.gain[player] = startGain; delete this.ramps[player];
       this.expectedUri[player] = next.uri;
       rq.markPlaying(this.env, next.id, player);
+      this.trackIdOf[player] = next.trackId;
+      this.afterTrackStart(player);
       await this.players[player].play({ uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs });
       if (!this.current) this.current = player;
     }
@@ -272,10 +299,11 @@ export class Engine extends EventEmitter {
   async panicFire(nonce) {
     if (!nonce || nonce !== this.panicNonce || Date.now() > this.panicNonceExp) throw new Error('Not-Aus nicht bestätigt (zweimal drücken).');
     this.panicNonce = null;
-    this.state.panic = true; this.persist();
+    this.state.panic = true; this.state.emergency = false; this.persist();
     this.crossfade = null; this.ramps = {}; this.pendingStart = [];
     await Promise.all([1, 2].map((p) => this.players[p].pause().catch((e) => this.fail('pause', e))));
     logEvent(this.env, 'panic', {});
+    this.emit('panic');
     this.emit('change');
   }
   panicClear() {
@@ -283,6 +311,37 @@ export class Engine extends EventEmitter {
     this.gain = { 1: 1, 2: 1 };
     logEvent(this.env, 'panic-clear', {});
     this.emit('change');
+  }
+
+  // Notfall-Playlist: stoppt alles, startet die eingestellte Playlist (gemischt) auf dem gewaehlten Player
+  async emergencyStart() {
+    const cfg = settings().emergency;
+    const m = String(cfg.playlist || '').match(/playlist[/:]([A-Za-z0-9]{22})/) || String(cfg.playlist || '').match(/^([A-Za-z0-9]{22})$/);
+    if (!m && this.players[cfg.player].kind === 'real') throw new Error('Keine Notfall-Playlist eingetragen (Admin → Automatik).');
+    const p = cfg.player, o = other(p);
+    this.crossfade = null; this.ramps = {}; this.pendingStart = [];
+    this.state.panic = false; this.state.ended = false; this.state.emergency = true; this.persist();
+    this.players[o].pause().catch(() => {});
+    this.gain[o] = 1; this.gain[p] = 0; this.duckMul = 1;
+    await this.players[p].playContext(m ? `spotify:playlist:${m[1]}` : 'mock:playlist:notfall', { shuffle: cfg.shuffle });
+    this.current = p;
+    const begin = () => { this.ramps[p] = { from: 0, to: 1, start: Date.now(), dur: 2, curve: 'linear' }; this.emit('change'); };
+    if (this.players[p].kind === 'real') this.pendingStart.push({ at: Date.now() + 600, fn: begin }); else begin();
+    logEvent(this.env, 'emergency', {});
+    this.emit('emergency'); this.emit('change');
+  }
+  emergencyClear() { this.state.emergency = false; this.persist(); logEvent(this.env, 'emergency-clear', {}); this.emit('change'); }
+
+  // Kurzer, leiser Test eines Players (Vorbereitungs-Seite): 8 s abspielen, dann stoppen
+  async testPlayer(n) {
+    if ([1, 2].some((x) => this.players[x].status().playing)) throw new Error('Es läuft gerade Musik – Test nur bei Stille.');
+    const list = await this.spotify.search('a', 8).catch(() => []);
+    const t = list.find((x) => x.durationMs > 60000) || list[0];
+    if (!t) throw new Error('Kein Testsong gefunden (Spotify-Suche).');
+    this.gain[n] = 0.12; delete this.ramps[n];
+    await this.players[n].play(t);
+    setTimeout(() => { this.players[n].pause().catch(() => {}); this.gain[n] = 1; this.emit('change'); }, 8000).unref?.();
+    return { title: t.title, artist: t.artist };
   }
 
   endEvening(sec = 10) {
@@ -299,7 +358,8 @@ export class Engine extends EventEmitter {
     this.crossfade = null; this.ramps = {}; this.pendingStart = []; this.current = null;
     this.gain = { 1: 1, 2: 1 }; this.duckMul = 1;
     this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
-    this.state = { wishMode: 'open', ended: false, panic: false }; this.persist();
+    this.trackIdOf = { 1: null, 2: null };
+    this.state = { wishMode: 'open', ended: false, panic: false, emergency: false }; this.persist();
     for (const p of [1, 2]) { this.players[p].reset?.(); this.players[p].pause().catch(() => {}); }
     this.emit('change');
   }
@@ -368,6 +428,7 @@ export class Engine extends EventEmitter {
       wishMode: this.state.wishMode,
       ended: this.state.ended,
       panic: this.state.panic,
+      emergency: !!this.state.emergency,
       counts: rq.counts(this.env),
       upcoming: up.slice(0, 50),
       upcomingTotal: up.length,

@@ -157,6 +157,35 @@ export class RealSpotify {
     }
     return [...new Set(ids.flatMap((id) => this.genreCache.get(id) || []))];
   }
+  // Fueller-Playlist (gemerkt, hoechstens 300 Songs)
+  async getPlaylistTracks(id) {
+    if (!/^[A-Za-z0-9]{22}$/.test(id || '')) return [];
+    this.playlistCache ??= new Map();
+    const hit = this.playlistCache.get(id);
+    if (hit && Date.now() - hit.ts < 30 * 60000) { governor.stats.cacheHits++; return hit.list; }
+    return this._once(`p:${id}`, async () => {
+      try {
+        const list = [];
+        let path = `/playlists/${id}/tracks`, query = { limit: '100', market: 'DE', fields: 'items(track(id,uri,name,explicit,duration_ms,popularity,artists(id,name),album(name,release_date))),next' };
+        for (let page = 0; page < 3 && path; page++) {
+          const r = await call(this.tokens, 'GET', path, { query, cls: 'search' });
+          for (const it of r.items || []) if (it?.track?.id && it.track.uri?.startsWith('spotify:track:')) list.push(mapTrack(it.track));
+          path = r.next ? r.next.replace(API, '') .split('?')[0] : null; query = r.next ? Object.fromEntries(new URL(r.next).searchParams) : undefined;
+        }
+        remember(this.playlistCache, id, { ts: Date.now(), list });
+        return list;
+      } catch (e) { if (e instanceof RateLimitError && hit) return hit.list; this.lastError = e.status === 403 || e.status === 404 ? `Playlist nicht lesbar (${e.status})` : e.message; return hit?.list || []; }
+    });
+  }
+  // Intro/Outro aus der Audioanalyse; fuer neuere Spotify-Apps ist diese API oft gesperrt -> dann null (feste Vorlaufzeit gilt)
+  async getTrackMeta(track) {
+    try {
+      const a = await call(this.tokens, 'GET', `/audio-analysis/${track.id}`, { cls: 'search' });
+      const fadeOut = a?.track?.start_of_fade_out, sections = a?.sections || [];
+      const intro = sections.length > 1 ? sections[1].start : a?.track?.end_of_fade_in;
+      return { introMs: Number.isFinite(intro) ? Math.round(intro * 1000) : null, outroMs: Number.isFinite(fadeOut) ? Math.round(fadeOut * 1000) : null, src: 'spotify' };
+    } catch (e) { if (e instanceof RateLimitError) throw e; return null; }
+  }
   health() {
     const paused = governor.pausedMs();
     if (paused > 0) return { ok: null, detail: `Spotify-Limit erreicht – Pause ${Math.ceil(paused / 1000)} s (Cache übernimmt)` };
@@ -185,6 +214,12 @@ export class RealPlayer {
   async play(track) {
     this.expectedUri = track.uri;
     await call(this.tokens, 'PUT', '/me/player/play', { body: { uris: [track.uri] }, query: this._q(), cls: 'critical' });
+    this.boost();
+  }
+  // Playlist/Album/Kontext starten (Notfall-Playlist), optional gemischt
+  async playContext(contextUri, { shuffle = false } = {}) {
+    if (shuffle) await call(this.tokens, 'PUT', '/me/player/shuffle', { query: { state: 'true', ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }).catch(() => {});
+    await call(this.tokens, 'PUT', '/me/player/play', { body: { context_uri: contextUri }, query: this._q(), cls: 'critical' });
     this.boost();
   }
   async pause() { await call(this.tokens, 'PUT', '/me/player/pause', { query: this._q(), cls: 'critical' }); this.boost(); }

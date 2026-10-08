@@ -5,7 +5,7 @@ import {
 import { parseCookies } from '../security.js';
 import * as rq from '../requests.js';
 import { applyPatch, settings } from '../settings.js';
-import { staffState, staffExtra } from '../hub.js';
+import { staffState } from '../hub.js';
 import { addBlock, removeBlock, listBlacklist, isBlacklisted } from '../blocklist.js';
 import { buildAnalytics } from '../analytics.js';
 import { logEvent } from '../db.js';
@@ -42,7 +42,7 @@ export function staffRouter(env, engine, hub) {
   });
 
   r.get('/state', requireAnyPerm('viewMod', 'viewFoh'), (req, res) => {
-    res.json(staffState(engine, req.session.role, engine.snapshot(), staffExtra(env)));
+    res.json(staffState(engine, req.session.role, engine.snapshot(), { ...hub.extraFor(env), me: req.session.accountId ?? 'admin' }));
   });
 
   r.get('/stats', requireAnyPerm('viewStats'), (req, res) => res.json(rq.liveStats(env)));
@@ -54,9 +54,10 @@ export function staffRouter(env, engine, hub) {
   // ----- Moderation -----
   r.post('/mod/decide', requirePerm('moderate'), wrap((req, res) => {
     const { id, action, reason, player: pl } = req.body || {};
-    if (!['approve', 'deny'].includes(action)) throw new Error('Ungültige Aktion');
+    if (!['approve', 'deny', 'later'].includes(action)) throw new Error('Ungültige Aktion');
     if (action === 'deny' && reason && !settings().rejectReasons.includes(String(reason))) throw new Error('Ungültiger Ablehnungsgrund');
     const out = rq.decide(env, Number(id), { action, reason, player: pl ? Number(pl) : null, accountId: req.session.accountId }, engine.current);
+    if (out.ok && action === 'approve') engine.afterQueueChange(); // Genre-Balance / Stimmung, Meta laden
     hub.pushEnv(env, { guests: true });
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     res.json({ ok: true, request: { id: out.request.id, status: out.request.status, player: out.request.player } });
@@ -102,6 +103,7 @@ export function staffRouter(env, engine, hub) {
     if (!row) return res.status(404).json({ error: 'Song nicht gefunden' });
     if (isBlacklisted(row.trackId, row.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
     const out = rq.requeue(env, Number(req.body.id), req.session.accountId, engine.current);
+    if (out.ok) engine.afterQueueChange();
     hub.pushEnv(env, { guests: true });
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     res.json({ ok: true, player: out.request.player });
@@ -128,6 +130,9 @@ export function staffRouter(env, engine, hub) {
     engine.x32.simulateMic(num(req.body.index, 0, 0, 2), !!req.body.open);
     res.json({ ok: true });
   }));
+
+  r.post('/control/emergency', ctl, wrap(async (req, res) => { await engine.emergencyStart(); res.json({ ok: true }); }));
+  r.post('/control/emergency-clear', ctl, wrap((req, res) => { engine.emergencyClear(); res.json({ ok: true }); }));
 
   r.post('/control/wishmode', requirePerm('wishMode'), wrap((req, res) => {
     engine.setWishMode(String(req.body.mode));

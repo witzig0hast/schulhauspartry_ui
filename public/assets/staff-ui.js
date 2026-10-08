@@ -1,4 +1,5 @@
 import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon } from '/assets/app.js';
+import { actionFor } from '/assets/hotkeys.js';
 
 export const playerName = (n) => `Player ${n}`;
 
@@ -54,6 +55,8 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
       cover(u.title, 'sm'),
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
+        u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
+        u.introMs > 20000 ? h('span', { class: 'badge', title: `Langes Intro (${Math.round(u.introMs / 1000)} s)` }, '♪ Intro') : null,
         u.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'E') : null,
         u.votes > 1 ? h('span', { class: 'badge' }, `+${u.votes - 1}`) : null,
         u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `★ Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
@@ -66,10 +69,13 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
 }
 
 // ---- Wunschkarten (Moderation) ----
-export function pendingList(state, { canAct, assign, onAfter }) {
-  if (!state.pending.length) return empty('Alles abgearbeitet – keine offenen Wünsche.');
+export function pendingList(state, { canAct, assign, onAfter, list = 'pending', me = null }) {
+  const items = list === 'later' ? (state.later || []) : state.pending;
+  const claims = new Map((state.claims || []).map((c) => [c.id, c]));
+  if (!items.length) return empty(list === 'later' ? 'Nichts zurückgestellt.' : 'Alles abgearbeitet – keine offenen Wünsche.');
   const box = h('div', { class: 'list' });
-  for (const r of state.pending) {
+  for (const r of items) {
+    const claim = claims.get(r.id);
     const age = Math.max(0, Math.round((Date.now() - r.createdAt) / 60000));
     let reasonBox = null; const banBox = banMenu(r, onAfter);
     const decide = (action, reason) => safe(async () => {
@@ -77,11 +83,12 @@ export function pendingList(state, { canAct, assign, onAfter }) {
         const body = { id: r.id, action, reason };
         if (action === 'approve' && assign() !== 'auto') body.player = Number(assign());
         const out = await api('/mod/decide', { method: 'POST', body });
-        toast(action === 'approve' ? `Hinzugefügt zu ${playerName(out.request.player)}` : 'Abgelehnt');
+        toast(action === 'approve' ? `Hinzugefügt zu ${playerName(out.request.player)}` : action === 'later' ? 'Zurückgestellt' : 'Abgelehnt');
       } catch (e) { if (e.status === 409) toast(e.message, true); else throw e; }
       onAfter?.();
     })();
-    box.append(h('div', { class: 'item req' },
+    const take = () => { if (canAct) api('/mod/claim', { method: 'POST', body: { id: r.id } }).catch(() => {}); };
+    box.append(h('div', { class: `item req ${claim && claim.by !== me ? 'claimed' : ''}`, onpointerdown: take },
       h('div', { class: 'req-main' },
         cover(r.title),
         h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)),
@@ -89,9 +96,11 @@ export function pendingList(state, { canAct, assign, onAfter }) {
           r.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'Explicit') : null,
           r.votes > 1 ? h('span', { class: 'badge ink' }, `+${r.votes - 1}`) : null,
           h('span', { class: 'muted tiny' }, age < 1 ? 'gerade eben' : `vor ${age} Min.`))),
+      claim && claim.by !== me ? h('div', { class: 'claim-tag' }, `✋ ${claim.label} bearbeitet gerade …`) : null,
       canAct ? h('div', { class: 'req-actions' },
         h('button', { class: 'ok', onclick: () => decide('approve') }, '✓  Annehmen'),
         h('button', { class: 'outline-bad', onclick: () => { reasonBox.classList.toggle('hidden'); banBox.classList.add('hidden'); } }, 'Ablehnen'),
+        list !== 'later' ? h('button', { class: 'ghost', title: 'Später entscheiden', onclick: () => decide('later') }, '⏳ Später') : null,
         h('button', { class: 'ghost', title: 'Song oder Interpret sperren', onclick: () => { banBox.classList.toggle('hidden'); reasonBox.classList.add('hidden'); } }, '⛔ Sperren')) : null,
       canAct ? (reasonBox = h('div', { class: 'reasons hidden' },
         ...state.settings.rejectReasons.map((reason) => h('button', { onclick: () => decide('deny', reason) }, reason)),
@@ -157,6 +166,27 @@ export function blacklistPanel(state, { canAct, onAfter } = {}) {
   return wrap;
 }
 
+// ---- Moderator-Chat (Name ist Pflicht, wird pro Geraet gemerkt) ----
+export function chatPanel(state, { canWrite, onSent } = {}) {
+  let name = ''; try { name = localStorage.getItem('chat.name') || ''; } catch { /* egal */ }
+  const nameIn = h('input', { value: name, placeholder: 'Dein Name', maxlength: 24, style: 'max-width:160px', 'aria-label': 'Dein Name' });
+  const text = h('input', { placeholder: 'Nachricht an das Team …', maxlength: 400, 'aria-label': 'Nachricht' });
+  const list = h('div', { class: 'chat-list' });
+  const msgs = state.chat || [];
+  list.append(...(msgs.length ? msgs.map((m) => h('div', { class: `chat-msg ${m.name === name ? 'mine' : ''}` }, h('div', { class: 'who' }, `${m.name} · ${fmtClock(m.ts)}`), h('div', {}, m.text))) : [empty('Noch keine Nachrichten.', 'note')]));
+  const send = safe(async () => {
+    const n = nameIn.value.trim();
+    if (!n) { nameIn.focus(); throw new Error('Bitte gib zuerst deinen Namen an.'); }
+    if (!text.value.trim()) return;
+    try { localStorage.setItem('chat.name', n); } catch { /* egal */ }
+    await api('/chat', { method: 'POST', body: { name: n, text: text.value } });
+    text.value = ''; onSent?.();
+  });
+  const form = canWrite ? h('form', { class: 'chat-form', onsubmit: (e) => { e.preventDefault(); send(); } }, nameIn, text, h('button', { class: 'primary', type: 'submit' }, 'Senden')) : h('div', { class: 'small muted' }, 'Nur lesen.');
+  setTimeout(() => { list.scrollTop = list.scrollHeight; });
+  return h('div', { class: 'chat' }, list, form);
+}
+
 export function playerSummary(n, p, { fohStyle = false, onAir = false } = {}) {
   const pct = p.durationMs ? p.positionMs / p.durationMs : 0;
   const idle = !p.title;
@@ -170,4 +200,4 @@ export function playerSummary(n, p, { fohStyle = false, onAir = false } = {}) {
     h('div', { style: 'margin-top:14px' }, bar(pct, `p${n}`), h('div', { class: 'time' }, h('span', {}, fmtTime(p.positionMs)), h('span', {}, `−${fmtTime(p.remainingMs)}`))));
 }
 
-export { fmtClock };
+export { fmtClock, actionFor };

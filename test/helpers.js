@@ -1,10 +1,10 @@
 import { createApp } from '../src/app.js';
 import { config } from '../src/config.js';
 
-export async function startTestApp() {
+export async function startTestApp({ dataDir = ':memory:' } = {}) {
   config.adminPassword = 'super-geheimes-passwort-123';
   config.secret = 'test-secret-test-secret-test-secret-1234';
-  const ctx = createApp({ dataDir: ':memory:', startEngines: false });
+  const ctx = createApp({ dataDir, startEngines: false });
   await new Promise((r) => ctx.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${ctx.server.address().port}`;
   return { ...ctx, base };

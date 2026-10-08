@@ -20,12 +20,12 @@ export function addBlock({ kind, trackId, title, artist, artistName, reason }, a
     db().prepare('INSERT OR IGNORE INTO blacklist(kind, key, title, artist, reason, created_by, created_at) VALUES(?,?,?,?,?,?,?)')
       .run(kind, key, kind === 'track' ? String(title || '').slice(0, 120) : null, kind === 'track' ? String(artist || '').slice(0, 200) : String(artistName).slice(0, 120), String(reason || '').slice(0, 80) || null, accountId ?? null, now);
     // betroffene offene Wuensche ablehnen, Queue-Eintraege entfernen
-    const rows = db().prepare("SELECT id, track_id, artist, status FROM requests WHERE status IN ('pending','approved')").all();
+    const rows = db().prepare("SELECT id, track_id, artist, status FROM requests WHERE status IN ('pending','later','approved')").all();
     let denied = 0, removed = 0;
     for (const r of rows) {
       const hit = kind === 'track' ? r.track_id === key : artistNames(r.artist).some((a) => normName(a) === key);
       if (!hit) continue;
-      if (r.status === 'pending') { db().prepare("UPDATE requests SET status='denied', reason='Gesperrt', decided_by=?, decided_at=? WHERE id=?").run(accountId ?? null, now, r.id); denied++; }
+      if (r.status === 'pending' || r.status === 'later') { db().prepare("UPDATE requests SET status='denied', reason='Gesperrt', decided_by=?, decided_at=? WHERE id=?").run(accountId ?? null, now, r.id); denied++; }
       else { db().prepare("UPDATE requests SET status='removed', reason='Gesperrt', decided_by=?, decided_at=? WHERE id=?").run(accountId ?? null, now, r.id); removed++; }
     }
     return { label, denied, removed };

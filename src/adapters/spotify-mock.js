@@ -43,6 +43,13 @@ export class MockSpotify {
   }
   async getTrack(id) { return CATALOG.find((t) => t.id === id) || null; }
   async getGenres(track) { return track.genres || []; }
+  // Deterministische Pseudo-Analyse: Intro 4-24 s, Outro 10-24 s
+  async getTrackMeta(track) {
+    const h = [...track.id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7);
+    return { introMs: (4 + (h % 21)) * 1000, outroMs: Math.max(0, track.durationMs - (10 + (h % 15)) * 1000), src: 'mock' };
+  }
+  // Fueller-Playlist: im Mock einfach ein Teil des Katalogs
+  async getPlaylistTracks() { return CATALOG.filter((_, i) => i % 2 === 0); }
   catalog() { return CATALOG; }
   health() { return { ok: true, detail: 'Mock' }; }
 }
@@ -60,6 +67,7 @@ export class MockPlayer {
   }
   async play(track) { this._advance(); this.track = track; this.posMs = 0; this.playing = true; this.lastTs = Date.now(); }
   reset() { this.track = null; this.playing = false; this.posMs = 0; }
+  async playContext(uri) { this._advance(); this.track = { uri, title: 'Notfall-Playlist', artist: 'Mix', durationMs: 180000 }; this.posMs = 0; this.playing = true; this.lastTs = Date.now(); }
   async pause() { this._advance(); this.playing = false; }
   async resume() { this._advance(); if (this.track) this.playing = true; }
   async poll() { this._advance(); }

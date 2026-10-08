@@ -22,6 +22,7 @@ Ducking und Not-Aus. Alles ist rollenbasiert abgesichert und läuft in Docker.
 | `/focus` | Moderation, Technik, Admin | **Fokus-Modus**: komplett schwarz, bis ein Wunsch kommt – dann Annehmen / Ablehnen (Tasten A, D, 1–9, B, F) |
 | `/ticker` | Anzeige, Technik, Orga, Admin | **Live-Wünsche**: neue Wünsche erscheinen sofort, dann „Angenommen“ / „Abgelehnt“ |
 | `/analytics` | alle Mitarbeitenden | **Analytics** live: Genres, Interpreten, Jahrzehnte, Zeitverlauf, Annahme-Quote … |
+| `/prep` | Technik, Admin | **Vorbereitung**: Checkliste mit Live-Prüfungen und Testknöpfen (Fader, Player, Alarm, Backup) |
 | `/beamer` | öffentlich (großer Bildschirm) | „Jetzt läuft“ + QR-Code + Hinweis der Organisatoren – zeigt nichts Internes |
 
 Auf allen Spezialansichten steht unten links ein kleiner **Ping** (nicht auf der Gäste-Seite).
@@ -188,3 +189,30 @@ abschalten – die App ist deshalb so gebaut, dass sie es praktisch nie erreicht
 - **Bei `429`:** alle unkritischen Anfragen ruhen bis `Retry-After` vorbei ist, Gäste bekommen „Spotify macht kurz Pause“ (und die Suche wiederholt sich
   von selbst), Steuerbefehle warten und werden automatisch wiederholt, der Player-Status bleibt auf dem letzten Stand (kein „getrennt“).
 - Anzeige der Auslastung im Admin und in der Verbindungsampel (gelb bei Pause).
+
+## Automatik (Admin → Automatik)
+
+- **Auto-Ordnung:** Die Warteschlange sortiert sich selbst sanft um – *Genre-Balance* (höchstens N gleiche Genre-Familien am Stück) und *Stimmungskurve*
+  (zu bestimmten Uhrzeiten werden Genres bevorzugt; es wird nie etwas abgelehnt). Priorisierte Songs bleiben exakt auf ihrem Platz, Fairness-Fenster begrenzt das Vordrängeln.
+- **Lückenfüller:** Ist die Warteschlange leer, während Musik läuft, reiht die App automatisch einen Song aus einer Playlist ein (keine Wiederholungen, keine gesperrten Songs).
+  Hinweis: Spotify erlaubt für neuere Apps teils keinen Zugriff auf von Spotify kuratierte Playlists – eine eigene Playlist funktioniert immer.
+- **Smarter Übergang:** Der Auto-Crossfade beginnt, wenn der Song ausklingt (Intro-/Outro-Zeiten aus Spotify, soweit für eure App verfügbar; sonst feste Vorlaufzeit).
+- **Notfall-Playlist:** Knopf in Technik/Board stoppt alles und startet die eingestellte Playlist gemischt.
+- **Alarm aufs Handy (ntfy):** meldet X32/Pi-Ausfall, Spotify-Probleme, getrennte Player, Not-Aus, leere Warteschlange, Notfall und fehlgeschlagene Backups –
+  erst nach einer einstellbaren Störungsdauer, mit „wieder in Ordnung“-Meldung. Funktioniert mit ntfy.sh und eigenem ntfy-Server (Topic, optional Token).
+- **Backups:** Datenbank wird regelmäßig (und vor jedem Live-Reset) in `/data/backups` gesichert, Download im Admin.
+  Wiederherstellen: Backup als `party.db` ins Datenverzeichnis legen, App neu starten.
+- **Zeitzone:** `TZ=Europe/Berlin` im Compose und Einstellung „Zeitzone der Party“ (für die Stimmungskurve).
+
+## Moderation im Team
+
+- **Später:** Wunsch zurückstellen; Reiter *Später*. Gäste sehen weiter „wartet“.
+- **Tastenkürzel:** frei einstellbar pro Gerät (⌨-Knopf in Moderation und Fokus-Modus): annehmen, ablehnen, später, sperren, Gründe 1–9, Vollbild.
+- **Team-Chat:** Name ist Pflicht (wird pro Gerät gemerkt); in Moderation, Technik und als Board-Baustein.
+- **Mehrere Geräte:** „● n online“ und „✋ Lisa bearbeitet gerade …“ – erster Klick gewinnt weiterhin serverseitig.
+- **Gleich dran:** Gäste sehen auf ihrem Handy „Dein Song ist als Nächstes dran!“ (mit Vibration).
+
+## Design
+
+Admin → *Design*: Veranstaltungsname, Untertitel, Logo (PNG/JPG/WebP/SVG ohne Skripte) und Akzentfarbe – wirkt auf Gäste-Seite, Beamer, Poster, Moderation und PDF.
+**Setlist als PDF:** Admin → Bericht & Export.

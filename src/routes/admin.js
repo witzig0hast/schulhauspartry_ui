@@ -7,6 +7,7 @@ import * as rq from '../requests.js';
 import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
+import { backupNow } from '../backup.js';
 
 const oauthStates = new Map(); // state -> {player, exp}
 
@@ -78,7 +79,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     applyPatch(req.body || {}, { allow });
@@ -137,6 +138,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const target = req.body?.env === 'test' ? 'test' : req.body?.env === 'live' ? 'live' : null;
     if (!target) throw new Error('Umgebung fehlt');
     if (target === 'live' && req.body?.confirm !== 'ZURÜCKSETZEN') throw new Error('Bestätigung fehlt');
+    if (target === 'live') { try { backupNow('vor-reset'); } catch { /* ohne Backup-Ordner (Tests) */ } }
     rq.resetEnv(target);
     engines[target].resetAll();
     hub.pushEnv(target, { guests: true });

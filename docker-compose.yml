@@ -6,6 +6,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      TZ: Europe/Berlin
     volumes:
       - party-data:/data
     ports:

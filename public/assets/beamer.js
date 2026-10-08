@@ -1,4 +1,4 @@
-import { h, api, connect, clear, cover, eq, qrElement, BASE, $ } from '/assets/app.js';
+import { h, api, connect, clear, cover, eq, qrElement, BASE, BRAND, $ } from '/assets/app.js';
 
 // Beamer-/Bildschirmansicht fuer die Gaeste: Jetzt laeuft + QR-Code. Oeffentlich, zeigt nichts Internes.
 try { if (!localStorage.getItem('theme')) document.documentElement.dataset.theme = 'dark'; } catch { /* egal */ }
@@ -26,6 +26,6 @@ function render() {
 
 app.append(h('div', { class: 'beamer' },
   h('div', { class: 'bm-left' }, nowBox, msgBox),
-  h('div', { class: 'bm-right' }, h('div', { class: 'bm-cta' }, h('div', { class: 'eyebrow' }, 'Mach mit'), h('h1', { class: 'bm-h' }, 'Wünsch dir was!'), h('p', { class: 'bm-sub' }, 'QR-Code scannen, Song suchen, wünschen.')), qrBox)));
+  h('div', { class: 'bm-right' }, h('div', { class: 'bm-cta' }, h('div', { class: 'eyebrow' }, 'Mach mit'), h('h1', { class: 'bm-h' }, BRAND.tagline || 'Wünsch dir was!'), h('p', { class: 'bm-sub' }, `${BRAND.name} · QR-Code scannen, Song suchen, wünschen.`)), qrBox)));
 connect({ onGuest: (g) => { state = g; render(); } });
 api('/guest/state').then((g) => { state = g; render(); }).catch(() => {});

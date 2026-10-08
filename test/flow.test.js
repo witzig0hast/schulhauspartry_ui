@@ -146,7 +146,7 @@ test('Zuruecksetzen: loescht Wuensche/Queue, behaelt Codes, live braucht Bestaet
   assert.equal((await admin.post('/api/admin/reset', { env: 'live', confirm: 'nein' })).status, 400);
   assert.equal((await admin.post('/api/admin/reset', { env: 'live', confirm: 'ZURÜCKSETZEN' })).status, 200);
   const st = (await admin.get('/api/state')).json;
-  assert.deepEqual(st.counts, { pending: 0, approved: 0, denied: 0, played: 0 });
+  assert.deepEqual(st.counts, { pending: 0, later: 0, approved: 0, denied: 0, played: 0 });
   assert.equal(st.upcomingTotal, 0);
   assert.equal(st.players[1].playing || st.players[2].playing, false);
   assert.equal((await admin.get('/api/admin/accounts')).json.accounts.length, before);

@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq } from '/assets/app.js';
-import { pendingList, upcomingList, ampel, bar, playerName } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, ampel, bar, playerName, chatPanel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let state = null;
@@ -144,13 +144,14 @@ function operationsCard() {
     b.dataset.mode = m; return b;
   });
   refs.endBtn = h('button', { onclick: onEnd }, '🏁 Ende-Modus');
+  refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, '🆘 Notfall-Playlist');
   refs.panic = h('button', { class: 'bad', style: 'height:56px;font-size:1.05rem', onclick: onPanic }, '⛔  NOT-AUS');
   refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
   return h('div', { class: 'card stack' },
     h('h2', {}, 'Betrieb'),
     h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     h('hr'),
-    refs.panic, refs.panicClear, refs.endBtn);
+    refs.panic, refs.panicClear, refs.emBtn, refs.endBtn);
 }
 
 let panicTimer = null;
@@ -167,6 +168,12 @@ async function onPanic() {
   await post('/control/panic', { nonce });
 }
 function resetPanic() { clearTimeout(panicTimer); refs.panicNonce = null; refs.panic.textContent = '⛔ NOT-AUS'; refs.panic.classList.remove('panic-armed'); }
+
+async function onEmergency() {
+  if (state.emergency) { await post('/control/emergency-clear'); return; }
+  if (!confirm('Notfall-Playlist starten? Alles andere wird gestoppt, die Notfall-Playlist läuft gemischt.')) return;
+  await post('/control/emergency');
+}
 
 async function onEnd() {
   if (state.ended) { await post('/control/end-clear'); return; }
@@ -219,11 +226,15 @@ function render() {
   refs.duckState.textContent = state.ducking.active ? 'Ducking aktiv' : 'bereit'; refs.duckState.className = `badge ${state.ducking.active ? 'warn' : ''}`;
   for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'on' : '';
   setCheck(refs.noticeOn, state.notice.enabled); setVal(refs.noticeText, state.notice.text);
+  refs.emBtn.textContent = state.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist';
   refs.endBtn.textContent = state.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus';
   refs.panicClear.classList.toggle('hidden', !state.panic);
   refs.badges.textContent = ''; 
   if (state.panic) refs.badges.append(h('span', { class: 'badge bad' }, 'NOT-AUS'));
   if (state.ended) refs.badges.append(h('span', { class: 'badge warn' }, 'ENDE'));
+  if (state.emergency) refs.badges.append(h('span', { class: 'badge bad' }, 'NOTFALL-PLAYLIST'));
+  const ck = JSON.stringify(state.chat?.map((m) => m.id) || []);
+  if (refs.chatKey !== ck) { refs.chatKey = ck; clear(refs.chatBox).append(chatPanel(state, { canWrite: true })); refs.chatSum.textContent = `Team-Chat (${state.chat?.length || 0})`; }
   clear(refs.ampel).append(ampel(state.connections));
   clear(refs.errors).append(...state.errors.map((e) => h('div', { class: 'tiny muted' }, `${new Date(e.ts).toLocaleTimeString('de-DE')} ${e.msg}`)));
   refs.pendingTitle.textContent = `Wünsche (${state.pending.length} offen)`;
@@ -233,7 +244,9 @@ function render() {
 
 refs.badges = h('span', { class: 'row' });
 refs.ampel = h('div'); refs.errors = h('div');
-const mainCards = [h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), advancedCard()];
+refs.chatBox = h('div', { style: 'margin-top:12px' }); refs.chatSum = h('summary', {}, 'Team-Chat');
+const chatCard = h('details', { class: 'card more' }, refs.chatSum, refs.chatBox);
+const mainCards = [h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), chatCard, advancedCard()];
 app.append(
   (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges] })),
   h('div', { class: 'wrap stack' }, ...mainCards),

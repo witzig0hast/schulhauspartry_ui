@@ -13,6 +13,10 @@ import { createHub } from './hub.js';
 import { guestRouter, deviceMiddleware } from './routes/guest.js';
 import { staffRouter } from './routes/staff.js';
 import { adminRouter, spotifyCallbackRouter } from './routes/admin.js';
+import { opsRouter } from './routes/ops.js';
+import { createMonitor } from './monitor.js';
+import { startBackupScheduler } from './backup.js';
+import { brandInfo, brandCss, getLogo, escapeHtml } from './brand.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -40,6 +44,7 @@ const PAGES = {
   admin: { file: 'admin.html', perm: 'viewAdmin' },
   board: { file: 'board.html', perm: 'viewBoard' },
   beamer: { file: 'beamer.html', perm: null },
+  prep: { file: 'prep.html', perm: 'viewPrep' },
   focus: { file: 'focus.html', perm: 'moderate' },
   ticker: { file: 'ticker.html', perm: 'viewTicker' },
   analytics: { file: 'analytics.html', perm: 'viewStats' },
@@ -101,12 +106,22 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   });
   app.use('/assets', express.static(path.join(PUBLIC, 'assets'), { index: false, etag: true, maxAge: 0, setHeaders: (res) => noCache(res) }));
 
+  // Eigenes Design: Logo und Farben (oeffentlich, damit Gaeste-Seite und Beamer es laden koennen)
+  app.get('/brand/logo', (req, res) => {
+    const l = getLogo();
+    if (!l) return res.status(404).type('text').send('Kein Logo');
+    res.set({ 'Content-Type': l.mime, 'Cache-Control': 'public, max-age=300', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff' }).send(Buffer.from(l.data));
+  });
+  app.get('/brand.css', (req, res) => { res.set({ 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-cache, must-revalidate', 'CDN-Cache-Control': 'no-store' }).send(brandCss()); });
+
   app.use(spotifyCallbackRouter(() => { for (const e of Object.values(engines)) e.setReal(e.realConnections, true); }));
 
   const pageCache = {};
   const renderPage = (name, base, env) => {
     pageCache[name] ??= versioned(fs.readFileSync(path.join(PUBLIC, name), 'utf8'));
-    return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env).replaceAll('__BUILD__', BUILD);
+    const b = brandInfo();
+    return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env).replaceAll('__BUILD__', BUILD)
+      .replaceAll('__BRAND_NAME__', escapeHtml(b.name)).replaceAll('__BRAND_TAG__', escapeHtml(b.tagline)).replaceAll('__BRAND_LOGO__', b.logoVer ? `/brand/logo?v=${b.logoVer}` : '').replaceAll('__BRAND_V__', escapeHtml(b.version));
   };
 
   function mount(env, base) {
@@ -118,9 +133,10 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api/guest', guestRouter(env, engines[env], hub));
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
+    router.use('/api', opsRouter(env, engines[env], hub, { engines }));
     router.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (page.perm && !can(req.session?.role, page.perm)) {
@@ -154,12 +170,15 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   app.use((req, res) => res.status(404).type('text').send('Not found'));
 
   const timers = [];
-  if (startEngines) for (const e of Object.values(engines)) e.start();
+  const monitor = createMonitor(engines);
+  let stopBackup = () => {};
+  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); }
   timers.push(setInterval(sweepSessions, 10 * 60000));
   timers.forEach((t) => t.unref?.());
 
   return {
     app, server, engines, hub,
-    async close() { timers.forEach(clearInterval); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
+    monitor,
+    async close() { timers.forEach(clearInterval); monitor.stop(); stopBackup(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
   };
 }
