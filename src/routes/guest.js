@@ -1,5 +1,5 @@
 import express from 'express';
-import { randomToken, sign, unsign, parseCookies, cookieString, isSecure, clientIp, RateLimiter } from '../security.js';
+import { randomToken, sign, unsign, parseCookies, cookieString, isSecure, clientIp, RateLimiter, cookieName, readCookie } from '../security.js';
 import { settings } from '../settings.js';
 import * as rq from '../requests.js';
 import { guestState } from '../hub.js';
@@ -12,12 +12,12 @@ const ipLimiter = new RateLimiter(900, 60000);
 const searchLimiter = new RateLimiter(25, 20000);
 
 export function deviceMiddleware(req, res, next) {
-  const raw = parseCookies(req.headers.cookie || '').dev;
+  const raw = readCookie(parseCookies(req.headers.cookie || ''), 'dev');
   let id = unsign(raw || '');
   if (!id) {
     id = randomToken(18);
     // Lax: der erste Aufruf kommt per QR-Code aus einer anderen App
-    res.append('Set-Cookie', cookieString('dev', sign(id), { maxAgeSec: 60 * 60 * 24 * 365, secure: isSecure(req), sameSite: 'Lax' }));
+    res.append('Set-Cookie', cookieString(cookieName('dev', isSecure(req)), sign(id), { maxAgeSec: 60 * 60 * 24 * 365, secure: isSecure(req), sameSite: 'Lax' }));
   }
   req.deviceId = id;
   next();

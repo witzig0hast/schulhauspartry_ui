@@ -1,6 +1,7 @@
 import { settings } from './settings.js';
 import * as rq from './requests.js';
 import { isBlacklisted, playedBlock } from './blocklist.js';
+import { isOn } from './features.js';
 
 // Lueckenfueller: ist die Warteschlange leer, waehrend Musik laeuft, wird automatisch ein Song aus der
 // Fueller-Playlist eingereiht -- ohne Wiederholungen, ohne gesperrte Songs.
@@ -11,7 +12,7 @@ export function playlistId(input) {
 
 export async function maybeFill(engine, now = Date.now()) {
   const cfg = settings().filler;
-  if (!cfg.enabled || !cfg.playlist) return null;
+  if (!cfg.enabled || !cfg.playlist || !isOn('filler')) return null;
   if (engine.state.ended || engine.state.panic || engine.state.emergency) return null;
   const playing = engine.current && engine.players[engine.current].status().playing;
   if (!playing) return null;

@@ -1,8 +1,17 @@
 import { getSetting, setSetting } from './db.js';
 import { randomToken, encrypt, decrypt } from './security.js';
+import { isFeature } from './features.js';
 
 export const DEFAULTS = {
   timezone: 'Europe/Berlin',
+  security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true },
+  voting: { votesPerWindow: 8, windowMin: 15, sortByVotes: true },
+  handover: { text: '', by: '', ts: 0 },
+  limits: { maxGain: 1, maxSongSec: 0 },
+  pause: { message: 'Kurze Pause – gleich geht’s weiter!' },
+  roleHome: {},
+  roleBoards: {},
+  features: {},   // Ueberschreibungen der Funktionsschalter (siehe features.js)
   limit: { count: 2, windowMin: 15 },
   explicitMode: 'mark', // off | mark | block
   rejectReasons: ['Zu explizit', 'Passt nicht zur Party', 'Läuft schon / wurde gespielt', 'Nicht verfügbar'],
@@ -24,7 +33,7 @@ export const DEFAULTS = {
   autoOrder: { enabled: true, maxRepeat: 2, window: 4, mood: true, phases: [] }, // phases: [{name, from:'HH:MM', to:'HH:MM', prefer:[Genre-Familien]}]
   filler: { enabled: false, playlist: '', minQueue: 1, avoidMin: 90 },
   emergency: { playlist: '', player: 1, shuffle: true },
-  notify: { enabled: false, url: 'https://ntfy.sh', topic: '', token: '', downSec: 20, events: { x32: true, spotify: true, player: true, panic: true, queueEmpty: true, emergency: true, backup: true } },
+  notify: { enabled: false, url: 'https://ntfy.sh', topic: '', token: '', downSec: 20, events: { x32: true, security: true, flood: true, spotify: true, player: true, panic: true, queueEmpty: true, emergency: true, backup: true } },
   backup: { enabled: true, everyMin: 60, keep: 24 },
   brand: { name: 'Schulhauspartry', tagline: '', accent: '', logo: null },
   ducking: { enabled: false, db: -12, attackMs: 250, releaseMs: 900 },
@@ -86,6 +95,40 @@ export function applyPatch(patch, { allow }) {
   }
   if (has('wishMessages')) {
     for (const k of ['paused', 'closed', 'ended']) if (k in (patch.wishMessages || {})) s.wishMessages[k] = str(patch.wishMessages[k], 200);
+  }
+  if (has('security')) {
+    const q = patch.security, o = s.security;
+    if ('idleMinutes' in q) o.idleMinutes = Math.round(clamp(q.idleMinutes, 5, 1440, o.idleMinutes));
+    if ('maxHours' in q) o.maxHours = Math.round(clamp(q.maxHours, 1, 72, o.maxHours));
+    if ('apiPerMin' in q) o.apiPerMin = Math.round(clamp(q.apiPerMin, 60, 5000, o.apiPerMin));
+    if ('floodPerMin' in q) o.floodPerMin = Math.round(clamp(q.floodPerMin, 5, 500, o.floodPerMin));
+    if ('adminPasskeyOnly' in q) o.adminPasskeyOnly = !!q.adminPasskeyOnly;
+    if (Array.isArray(q.adminIpAllow)) o.adminIpAllow = q.adminIpAllow.map((x) => str(x, 60).trim()).filter((x) => /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(x)).slice(0, 20);
+  }
+  if (has('voting')) {
+    const v = patch.voting;
+    if ('votesPerWindow' in v) s.voting.votesPerWindow = Math.round(clamp(v.votesPerWindow, 1, 100, s.voting.votesPerWindow));
+    if ('windowMin' in v) s.voting.windowMin = Math.round(clamp(v.windowMin, 1, 600, s.voting.windowMin));
+    if ('sortByVotes' in v) s.voting.sortByVotes = !!v.sortByVotes;
+  }
+  if (has('handover')) { s.handover = { text: str(patch.handover.text, 600), by: str(patch.handover.by, 24), ts: Date.now() }; }
+  if (has('limits')) {
+    const l = patch.limits;
+    if ('maxGain' in l) s.limits.maxGain = clamp(l.maxGain, 0.3, 1, 1);
+    if ('maxSongSec' in l) s.limits.maxSongSec = Math.round(clamp(l.maxSongSec, 0, 1800, 0));
+  }
+  if (has('pause') && 'message' in patch.pause) s.pause.message = str(patch.pause.message, 120);
+  if (has('roleHome') && patch.roleHome && typeof patch.roleHome === 'object') {
+    for (const r of ['admin', 'tech', 'mod', 'orga', 'display']) if (r in patch.roleHome) { const v = String(patch.roleHome[r]); if (v === '' || /^\/[a-z]+$/.test(v)) s.roleHome[r] = v; }
+  }
+  if (has('roleBoards') && patch.roleBoards && typeof patch.roleBoards === 'object') {
+    for (const r of ['admin', 'tech', 'mod', 'orga', 'display']) if (r in patch.roleBoards) {
+      const b = patch.roleBoards[r];
+      s.roleBoards[r] = Array.isArray(b) ? b.slice(0, 30).map((x) => ({ id: str(x.id, 20), size: ['normal', 'wide', 'full'].includes(x.size) ? x.size : 'normal' })) : null;
+    }
+  }
+  if (has('features') && patch.features && typeof patch.features === 'object') {
+    for (const [id, on] of Object.entries(patch.features)) if (isFeature(id) && typeof on === 'boolean') s.features[id] = on;
   }
   if (has('timezone')) { try { new Intl.DateTimeFormat('de-DE', { timeZone: String(patch.timezone) }); s.timezone = String(patch.timezone); } catch { /* ungueltig: ignorieren */ } }
   if (has('autoOrder')) {

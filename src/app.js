@@ -17,6 +17,7 @@ import { opsRouter } from './routes/ops.js';
 import { createMonitor } from './monitor.js';
 import { startBackupScheduler } from './backup.js';
 import { brandInfo, brandCss, getLogo, escapeHtml } from './brand.js';
+import { isOn, onList } from './features.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -45,10 +46,18 @@ const PAGES = {
   board: { file: 'board.html', perm: 'viewBoard' },
   beamer: { file: 'beamer.html', perm: null },
   prep: { file: 'prep.html', perm: 'viewPrep' },
+  stage: { file: 'stage.html', perm: 'viewStage' },
+  charts: { file: 'charts.html', perm: null },
+  wall: { file: 'wall.html', perm: null },
+  schedule: { file: 'schedule.html', perm: 'viewSchedule' },
+  activity: { file: 'activity.html', perm: 'viewActivity' },
   focus: { file: 'focus.html', perm: 'moderate' },
   ticker: { file: 'ticker.html', perm: 'viewTicker' },
   analytics: { file: 'analytics.html', perm: 'viewStats' },
 };
+
+// Seite -> Funktionsschalter (ausgeschaltete Ansichten gibt es dann nicht mehr)
+const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
   const problems = validateConfig();
@@ -121,7 +130,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     pageCache[name] ??= versioned(fs.readFileSync(path.join(PUBLIC, name), 'utf8'));
     const b = brandInfo();
     return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env).replaceAll('__BUILD__', BUILD)
-      .replaceAll('__BRAND_NAME__', escapeHtml(b.name)).replaceAll('__BRAND_TAG__', escapeHtml(b.tagline)).replaceAll('__BRAND_LOGO__', b.logoVer ? `/brand/logo?v=${b.logoVer}` : '').replaceAll('__BRAND_V__', escapeHtml(b.version));
+      .replaceAll('__BRAND_NAME__', escapeHtml(b.name)).replaceAll('__BRAND_TAG__', escapeHtml(b.tagline)).replaceAll('__BRAND_LOGO__', b.logoVer ? `/brand/logo?v=${b.logoVer}` : '').replaceAll('__BRAND_V__', escapeHtml(b.version)).replaceAll('__FEATURES__', onList().join(','));
   };
 
   function mount(env, base) {
@@ -136,14 +145,15 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));
     router.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
+      if (PAGE_FEATURE[name] && !isOn(PAGE_FEATURE[name])) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Ausgeschaltet</title><p style="font:16px system-ui;padding:2rem">Diese Ansicht ist vom Admin ausgeschaltet.</p>');
       if (page.perm && !can(req.session?.role, page.perm)) {
         if (!req.session) return res.redirect(`${base}/login?next=${encodeURIComponent(base + '/' + name)}`);
         return res.status(403).type('html').send('<!doctype html><meta charset="utf-8"><title>Kein Zugriff</title><p style="font:16px system-ui;padding:2rem">Kein Zugriff für diese Rolle. <a href="' + base + '/login">Anderen Code verwenden</a></p>');
       }
-      if (name === '' || name === 'beamer') deviceMiddleware(req, res, () => {});
+      if (name === '' || name === 'beamer' || name === 'charts' || name === 'wall') deviceMiddleware(req, res, () => {});
       res.type('html').send(renderPage(page.file, base, env));
     });
     return router;
@@ -153,7 +163,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     const prefix = settings().test.prefix;
     const p = `/${prefix}`;
     if (req.path === p || req.path.startsWith(p + '/')) {
-      if (!settings().test.enabled) return res.status(404).type('text').send('Not found');
+      if (!settings().test.enabled || !isOn('testMode')) return res.status(404).type('text').send('Not found');
       req.url = req.url.slice(p.length) || '/';
       return testRouter(req, res, next);
     }

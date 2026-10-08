@@ -77,6 +77,10 @@ export function parseCookies(header = '') {
   return out;
 }
 
+// Cookies mit __Host--Praefix (nur HTTPS, Pfad /, keine Subdomain-Verbreitung) bevorzugen
+export const cookieName = (base, secure) => (secure ? `__Host-${base}` : base);
+export const readCookie = (cookies, base) => cookies[`__Host-${base}`] || cookies[base];
+
 export function cookieString(name, value, { maxAgeSec, secure, httpOnly = true, sameSite = 'Strict' } = {}) {
   let s = `${name}=${encodeURIComponent(value)}; Path=/; SameSite=${sameSite}`;
   if (httpOnly) s += '; HttpOnly';

@@ -89,6 +89,63 @@ export function openDb(dataDir) {
       kind TEXT NOT NULL,            -- 'blacklist' | 'played' | 'explicit'
       key TEXT
     );
+    CREATE TABLE IF NOT EXISTS security_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      who TEXT,
+      ip TEXT,
+      detail TEXT
+    );
+    CREATE TABLE IF NOT EXISTS passkeys (
+      id TEXT PRIMARY KEY,
+      account_id INTEGER,
+      role TEXT NOT NULL,
+      label TEXT NOT NULL,
+      public_key BLOB NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      transports TEXT,
+      device_type TEXT,
+      backed_up INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      last_used INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS blocked_devices (
+      env TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      reason TEXT,
+      ts INTEGER NOT NULL,
+      PRIMARY KEY (env, device_id)
+    );
+    CREATE TABLE IF NOT EXISTS polls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      env TEXT NOT NULL,
+      question TEXT NOT NULL,
+      options TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL,
+      closed_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      poll_id INTEGER NOT NULL,
+      device_id TEXT NOT NULL,
+      option_idx INTEGER NOT NULL,
+      PRIMARY KEY (poll_id, device_id)
+    );
+    CREATE TABLE IF NOT EXISTS schedule (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      env TEXT NOT NULL,
+      at TEXT NOT NULL,
+      title TEXT NOT NULL,
+      note TEXT,
+      public INTEGER NOT NULL DEFAULT 0,
+      done INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS track_gain (
+      track_id TEXT PRIMARY KEY,
+      gain REAL NOT NULL,
+      ts INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS brand_assets (
       name TEXT PRIMARY KEY,
       mime TEXT NOT NULL,
@@ -126,6 +183,10 @@ export function openDb(dataDir) {
   addColumn('requests', 'genres', 'TEXT');
   addColumn('requests', 'year', 'INTEGER');
   addColumn('requests', 'popularity', 'INTEGER');
+  addColumn('requests', 'tag', 'TEXT');
+  addColumn('sessions', 'ip', 'TEXT');
+  addColumn('sessions', 'ua', 'TEXT');
+  addColumn('sessions', 'last_seen', 'INTEGER');
   return db;
 }
 

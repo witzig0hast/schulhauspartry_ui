@@ -1,6 +1,7 @@
 import { settings } from './settings.js';
 import { sendNotify } from './notify.js';
 import * as rq from './requests.js';
+import { isOn } from './features.js';
 
 // Ueberwacht Verbindungen und Betrieb und meldet Probleme per ntfy -- erst nach `downSec` Sekunden Stoerung
 // (kein Alarm bei kurzem Ruckeln) und mit "wieder ok" nach der Entwarnung.
@@ -8,7 +9,7 @@ export function createMonitor(engines) {
   const state = new Map(); // key -> { since, alerted }
   let timer;
 
-  const enabled = (ev) => settings().notify.enabled && settings().notify.events[ev] !== false;
+  const enabled = (ev) => isOn('notify') && settings().notify.enabled && settings().notify.events[ev] !== false;
 
   async function check(key, ev, env, isDown, downText, upText, { priority = 4 } = {}) {
     const k = `${env}:${key}`;

@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
 import { backupNow } from '../backup.js';
+import { FEATURES, GROUPS, allFlags } from '../features.js';
 
 const oauthStates = new Map(); // state -> {player, exp}
 
@@ -70,6 +71,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       settings: s,
       roles: ROLES.filter((x) => x !== 'admin').map((id) => ({ id, label: ROLE_LABELS[id] })),
       publicUrl: config.publicUrl,
+      features: { list: FEATURES, groups: GROUPS, flags: allFlags() },
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
       spotifyConfigured: !!(s.spotify.clientId && s.spotify.clientSecret) || !!config.spotifyClientId,
       env,
@@ -79,7 +81,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     applyPatch(req.body || {}, { allow });

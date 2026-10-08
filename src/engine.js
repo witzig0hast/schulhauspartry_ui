@@ -10,6 +10,7 @@ import { governor } from './adapters/spotify-governor.js';
 import { maybeFill } from './filler.js';
 import { applyAutoOrder } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
+import { isOn } from './features.js';
 
 const TICK_MS = 100;
 const BROADCAST_MS = 250;
@@ -195,7 +196,7 @@ export class Engine extends EventEmitter {
     const remaining = st.durationMs - st.positionMs;
     let lead = cfg.auto.startBeforeEndSec[this.current] * 1000;
     // Smart: den Uebergang beginnen, wenn der Song ausklingt (Outro), nicht mitten im Refrain
-    const meta = cfg.auto.smartOutro ? getMeta(this.trackIdOf[this.current]) : null;
+    const meta = cfg.auto.smartOutro && isOn('smartOutro') ? getMeta(this.trackIdOf[this.current]) : null;
     if (meta?.outro_ms && st.durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, st.durationMs - meta.outro_ms + 1000));
     if (remaining > lead) return;
     if (!rq.upcoming(this.env).length) return;

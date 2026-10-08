@@ -3,6 +3,7 @@ import path from 'node:path';
 import { getDb, dataDirPath, logEvent } from './db.js';
 import { settings } from './settings.js';
 import { sendNotify } from './notify.js';
+import { isOn } from './features.js';
 
 const NAME = /^party-\d{8}-\d{6}(-[a-z0-9-]+)?\.db$/;
 const dir = () => (dataDirPath ? path.join(dataDirPath, 'backups') : null);
@@ -41,7 +42,7 @@ export function startBackupScheduler() {
   const t = setInterval(() => {
     try {
       const b = settings().backup;
-      if (!b.enabled || !dir()) return;
+      if (!b.enabled || !isOn('backups') || !dir()) return;
       const last = listBackups()[0];
       if (!last || Date.now() - last.ts >= b.everyMin * 60000) backupNow('auto');
     } catch (e) {

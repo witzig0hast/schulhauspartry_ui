@@ -1,12 +1,13 @@
 import { settings, notifyToken } from './settings.js';
 import { logEvent } from './db.js';
+import { isOn } from './features.js';
 
 // Push-Benachrichtigungen ueber ntfy (https://ntfy.sh oder eigener Server). Per JSON-Publish, damit Umlaute/Emojis unproblematisch sind.
 const lastSent = new Map();
 
 export async function sendNotify({ title, message, priority = 3, tags = [], key = null, force = false, env = 'live' }) {
   const n = settings().notify;
-  if (!force && !n.enabled) return { sent: false, reason: 'ausgeschaltet' };
+  if (!force && (!n.enabled || !isOn('notify'))) return { sent: false, reason: 'ausgeschaltet' };
   if (!n.topic) return { sent: false, reason: 'Kein Topic eingetragen' };
   if (key && !force) { // gleiche Meldung nicht mehr als einmal pro Minute
     const last = lastSent.get(key) || 0;

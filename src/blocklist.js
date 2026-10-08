@@ -1,5 +1,6 @@
 import { getDb, transaction } from './db.js';
 import { settings } from './settings.js';
+import { isOn } from './features.js';
 
 const db = () => getDb();
 
@@ -60,8 +61,8 @@ export function playedBlock(env, trackId, now = Date.now()) {
 
 // Gemeinsame Pruefung fuer Suche und Wunsch. null = erlaubt.
 export function blockReason(env, track, now = Date.now()) {
-  if (isBlacklisted(track.id, track.artist)) return { kind: 'blacklist', short: 'nicht möglich', text: 'Dieser Song ist hier leider nicht möglich.' };
-  const p = playedBlock(env, track.id, now);
+  if (isOn('blacklist') && isBlacklisted(track.id, track.artist)) return { kind: 'blacklist', short: 'nicht möglich', text: 'Dieser Song ist hier leider nicht möglich.' };
+  const p = isOn('replayRule') ? playedBlock(env, track.id, now) : null;
   if (p) {
     const ago = p.agoMin < 1 ? 'gerade eben' : `vor ${p.agoMin} Min.`;
     return { kind: 'played', short: 'lief schon', text: p.waitMin == null ? `Dieser Song wurde heute schon gespielt (${ago}).` : `Dieser Song lief ${ago} – in ca. ${p.waitMin} Min. kannst du ihn wieder wünschen.` };

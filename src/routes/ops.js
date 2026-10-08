@@ -10,6 +10,7 @@ import { backupNow, listBackups, backupPath } from '../backup.js';
 import { setLogo, clearLogo } from '../brand.js';
 import { setlistPdf } from '../pdf.js';
 import { addMessage, recentMessages } from '../chat.js';
+import { requireFeature } from '../features.js';
 
 const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } };
 
@@ -124,14 +125,14 @@ export function opsRouter(env, engine, hub, { engines }) {
 
   // ----- Moderator-Chat -----
   r.get('/chat', requireAnyPerm('viewMod'), (req, res) => res.json({ chat: recentMessages(env) }));
-  r.post('/chat', requirePerm('chatWrite'), json, wrap((req, res) => {
+  r.post('/chat', requireFeature('chat'), requirePerm('chatWrite'), json, wrap((req, res) => {
     const m = addMessage(env, req.session.accountId, req.body?.name, req.body?.text);
     hub.pushEnv(env);
     res.json({ ok: true, message: m });
   }));
 
   // ----- "Wer bearbeitet gerade?" (weiche Sperre) -----
-  r.post('/mod/claim', requirePerm('moderate'), json, wrap((req, res) => {
+  r.post('/mod/claim', requireFeature('claims'), requirePerm('moderate'), json, wrap((req, res) => {
     hub.claim(env, Number(req.body?.id), req.session.label, req.session.accountId ?? 'admin');
     hub.pushEnv(env);
     res.json({ ok: true });

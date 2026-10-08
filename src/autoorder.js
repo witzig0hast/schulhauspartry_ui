@@ -1,6 +1,7 @@
 import { settings } from './settings.js';
 import * as rq from './requests.js';
 import { familiesOf } from './genres.js';
+import { isOn } from './features.js';
 
 const other = (p) => (p === 1 ? 2 : 1);
 
@@ -26,7 +27,7 @@ const primary = (r) => familiesOf(r.genres)[0];
 // Priorisierte Songs bleiben exakt auf ihrem Platz.
 export function applyAutoOrder(env, currentPlayer, date = new Date()) {
   const cfg = settings().autoOrder;
-  if (!cfg.enabled) return false;
+  if (!cfg.enabled || !isOn('autoOrder')) return false;
   const up = rq.upcoming(env);
   if (up.length < 2) return false;
   const phase = currentPhase(date);

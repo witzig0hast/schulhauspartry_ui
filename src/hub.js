@@ -1,12 +1,13 @@
 import { WebSocketServer } from 'ws';
 import { sessionFromToken, can } from './auth.js';
-import { parseCookies, unsign } from './security.js';
+import { parseCookies, unsign, readCookie } from './security.js';
 import * as rq from './requests.js';
 import { settings, guestSettings } from './settings.js';
 import { getDb } from './db.js';
 import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
+import { isOn } from './features.js';
 
 const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE id = ?').get(id)?.label || null : null);
 const publicReq = (r) => ({
@@ -54,7 +55,7 @@ export function guestState(engine, deviceId) {
   const np = engine.nowPlaying();
   const mode = engine.wishMode;
   return {
-    nowPlaying: np ? { title: np.title, artist: np.artist } : null,
+    nowPlaying: np && isOn('guestNowPlaying') ? { title: np.title, artist: np.artist } : null,
     wishMode: mode,
     ended: engine.state.ended,
     message: mode === 'open' ? null : (engine.state.ended ? g.wishMessages.ended : (mode === 'paused' ? g.wishMessages.paused : g.wishMessages.closed)),
@@ -84,13 +85,13 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
       const prefix = testPrefix();
       let env = null;
       if (url.pathname === '/ws') env = 'live';
-      else if (url.pathname === `/${prefix}/ws` && testEnabled()) env = 'test';
+      else if (url.pathname === `/${prefix}/ws` && testEnabled() && isOn('testMode')) env = 'test';
       if (!env) return socket.destroy();
       const origin = req.headers.origin;
       if (origin && !allowedOrigin(origin, req)) return socket.destroy();
       const cookies = parseCookies(req.headers.cookie || '');
-      const session = sessionFromToken(cookies.sid);
-      const deviceId = unsign(cookies.dev || '');
+      const session = sessionFromToken(readCookie(cookies, 'sid'));
+      const deviceId = unsign(readCookie(cookies, 'dev') || '');
       wss.handleUpgrade(req, socket, head, (ws) => {
         const c = { ws, env, session, deviceId, alive: true, lastGuestSend: 0 };
         clients.add(c);
