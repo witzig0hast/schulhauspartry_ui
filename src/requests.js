@@ -8,7 +8,7 @@ const mapRow = (r) => r && ({
   explicit: !!r.explicit, durationMs: r.duration_ms, createdAt: r.created_at, status: r.status,
   reason: r.reason, decidedBy: r.decided_by, decidedAt: r.decided_at, player: r.player, queuePos: r.queue_pos,
   votes: r.votes, prioritizedBy: r.prioritized_by, prioritizedAt: r.prioritized_at, playedAt: r.played_at,
-  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity,
+  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity, tag: r.tag || null,
 });
 
 export const getRequest = (id) => mapRow(db().prepare('SELECT * FROM requests WHERE id = ?').get(id));

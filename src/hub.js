@@ -7,11 +7,13 @@ import { getDb } from './db.js';
 import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
+import { isBlocked } from './devices.js';
 import { isOn } from './features.js';
+import { votingList, voteState, currentPoll, scheduleList } from './extras.js';
 
 const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE id = ?').get(id)?.label || null : null);
 const publicReq = (r) => ({
-  id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, votes: r.votes, player: r.player, status: r.status,
+  id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, tag: r.tag, votes: r.votes, player: r.player, status: r.status,
   auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
 });
 
@@ -46,6 +48,13 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   if (!can(role, 'viewMod')) { delete out.history; delete out.blacklist; delete out.later; delete out.chat; delete out.claims; delete out.online; }
   if (!can(role, 'viewMod') && !can(role, 'viewTicker')) { delete out.pending; delete out.recent; }
   out.me = extra.me ?? null;
+  out.pauseMode = !!snap.pauseMode;
+  if (can(role, 'viewMod') || can(role, 'viewFoh')) {
+    if (isOn('handover')) out.handover = settings().handover;
+    if (isOn('polls')) out.poll = currentPoll(engine.env);
+    out.maxGain = isOn('faderLimit') ? settings().limits.maxGain : 1;
+    out.schedule = isOn('viewSchedule') ? scheduleList(engine.env) : [];
+  }
   out.notice = { enabled: settings().notice.enabled, text: settings().notice.text };
   return out;
 }
@@ -62,11 +71,17 @@ export function guestState(engine, deviceId) {
     notice: g.notice,
     explicitMode: g.explicitMode,
     limit: rq.limitState(engine.env, deviceId),
+    pause: engine.state.pauseMode && isOn('pauseMode') ? settings().pause.message : null,
+    voting: isOn('voting') ? { list: votingList(engine.env, deviceId), ...voteState(engine.env, deviceId) } : null,
+    poll: currentPoll(engine.env, deviceId),
+    classTag: isOn('classTag'),
+    blocked: isBlocked(engine.env, deviceId),
     requests: rq.guestRequests(engine.env, deviceId, !!np),
   };
 }
 
-export const staffExtra = (env) => ({ pending: rq.pending(env), later: rq.later(env), recent: rq.recentDecisions(env, 40), history: rq.history(env, 40), blacklist: listBlacklist(), chat: recentMessages(env) });
+const sortedPending = (env) => { const p = rq.pending(env); return settings().voting.sortByVotes && isOn('voting') ? p.sort((a, b) => b.votes - a.votes || a.createdAt - b.createdAt) : p; };
+export const staffExtra = (env) => ({ pending: sortedPending(env), later: rq.later(env), recent: rq.recentDecisions(env, 40), history: rq.history(env, 40), blacklist: listBlacklist(), chat: recentMessages(env) });
 
 export function createHub(server, engines, { testPrefix, testEnabled, allowedOrigin }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
@@ -93,7 +108,7 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
       const session = sessionFromToken(readCookie(cookies, 'sid'));
       const deviceId = unsign(readCookie(cookies, 'dev') || '');
       wss.handleUpgrade(req, socket, head, (ws) => {
-        const c = { ws, env, session, deviceId, alive: true, lastGuestSend: 0 };
+        const c = { ws, env, session, token: readCookie(cookies, 'sid'), deviceId, alive: true, lastGuestSend: 0 };
         clients.add(c);
         ws.on('pong', () => { c.alive = true; });
         ws.on('close', () => clients.delete(c));
@@ -164,6 +179,7 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
   return {
     pushEnv, claim, release, extraFor,
     clientCount: () => clients.size,
+    kickAll: () => { for (const c of clients) if (c.session && !sessionFromToken(c.token)) c.ws.close(4001, 'revoked'); },
     kickSession: (accountId) => { for (const c of clients) if (c.session?.accountId === accountId) c.ws.close(4001, 'revoked'); },
     closeEnv: (env) => { for (const c of clients) if (c.env === env) c.ws.close(4004, 'disabled'); },
     close: () => { clearInterval(hb); wss.close(); for (const c of clients) c.ws.terminate(); },

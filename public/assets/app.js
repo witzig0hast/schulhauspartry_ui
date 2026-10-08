@@ -4,6 +4,9 @@ export const ENV = document.documentElement.dataset.env || 'live';
 export const BUILD = document.documentElement.dataset.build || '?';
 export const BRAND = { name: document.documentElement.dataset.brandName || 'Schulhauspartry', tagline: document.documentElement.dataset.brandTag || '', logo: document.documentElement.dataset.brandLogo || '' };
 
+export const FEATURES = new Set((document.documentElement.dataset.features || '').split(',').filter(Boolean));
+export const feat = (id) => FEATURES.has(id);
+
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -102,16 +105,21 @@ export function brandLogo(size = '') {
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
+  { label: 'Bühne', path: '/stage', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
+  { label: 'Zeitplan', path: '/schedule', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },
+  { label: 'Verlauf', path: '/activity', roles: ['admin', 'tech', 'mod', 'orga'], hint: 'Was ist heute passiert?', f: 'viewActivity' },
+  { label: 'Charts', path: '/charts', roles: STAFF, hint: 'Wunsch-Rangliste (öffentlich)', f: 'viewCharts' },
+  { label: 'Playlist des Abends', path: '/wall', roles: STAFF, hint: 'Was bisher lief (öffentlich)', f: 'viewWall' },
   { label: 'Technik', path: '/tech', roles: ['admin', 'tech'], main: true },
   { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
   { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
-  { label: 'Vorbereitung', path: '/prep', roles: ['admin', 'tech'], hint: 'Alles vor der Party prüfen & testen' },
-  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod'], hint: 'Schwarz, bis ein Wunsch kommt' },
-  { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Neue Wünsche & Entscheidungen live' },
-  { label: 'Analytics', path: '/analytics', roles: STAFF, hint: 'Genres, Interpreten, Zeitverlauf …' },
-  { label: 'Board', path: '/board', roles: STAFF, hint: 'Eigene Ansicht aus Bausteinen' },
-  { label: 'Anzeige', path: '/foh', roles: ['admin', 'tech', 'orga', 'display'], hint: 'FOH-Status zum Ansehen' },
-  { label: 'Beamer', path: '/beamer', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Großer Bildschirm für Gäste' },
+  { label: 'Vorbereitung', path: '/prep', roles: ['admin', 'tech'], f: 'viewPrep', hint: 'Alles vor der Party prüfen & testen' },
+  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
+  { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewTicker', hint: 'Neue Wünsche & Entscheidungen live' },
+  { label: 'Analytics', path: '/analytics', roles: STAFF, f: 'viewAnalytics', hint: 'Genres, Interpreten, Zeitverlauf …' },
+  { label: 'Board', path: '/board', roles: STAFF, f: 'viewBoard', hint: 'Eigene Ansicht aus Bausteinen' },
+  { label: 'Anzeige', path: '/foh', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewFoh', hint: 'FOH-Status zum Ansehen' },
+  { label: 'Beamer', path: '/beamer', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewBeamer', hint: 'Großer Bildschirm für Gäste' },
 ];
 
 // Kopfzeile mit Marke, Navigation, Live-Status und Abmelden
@@ -121,6 +129,7 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   const bar = h('div', { class: 'topbar' },
     h('div', { class: 'brand' }, brandLogo(), h('div', {}, h('div', { class: 'name' }, BRAND.name), h('div', { class: 'sub' }, title))),
     navBox, h('div', { class: 'grow' }), live ? pill : null, ...right,
+    nav && passkeysSupported() ? h('button', { class: 'small ghost', title: 'Passkey für dieses Gerät', 'aria-label': 'Passkey', onclick: () => openPasskeys() }, '🔑') : null,
     nav ? h('button', { class: 'small ghost', onclick: logout }, 'Abmelden') : null, themeButton());
   const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);
   bar.style.position = 'static';
@@ -128,7 +137,7 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   if (nav) {
     api('/me').then((me) => {
       const here = location.pathname.replace(/\/$/, '');
-      const mine = NAV.filter((n) => n.roles.includes(me.role));
+      const mine = NAV.filter((n) => n.roles.includes(me.role) && (!n.f || feat(n.f)));
       for (const n of mine.filter((x) => x.main)) navBox.append(h('a', { class: `navlink ${here === BASE + n.path ? 'on' : ''}`, href: BASE + n.path }, n.label));
       const more = mine.filter((x) => !x.main);
       if (more.length) {
@@ -195,4 +204,51 @@ export function connect({ onState, onGuest, onStatus, ping = false }) {
 export async function logout() {
   try { await api('/logout', { method: 'POST', body: {} }); } catch { /* egal */ }
   location.href = `${BASE}/login`;
+}
+
+
+// ---- Passkeys (WebAuthn) ----
+const b64uToBuf = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); const bin = atob(s); return Uint8Array.from(bin, (c) => c.charCodeAt(0)).buffer; };
+const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export const passkeysSupported = () => feat('passkeys') && !!window.PublicKeyCredential && !!navigator.credentials;
+
+export async function passkeyLogin() {
+  const { options, cid } = await api('/passkey/login/options', { method: 'POST', body: {} });
+  const cred = await navigator.credentials.get({ publicKey: {
+    challenge: b64uToBuf(options.challenge), rpId: options.rpId, timeout: options.timeout, userVerification: options.userVerification,
+    allowCredentials: (options.allowCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
+  } });
+  const r = cred.response;
+  return api('/passkey/login/verify', { method: 'POST', body: { cid, response: {
+    id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults?.() || {}, authenticatorAttachment: cred.authenticatorAttachment,
+    response: { clientDataJSON: bufToB64u(r.clientDataJSON), authenticatorData: bufToB64u(r.authenticatorData), signature: bufToB64u(r.signature), userHandle: r.userHandle ? bufToB64u(r.userHandle) : undefined },
+  } } });
+}
+
+export async function passkeyRegister(label) {
+  const o = await api('/passkey/register/options', { method: 'POST', body: {} });
+  const cred = await navigator.credentials.create({ publicKey: {
+    rp: o.rp, user: { ...o.user, id: b64uToBuf(o.user.id) }, challenge: b64uToBuf(o.challenge), pubKeyCredParams: o.pubKeyCredParams, timeout: o.timeout,
+    attestation: o.attestation, authenticatorSelection: o.authenticatorSelection, excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: b64uToBuf(c.id) })),
+  } });
+  const r = cred.response;
+  return api('/passkey/register/verify', { method: 'POST', body: { label, response: {
+    id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults?.() || {}, authenticatorAttachment: cred.authenticatorAttachment,
+    response: { clientDataJSON: bufToB64u(r.clientDataJSON), attestationObject: bufToB64u(r.attestationObject), transports: r.getTransports?.() || [] },
+  } } });
+}
+
+// Eigene Passkeys ansehen, anlegen, loeschen
+export async function openPasskeys() {
+  const list = h('div', { class: 'list' });
+  const label = h('input', { value: 'Mein Gerät', maxlength: 40 });
+  const paint = async () => {
+    const { passkeys } = await api('/passkey/mine');
+    clear(list).append(...(passkeys.length ? passkeys.map((p) => h('div', { class: 'item row between' }, h('div', {}, h('b', {}, p.label), h('div', { class: 'tiny muted' }, `angelegt ${new Date(p.createdAt).toLocaleDateString('de-DE')}${p.lastUsed ? ` · zuletzt ${new Date(p.lastUsed).toLocaleDateString('de-DE')}` : ''}`)),
+      h('button', { class: 'small bad', onclick: async () => { try { await api(`/passkey/${encodeURIComponent(p.id)}`, { method: 'DELETE' }); paint(); } catch (e) { toast(e.message, true); } } }, 'Löschen'))) : [h('div', { class: 'muted small' }, 'Noch kein Passkey.')]));
+  };
+  const close = modal([h('h2', {}, 'Passkey'), h('p', { class: 'small muted' }, 'Damit meldest du dich auf diesem Gerät per Fingerabdruck, Gesicht oder Geräte-PIN an – ohne Code.'), list,
+    h('label', { class: 'field' }, 'Name des Geräts', label),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: async () => { try { await passkeyRegister(label.value); toast('Passkey gespeichert'); paint(); } catch (e) { toast(e.name === 'NotAllowedError' ? 'Abgebrochen' : e.message, true); } } }, 'Für dieses Gerät anlegen'), h('button', { onclick: () => close() }, 'Schließen'))]);
+  paint().catch(() => {});
 }

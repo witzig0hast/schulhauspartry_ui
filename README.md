@@ -216,3 +216,15 @@ abschalten – die App ist deshalb so gebaut, dass sie es praktisch nie erreicht
 
 Admin → *Design*: Veranstaltungsname, Untertitel, Logo (PNG/JPG/WebP/SVG ohne Skripte) und Akzentfarbe – wirkt auf Gäste-Seite, Beamer, Poster, Moderation und PDF.
 **Setlist als PDF:** Admin → Bericht & Export.
+
+## Funktionen ein-/ausschalten (nur Admin)
+
+Admin → **Funktionen**: Jede Ansicht, jede Funktion und jeder Effekt (Animationen, Konfetti, Beamer-Effekte, Töne …) hat einen eigenen Schalter. Ausgeschaltetes ist serverseitig gesperrt (404), nicht nur versteckt. Neue Ansichten: Bühne (`/stage`), Zeitplan (`/schedule`), Verlauf (`/activity`), Wunsch-Charts (`/charts`), Playlist des Abends (`/wall`) und der Party-Rückblick (geheimer Link, Admin → Start).
+
+Neue Funktionen: Wunsch-Voting, Live-Umfragen, Klassen-Kürzel, Gast-Geräte sperren, Pausen-Modus, Stimmungs-Knopf, Übergabe-Notiz, Lautstärke-Merker pro Song, Fader-Limit, Song-Bremse, Flut-Alarm.
+
+## Sicherheit
+
+* **Passkeys** (Fingerabdruck/Gesicht/Geräte-PIN) für Admin und alle Codes: 🔑 in der Kopfzeile, Verwaltung unter Admin → Sicherheit. Bei Aussperrung: Server mit `ADMIN_RECOVERY=1` starten (Passwort-Login wieder erlaubt).
+* Optional: Admin-Login nur per Passkey, Admin nur von bestimmten IP-Adressen/Netzen, Sitzungs-Timeouts, Abmelden einzelner Geräte, Passwort ändern, Sicherheitsprotokoll, Flut-Alarm per ntfy.
+* `__Host-`-Cookies unter HTTPS, CSRF-Prüfung (Origin + Sec-Fetch-Site), Rate-Limits pro IP, gehashte Codes/Sitzungen.

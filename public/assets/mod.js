@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, cover, eq, toast, BASE, $ } from '/assets/app.js';
+import { h, api, connect, topbar, clear, cover, eq, toast, BASE, $, feat, safe } from '/assets/app.js';
 import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban } from '/assets/staff-ui.js';
 import { actionFor, openHotkeyEditor, getHotkeys, ACTIONS } from '/assets/hotkeys.js';
 
@@ -17,6 +17,7 @@ const onlineEl = h('span', { class: 'online-dots', title: 'Aktuell online' });
 const bar = topbar('Moderation', { nav: true, right: [onlineEl, roleBadge] });
 
 const nowBox = h('div', { class: 'np' });
+const state0Banner = h('div', { class: 'hidden banner-pause' }, '⏸ Pausen-Modus ist an – Wünsche sind pausiert.');
 const tabBar = h('div', { class: 'tabs' });
 const body = h('div');
 const boxes = Object.fromEntries(TABS.map((t) => [t, h('div')]));
@@ -54,6 +55,8 @@ function render() {
     : h('div', { class: 'row' }, eq(false), h('span', { class: 'muted' }, 'Gerade läuft nichts.')));
 
   renderTabs();
+  renderExtras();
+  state0Banner.classList.toggle('hidden', !state.pauseMode);
   const claimKey = JSON.stringify(state.claims || []);
   const pk = (arr) => arr.map((p) => [p.id, p.votes]);
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));
@@ -83,14 +86,33 @@ addEventListener('keydown', (e) => {
 });
 
 const hk = getHotkeys();
+// Stimmungs-Knopf, Uebergabe-Notiz, Umfrage-Stand
+let energy = 0;
+const energyRow = feat('energyKnob') ? h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Stimmung der nächsten 20 Min.:'),
+  ...[[-1, '😌 Ruhiger'], [0, 'Normal'], [1, '🔥 Mehr Energie']].map(([v, l]) => h('button', { class: 'small', onclick: safe(async () => { energy = v; await api('/control/energy', { method: 'POST', body: { v } }); toast(l); }) }, l))) : null;
+const hoText = h('textarea', { rows: 2, maxlength: 600, placeholder: 'Notiz für die nächste Schicht …' });
+const hoMeta = h('div', { class: 'tiny muted' });
+let hoShown = null;
+const handoverCard = feat('handover') ? h('div', { class: 'card stack' }, h('div', { class: 'eyebrow' }, 'Übergabe-Notiz'), hoText, hoMeta,
+  h('button', { class: 'small', onclick: safe(async () => { await api('/handover', { method: 'POST', body: { text: hoText.value } }); toast('Notiz gespeichert'); }) }, 'Speichern')) : null;
+const pollBox = h('div', { class: 'hidden card stack' });
+function renderExtras() {
+  if (handoverCard && state.handover && hoShown !== state.handover.ts && document.activeElement !== hoText) { hoShown = state.handover.ts; hoText.value = state.handover.text || ''; hoMeta.textContent = state.handover.by ? `zuletzt ${state.handover.by}` : ''; }
+  const p = state.poll;
+  pollBox.classList.toggle('hidden', !p);
+  if (p) clear(pollBox).append(h('div', { class: 'eyebrow' }, p.status === 'open' ? 'Umfrage läuft' : 'Umfrage beendet'), h('b', {}, p.question), ...p.options.map((o, i) => h('div', { class: 'row between small' }, h('span', {}, o), h('b', {}, `${p.counts[i]}`))));
+}
+void energy;
 app.append(
   bar,
   h('div', { class: 'wrap' },
     nowBox,
+    state0Banner,
     h('div', { class: 'row' },
       h('a', { class: 'btn', href: `${BASE}/focus`, title: 'Schwarzer Vollbild-Modus: zeigt nur neue Wünsche' }, '⤢ Fokus-Modus'),
       h('a', { class: 'btn', href: `${BASE}/ticker`, title: 'Live-Anzeige aller Wünsche und Entscheidungen' }, '◉ Live-Wünsche'),
       h('button', { class: 'ghost', title: 'Tastenkürzel ansehen und ändern', onclick: () => openHotkeyEditor() }, `⌨ Tasten (${hk.approve.toUpperCase()} = annehmen)`)),
+    energyRow, handoverCard, pollBox,
     h('div', { class: 'card' }, tabBar, body)),
 );
 connect({ ping: true, onStatus: (ok) => bar.setLive(ok), onState: (s) => { state = s; render(); } });

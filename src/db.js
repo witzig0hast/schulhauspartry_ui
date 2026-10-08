@@ -141,6 +141,11 @@ export function openDb(dataDir) {
       public INTEGER NOT NULL DEFAULT 0,
       done INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS vote_actions (
+      env TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      ts INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS track_gain (
       track_id TEXT PRIMARY KEY,
       gain REAL NOT NULL,

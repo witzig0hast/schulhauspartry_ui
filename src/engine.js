@@ -11,6 +11,7 @@ import { maybeFill } from './filler.js';
 import { applyAutoOrder } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
 import { isOn } from './features.js';
+import { getDb } from './db.js';
 
 const TICK_MS = 100;
 const BROADCAST_MS = 250;
@@ -30,6 +31,7 @@ export class Engine extends EventEmitter {
     this.realConnections = realConnections;
     this.gain = { 1: 1, 2: 1 };
     this.duckMul = 1;
+    this.trackMul = { 1: 1, 2: 1 }; // gemerkte Lautstaerke je Song
     this.lastSent = { 1: -1, 2: -1 };
     this.current = null;
     this.ramps = {}; // player -> {from,to,start,dur,curve}
@@ -182,7 +184,8 @@ export class Engine extends EventEmitter {
 
   applyLevels() {
     for (const p of [1, 2]) {
-      const amp = this.state.panic ? 0 : this.gain[p] * this.duckMul;
+      const cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
+      const amp = this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul;
       if (Math.abs(amp - this.lastSent[p]) < 0.002 && !(amp === 0 && this.lastSent[p] !== 0)) continue;
       this.lastSent[p] = amp;
       this.x32.setPlayerLevel(p, amp).catch((e) => this.fail('x32', e));
@@ -198,7 +201,8 @@ export class Engine extends EventEmitter {
     // Smart: den Uebergang beginnen, wenn der Song ausklingt (Outro), nicht mitten im Refrain
     const meta = cfg.auto.smartOutro && isOn('smartOutro') ? getMeta(this.trackIdOf[this.current]) : null;
     if (meta?.outro_ms && st.durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, st.durationMs - meta.outro_ms + 1000));
-    if (remaining > lead) return;
+    const braked = isOn('songLimit') && cfg.limits.maxSongSec > 0 && st.positionMs > cfg.limits.maxSongSec * 1000;
+    if (remaining > lead && !braked) return;
     if (!rq.upcoming(this.env).length) return;
     const dur = Math.max(0.5, Math.min(cfg.auto.crossfadeSec, remaining / 1000));
     this.startCrossfade(dur, cfg.auto.curve, { auto: true }).catch((e) => this.fail('auto-crossfade', e));
@@ -250,6 +254,10 @@ export class Engine extends EventEmitter {
   }
   afterTrackStart(player) {
     const cur = this.trackIdOf[player ?? this.current ?? 1];
+    if (player) {
+      const g = cur && isOn('gainMemory') ? getDb().prepare('SELECT gain FROM track_gain WHERE track_id = ?').get(cur) : null;
+      this.trackMul[player] = g ? g.gain : 1;
+    }
     if (cur) ensureMeta(this.spotify, { id: cur }).catch(() => {});
     this.afterQueueChange();
   }
@@ -292,6 +300,25 @@ export class Engine extends EventEmitter {
       then: () => { if (pauseAfter) { this.players[player].pause().catch((e) => this.fail('pause', e)); this.gain[player] = 1; } },
     };
     this.emit('change');
+  }
+
+  // Merkt sich die aktuelle Fader-Stellung fuer diesen Song (naechstes Mal startet er mit dieser Lautstaerke)
+  rememberGain(player) {
+    const tid = this.trackIdOf[player];
+    if (!tid) throw new Error('Kein Song auf diesem Player.');
+    const g = Math.max(0.1, Math.min(1, this.gain[player] * this.trackMul[player]));
+    getDb().prepare('INSERT OR REPLACE INTO track_gain(track_id, gain, ts) VALUES(?,?,?)').run(tid, g, Date.now());
+    this.trackMul[player] = g; this.gain[player] = 1;
+    this.emit('change');
+    return g;
+  }
+
+  // Pausen-Modus: Wuensche pausieren, Musik ausblenden, Hinweis fuer Gaeste und Beamer
+  setPauseMode(on) {
+    this.state.pauseMode = !!on;
+    if (on) { this.setWishMode('paused'); for (const p of [1, 2]) if (this.players[p].status().playing) this.fadeOut(p, 4); }
+    else this.setWishMode('open');
+    this.persist(); this.emit('change');
   }
 
   setGain(player, value) { delete this.ramps[player]; this.gain[player] = clamp01(value); this.emit('change'); }
@@ -409,7 +436,8 @@ export class Engine extends EventEmitter {
         ...st,
         remainingMs: Math.max(0, st.durationMs - st.positionMs),
         gain: this.gain[p],
-        level: this.state.panic ? 0 : this.gain[p] * this.duckMul,
+        level: this.state.panic ? 0 : this.gain[p] * this.trackMul[p] * this.duckMul,
+        trackMul: this.trackMul[p],
         meter: this.x32State.meters[p] || 0,
         fading: !!this.ramps[p] || (this.crossfade && (this.crossfade.from === p || this.crossfade.to === p)) || false,
       };
@@ -430,6 +458,7 @@ export class Engine extends EventEmitter {
       ended: this.state.ended,
       panic: this.state.panic,
       emergency: !!this.state.emergency,
+      pauseMode: !!this.state.pauseMode && isOn('pauseMode'),
       counts: rq.counts(this.env),
       upcoming: up.slice(0, 50),
       upcomingTotal: up.length,

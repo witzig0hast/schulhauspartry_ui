@@ -1,10 +1,10 @@
-import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock } from '/assets/app.js';
+import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock, passkeysSupported, passkeyRegister } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['start', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
-const tabLabels = { start: 'Start & Links', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+const tabs = ['start', 'funktionen', 'sicherheit', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
+const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
@@ -155,6 +155,11 @@ const PAGES = [
   ['Analytics', '/analytics', 'Genres, Interpreten, Zeitverlauf …'],
   ['Board', '/board', 'Eigene Ansicht aus Bausteinen'],
   ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
+  ['Bühne', '/stage', 'Jetzt, Nächster, Uhr, Zeitplan, Mics'],
+  ['Zeitplan', '/schedule', 'Programmpunkte mit Countdown'],
+  ['Verlauf', '/activity', 'Was ist heute passiert?'],
+  ['Wunsch-Charts', '/charts', 'Rangliste für einen Bildschirm (öffentlich)'],
+  ['Playlist des Abends', '/wall', 'Was bisher lief (öffentlich)'],
   ['Admin', '/admin', 'Diese Seite'],
 ];
 
@@ -368,10 +373,104 @@ function viewReport() {
   return h('div', { class: 'stack' }, h('div', { class: 'row' }, envSel, pdf, csv), out);
 }
 
+// ---------- Funktionen: alles einzeln an-/ausschaltbar ----------
+function viewFeatures() {
+  const { list, groups, flags } = data.features;
+  const sw = (f) => {
+    const inp = h('input', { type: 'checkbox', checked: flags[f.id], role: 'switch', 'aria-label': f.label });
+    inp.addEventListener('change', safe(async () => { await api('/admin/settings', { method: 'POST', body: { features: { [f.id]: inp.checked } } }); flags[f.id] = inp.checked; toast(`${f.label}: ${inp.checked ? 'an' : 'aus'}`); row.classList.toggle('off', !inp.checked); counter(); }));
+    const row = h('label', { class: `feat ${flags[f.id] ? '' : 'off'}` }, h('span', { class: 'switch' }, inp, h('i')), h('span', { class: 'grow' }, h('b', {}, f.label), h('span', { class: 'small muted' }, f.desc)));
+    return row;
+  };
+  const cnt = h('span', { class: 'badge' });
+  const counter = () => { const n = list.filter((f) => flags[f.id]).length; cnt.textContent = `${n} von ${list.length} an`; };
+  counter();
+  const bulk = (ids, on) => safe(async () => { await api('/admin/settings', { method: 'POST', body: { features: Object.fromEntries(ids.map((id) => [id, on])) } }); toast(on ? 'Eingeschaltet' : 'Ausgeschaltet'); await load(); });
+  const v = data.settings.voting, lim = data.settings.limits, pz = data.settings.pause;
+  const vPer = num(v.votesPerWindow, { min: 1, max: 100, class: 'num' }), vWin = num(v.windowMin, { min: 1, max: 600, class: 'num' }), vSort = chk(v.sortByVotes);
+  const gain = num(Math.round(lim.maxGain * 100), { min: 30, max: 100, class: 'num' }), maxSong = num(Math.round(lim.maxSongSec / 60 * 10) / 10, { min: 0, max: 30, step: 0.5, class: 'num' });
+  const pmsg = h('input', { value: pz.message, maxlength: 120 });
+  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
+  const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
+  const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige' };
+  return h('div', { class: 'stack', style: 'gap:16px' },
+    h('div', { class: 'card stack' },
+      h('div', { class: 'row between' }, h('h2', {}, 'Funktionen & Ansichten'), cnt),
+      h('p', { class: 'small muted' }, 'Hier schaltest du jede Funktion, Ansicht und jeden Effekt einzeln an oder aus – nur der Admin kann das. Ausgeschaltetes ist auch serverseitig gesperrt, nicht nur versteckt. Änderungen gelten sofort (Seiten ggf. neu laden).')),
+    ...Object.entries(groups).map(([gid, gname]) => {
+      const fs = list.filter((f) => f.group === gid);
+      return h('div', { class: 'card stack' },
+        h('div', { class: 'row between' }, h('h2', {}, gname), h('div', { class: 'row' }, h('button', { class: 'small', onclick: bulk(fs.map((f) => f.id), true) }, 'Alle an'), h('button', { class: 'small', onclick: bulk(fs.map((f) => f.id), false) }, 'Alle aus'))),
+        h('div', { class: 'feat-list' }, ...fs.map(sw)));
+    }),
+    h('div', { class: 'grid two' },
+      h('div', { class: 'card stack' }, h('h2', {}, 'Wunsch-Voting'),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Pro Gerät höchstens'), vPer, h('span', { class: 'small muted' }, '„+1“ in'), vWin, h('span', { class: 'small muted' }, 'Min.')),
+        h('label', { class: 'check' }, vSort, 'Beliebteste Wünsche zuerst zeigen (Gäste & Moderation)')),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Technik-Grenzen'),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Fader-Limit (nur wenn „Sicherheits-Fader-Limit“ an):'), gain, h('span', { class: 'small muted' }, '%')),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Song-Bremse (nur wenn an): Übergang spätestens nach'), maxSong, h('span', { class: 'small muted' }, 'Min. (0 = nie)')),
+        h('label', { class: 'field' }, 'Text im Pausen-Modus', pmsg)),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Startseite nach der Anmeldung'),
+        ...Object.entries(homes).map(([r, sel]) => h('label', { class: 'field' }, ROLE[r], sel)))),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => save({
+      voting: { votesPerWindow: Number(vPer.value), windowMin: Number(vWin.value), sortByVotes: vSort.checked },
+      limits: { maxGain: Number(gain.value) / 100, maxSongSec: Math.round(Number(maxSong.value) * 60) }, pause: { message: pmsg.value },
+      roleHome: Object.fromEntries(Object.entries(homes).map(([r, sel]) => [r, sel.value])),
+    }) }, 'Feineinstellungen speichern')));
+}
+
+// ---------- Sicherheit ----------
+function viewSecurity() {
+  const sec = data.settings.security;
+  const box = h('div', { class: 'stack', style: 'gap:16px' });
+  const idle = num(sec.idleMinutes, { min: 5, max: 1440, class: 'num' }), maxH = num(sec.maxHours, { min: 1, max: 72, class: 'num' });
+  const api1 = num(sec.apiPerMin, { min: 60, max: 5000, class: 'num' }), flood = num(sec.floodPerMin, { min: 5, max: 500, class: 'num' });
+  const ips = h('textarea', { rows: 3, placeholder: 'z. B. 192.168.1.0/24 (leer = überall erlaubt)' }); ips.value = (sec.adminIpAllow || []).join('\n');
+  const only = chk(sec.adminPasskeyOnly);
+  const pw = { cur: h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Aktuelles Passwort' }), n1: h('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Neues Passwort (mind. 12 Zeichen)' }) };
+  async function paint() {
+    const d = await api('/admin/security');
+    const pkList = h('div', { class: 'list' }, ...(d.passkeys.length ? d.passkeys.map((p) => h('div', { class: 'item row between' },
+      h('div', {}, h('b', {}, p.label), h('div', { class: 'tiny muted' }, `${p.role === 'admin' ? 'Head-Admin' : `Code #${p.accountId}`} · angelegt ${new Date(p.createdAt).toLocaleDateString('de-DE')}${p.lastUsed ? ` · zuletzt ${new Date(p.lastUsed).toLocaleString('de-DE')}` : ''}${p.backedUp ? ' · synchronisiert' : ''}`)),
+      h('button', { class: 'small bad', onclick: safe(async () => { if (confirm(`Passkey „${p.label}“ löschen?`)) { await api(`/passkey/${encodeURIComponent(p.id)}`, { method: 'DELETE' }); paint(); } }) }, 'Löschen'))) : [h('div', { class: 'muted small' }, 'Noch keine Passkeys.')]));
+    const label = h('input', { value: (navigator.userAgentData?.platform || 'Dieses Gerät').slice(0, 30), maxlength: 40 });
+    clear(box).append(
+      h('div', { class: 'card stack' }, h('h2', {}, '🔑 Passkeys'),
+        h('p', { class: 'small muted' }, 'Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN – nichts zum Abtippen und nicht abfangbar. Mitarbeitende registrieren ihren Passkey selbst (Schlüssel-Symbol 🔑 oben in der Leiste); hier siehst und löschst du alle.'),
+        passkeysSupported() ? h('div', { class: 'row' }, label, h('button', { class: 'primary', onclick: safe(async () => { await passkeyRegister(label.value); toast('Passkey gespeichert'); paint(); }) }, 'Passkey für dieses Gerät anlegen')) : h('div', { class: 'small muted' }, 'Dieser Browser/diese Adresse unterstützt keine Passkeys (HTTPS nötig) oder die Funktion ist ausgeschaltet.'),
+        pkList,
+        h('label', { class: 'check' }, only, 'Admin-Login NUR mit Passkey (Passwort wird für Admin gesperrt)'),
+        h('p', { class: 'small muted' }, `Admin-Passkeys: ${d.adminPasskeys}. Erst einschalten, wenn mindestens ein Passkey funktioniert. Notfall: Server mit Umgebungsvariable ADMIN_RECOVERY=1 starten – dann geht das Passwort wieder.`)),
+      h('div', { class: 'grid two' },
+        h('div', { class: 'card stack' }, h('h2', {}, 'Sitzungen & Limits'),
+          h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Abmelden nach'), idle, h('span', { class: 'small muted' }, 'Min. Inaktivität · spätestens nach'), maxH, h('span', { class: 'small muted' }, 'Std.')),
+          h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Anfragen pro Minute und Adresse (Team)'), api1),
+          h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Flut-Alarm ab'), flood, h('span', { class: 'small muted' }, 'Wünschen pro Minute')),
+          h('label', { class: 'field' }, `Admin nur von diesen Adressen (deine: ${d.yourIp})`, ips),
+          h('button', { class: 'primary', onclick: () => save({ security: { idleMinutes: Number(idle.value), maxHours: Number(maxH.value), apiPerMin: Number(api1.value), floodPerMin: Number(flood.value), adminPasskeyOnly: only.checked, adminIpAllow: ips.value.split('\n').map((x) => x.trim()).filter(Boolean) } }) }, 'Speichern'),
+          h('p', { class: 'small muted' }, 'Achtung bei der Adressliste: Trägst du dich aus, sperrst du dich aus (Notfall: ADMIN_RECOVERY=1 hebt Passkey-Pflicht auf; die Adressliste leerst du dann in der Datenbank/mit neuem Start ohne Liste).')),
+        h('div', { class: 'card stack' }, h('h2', {}, 'Admin-Passwort ändern'), pw.cur, pw.n1,
+          h('button', { onclick: safe(async () => { await api('/admin/security/password', { method: 'POST', body: { current: pw.cur.value, next: pw.n1.value } }); pw.cur.value = pw.n1.value = ''; toast('Passwort geändert – alle anderen Sitzungen beendet'); paint(); }) }, 'Ändern'))),
+      h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Aktive Anmeldungen'),
+        h('button', { class: 'small bad', onclick: safe(async () => { if (confirm('Alle anderen Geräte abmelden?')) { const o = await api('/admin/security/sessions/revoke-all', { method: 'POST', body: {} }); toast(`${o.count} abgemeldet`); paint(); } }) }, 'Alle anderen abmelden')),
+        h('div', { class: 'list' }, ...d.sessions.map((s) => h('div', { class: 'item row between' },
+          h('div', {}, h('b', {}, s.label), s.current ? h('span', { class: 'badge ok', style: 'margin-left:6px' }, 'du') : null, h('div', { class: 'tiny muted' }, `${s.role} · ${s.ip || '?'} · zuletzt ${s.lastSeen ? fmtClock(s.lastSeen) : '–'} · ${String(s.ua || '').slice(0, 60)}`)),
+          s.current ? null : h('button', { class: 'small', onclick: safe(async () => { await api(`/admin/security/sessions/${s.id}/revoke`, { method: 'POST', body: {} }); paint(); }) }, 'Abmelden'))))),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Sicherheitsprotokoll'), h('p', { class: 'small muted' }, 'Die letzten Ereignisse (Anmeldungen, Fehlversuche, Änderungen). Nur für dich sichtbar.'),
+        h('div', { class: 'list', style: 'max-height:420px;overflow:auto' }, ...d.audit.map((a) => h('div', { class: 'item row between nowrap' },
+          h('div', {}, h('b', { class: /fail|blocked|locked/.test(a.kind) ? 'bad-t' : '' }, a.kind), h('div', { class: 'tiny muted' }, `${a.who || ''} ${a.ip ? `· ${a.ip}` : ''} ${a.detail ? `· ${a.detail}` : ''}`)),
+          h('span', { class: 'tiny muted' }, new Date(a.ts).toLocaleString('de-DE')))))));
+  }
+  paint().catch((e) => toast(e.message, true));
+  return box;
+}
+
 function render() {
   drawTabs();
-  clear(body).append({ start: viewStart, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append({ start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));
+addEventListener('hashchange', () => { const t = location.hash.slice(1); if (tabs.includes(t) && t !== tab && data) { tab = t; render(); } });
 load().catch((e) => toast(e.message, true));

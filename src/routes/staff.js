@@ -30,7 +30,7 @@ export function staffRouter(env, engine, hub) {
     const out = login(String(req.body?.secret || '').slice(0, 200), clientIp(req), req.headers['user-agent']);
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     setSessionCookie(req, res, out.token);
-    res.json({ ok: true, role: out.role, home: HOME[out.role] });
+    res.json({ ok: true, role: out.role, home: settings().roleHome?.[out.role] || HOME[out.role] });
   });
   r.post('/logout', (req, res) => {
     logout(readCookie(parseCookies(req.headers.cookie || ''), 'sid'));
@@ -39,7 +39,7 @@ export function staffRouter(env, engine, hub) {
   });
   r.get('/me', (req, res) => {
     if (!req.session) return res.json({ role: null });
-    res.json({ role: req.session.role, label: req.session.label, home: HOME[req.session.role], env });
+    res.json({ role: req.session.role, label: req.session.label, home: settings().roleHome?.[req.session.role] || HOME[req.session.role], env });
   });
 
   r.get('/state', requireAnyPerm('viewMod', 'viewFoh'), (req, res) => {

@@ -54,6 +54,7 @@ export const FEATURES = [
   { id: 'notify', group: 'safety', label: 'Alarm aufs Handy (ntfy)', desc: 'Meldungen bei Problemen.', def: true },
   { id: 'backups', group: 'safety', label: 'Automatische Backups', desc: 'Regelmäßige Sicherung der Datenbank.', def: true },
   { id: 'floodAlarm', group: 'safety', label: 'Flut-Alarm', desc: 'Meldet ungewöhnlich viele Wünsche in kurzer Zeit.', def: true },
+  { id: 'passkeys', group: 'safety', label: 'Passkeys (Anmeldung per Fingerabdruck/Gesicht/PIN)', desc: 'Geräte können sich ohne Code-Eintippen anmelden. Der Admin verwaltet sie.', def: true },
   { id: 'testMode', group: 'safety', label: 'Testmodus', desc: 'Geheime Test-Umgebung.', def: true },
   // --- Effekte ---
   { id: 'animations', group: 'visual', label: 'Animationen', desc: 'Übergänge, Einblendungen und Bewegung. Aus = alles ruhig.', def: true },

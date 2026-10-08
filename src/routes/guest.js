@@ -5,6 +5,10 @@ import * as rq from '../requests.js';
 import { guestState } from '../hub.js';
 import { blockReason, logAttempt } from '../blocklist.js';
 import { RateLimitError } from '../adapters/spotify-governor.js';
+import { isOn } from '../features.js';
+import { isBlocked, noteWish } from '../devices.js';
+import { castVote, votePoll, publicData } from '../extras.js';
+import { getDb } from '../db.js';
 
 const limited = (res, e) => res.status(503).set('Retry-After', String(Math.ceil(e.retryAfterMs / 1000))).json({ error: 'Spotify macht gerade eine kurze Pause. Gleich geht’s weiter …', retryAfterSec: Math.max(1, Math.ceil(e.retryAfterMs / 1000)) });
 
@@ -34,6 +38,20 @@ export function guestRouter(env, engine, hub) {
   });
 
   r.get('/state', (req, res) => res.json(guestState(engine, req.deviceId)));
+  r.get('/public', (req, res) => res.json(publicData(env, engine, req.deviceId)));
+
+  r.post('/vote', express.json({ limit: '1kb' }), (req, res) => {
+    const out = castVote(env, Number(req.body?.id), req.deviceId);
+    if (!out.ok) return res.status(out.status).json({ error: out.error });
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, votes: out.votes, state: guestState(engine, req.deviceId) });
+  });
+  r.post('/poll-vote', express.json({ limit: '1kb' }), (req, res) => {
+    const out = votePoll(env, req.deviceId, req.body?.idx);
+    if (!out.ok) return res.status(out.status).json({ error: out.error });
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, state: guestState(engine, req.deviceId) });
+  });
 
   r.get('/search', async (req, res) => {
     const q = String(req.query.q || '').trim().replace(/\s+/g, ' ').slice(0, 80);
@@ -60,6 +78,7 @@ export function guestRouter(env, engine, hub) {
   });
 
   r.post('/request', express.json({ limit: '2kb' }), async (req, res) => {
+    if (isBlocked(env, req.deviceId)) return res.status(403).json({ error: 'Von diesem Gerät sind keine Wünsche mehr möglich.' });
     const gs = guestState(engine, req.deviceId);
     if (gs.wishMode !== 'open') return res.status(423).json({ error: gs.message, state: gs });
     const trackId = String(req.body?.trackId || '');
@@ -73,6 +92,11 @@ export function guestRouter(env, engine, hub) {
     if (br) { logAttempt(env, br.kind, track.id); return res.status(403).json({ error: br.text }); }
 
     const out = rq.submitWish(env, track, req.deviceId);
+    if (out.result === 'created') {
+      noteWish(env);
+      const tag = isOn('classTag') ? String(req.body?.tag || '').trim().slice(0, 12).replace(/[^\p{L}\p{N} ._-]/gu, '') : '';
+      if (tag) getDb().prepare('UPDATE requests SET tag = ? WHERE id = ?').run(tag, out.request.id);
+    }
     if (out.result === 'limit') {
       const min = Math.ceil(out.limit.retryAfterMs / 60000);
       return res.status(429).json({ error: `Du hast dein Limit erreicht. Versuch es in ca. ${min} Min. wieder.`, limit: out.limit });

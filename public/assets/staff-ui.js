@@ -1,4 +1,4 @@
-import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon } from '/assets/app.js';
+import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon, feat } from '/assets/app.js';
 import { actionFor } from '/assets/hotkeys.js';
 
 export const playerName = (n) => `Player ${n}`;
@@ -41,7 +41,8 @@ export async function ban(body, label, onAfter) {
 export function banMenu(r, onAfter, reason = '') {
   const menu = h('div', { class: 'reasons hidden' },
     h('button', { class: 'outline-bad', onclick: () => ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason }, `„${r.title}“`, onAfter) }, '⛔ Song sperren'),
-    ...(r.artists || []).map((a) => h('button', { class: 'outline-bad', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren? Alle Songs von ${a} sind dann nicht mehr wünschbar.`)) ban({ kind: 'artist', artistName: a, reason }, a, onAfter); } }, `⛔ Interpret: ${a}`)));
+    ...(r.artists || []).map((a) => h('button', { class: 'outline-bad', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren? Alle Songs von ${a} sind dann nicht mehr wünschbar.`)) ban({ kind: 'artist', artistName: a, reason }, a, onAfter); } }, `⛔ Interpret: ${a}`)),
+    feat('deviceBlock') && r.status === 'pending' ? h('button', { class: 'outline-bad', title: 'Dieses Gast-Handy kann nichts mehr wünschen', onclick: () => { if (confirm('Dieses Gast-Gerät sperren? Offene Wünsche davon werden abgelehnt.')) safe(async () => { await api("/mod/device/block", { method: 'POST', body: { requestId: r.id } }); toast('Gerät gesperrt'); onAfter?.(); })(); } }, '🚫 Gerät sperren') : null);
   return menu;
 }
 
@@ -94,6 +95,7 @@ export function pendingList(state, { canAct, assign, onAfter, list = 'pending', 
         h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)),
         h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
           r.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'Explicit') : null,
+          r.tag ? h('span', { class: 'badge', title: 'Klasse/Gruppe laut Gast' }, r.tag) : null,
           r.votes > 1 ? h('span', { class: 'badge ink' }, `+${r.votes - 1}`) : null,
           h('span', { class: 'muted tiny' }, age < 1 ? 'gerade eben' : `vor ${age} Min.`))),
       claim && claim.by !== me ? h('div', { class: 'claim-tag' }, `✋ ${claim.label} bearbeitet gerade …`) : null,

@@ -1,4 +1,5 @@
 import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, BRAND, $ } from '/assets/app.js';
+import { confetti, stagger, flash } from '/assets/motion.js';
 
 const app = $('#app');
 let state = null;
@@ -13,6 +14,10 @@ const dots = h('div', { class: 'meter-dots' });
 const limitEl = h('div', { class: 'small muted' });
 const msgEl = h('div', { class: 'card hidden' });
 const mine = h('div', { class: 'list' });
+const tagInput = h('input', { type: 'text', maxlength: 12, placeholder: 'Klasse / Gruppe (optional, z. B. 8b)', autocomplete: 'off', class: 'hidden', 'aria-label': 'Klasse oder Gruppe' });
+const pauseEl = h('div', { class: 'card pause-card hidden' });
+const pollEl = h('div', { class: 'card stack poll-card hidden' });
+const voteEl = h('div', { class: 'card stack hidden' });
 const mineWrap = h('div', { class: 'card stack hidden' }, h('h2', {}, 'Deine Wünsche'), mine);
 
 const NOTICE_KEY = 'noticeSeen';
@@ -49,9 +54,49 @@ function renderSoon() {
   if (key !== lastSoon) { lastSoon = key; try { navigator.vibrate?.([120, 80, 120]); } catch { /* egal */ } }
 }
 
+function renderPoll() {
+  const p = state.poll;
+  pollEl.classList.toggle('hidden', !p);
+  if (!p) return;
+  const open = p.status === 'open';
+  clear(pollEl).append(h('div', { class: 'eyebrow' }, open ? 'Umfrage' : 'Ergebnis'), h('b', { style: 'font-size:1.05rem' }, p.question),
+    ...p.options.map((o, i) => {
+      const pct = p.total ? Math.round(100 * p.counts[i] / p.total) : 0;
+      return h('button', { class: `poll-opt ${p.mine === i ? 'mine' : ''}`, disabled: !open, onclick: async () => {
+        try { const out = await api('/guest/poll-vote', { method: 'POST', body: { idx: i } }); state = out.state; render(); } catch (e) { toast(e.message, true); }
+      } }, h('i', { style: `width:${open && p.mine == null ? 0 : pct}%` }), h('span', {}, o), open && p.mine == null ? null : h('b', {}, `${pct} %`));
+    }),
+    h('div', { class: 'tiny muted' }, open ? (p.mine == null ? 'Tippe auf deine Antwort.' : 'Danke fürs Abstimmen!') : `${p.total} Stimmen`));
+}
+
+function renderVoting() {
+  const v = state.voting;
+  const show = !!v && v.list.length > 0 && state.wishMode === 'open';
+  voteEl.classList.toggle('hidden', !show);
+  if (!show) return;
+  clear(voteEl).append(h('div', { class: 'row between' }, h('h2', {}, 'Das wünschen sich andere'), h('span', { class: 'tiny muted' }, v.remaining > 0 ? `Noch ${v.remaining} „+1“ frei` : 'Gerade genug abgestimmt')),
+    h('div', { class: 'list' }, ...v.list.map((r) => h('div', { class: 'item row between nowrap' },
+      h('div', { class: 'req-main grow' }, cover(r.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))),
+      h('button', { class: `vote-btn ${r.mine ? 'mine' : ''}`, disabled: r.mine || v.remaining <= 0, 'aria-label': `+1 für ${r.title}`, onclick: async (e) => {
+        try { const out = await api('/guest/vote', { method: 'POST', body: { id: r.id } }); state = out.state; render(); flash(e.target.closest('.item'), 'flash'); } catch (er) { toast(er.message, true); }
+      } }, r.mine ? '✓' : '+1', h('b', {}, String(r.votes)))))));
+  stagger(voteEl.lastChild, 30);
+}
+
+let lastPlaying = '';
 function render() {
   if (!state) return;
   renderSoon();
+  renderPoll();
+  renderVoting();
+  pauseEl.classList.toggle('hidden', !state.pause);
+  if (state.pause) clear(pauseEl).append(h('div', { class: 'big-ic' }, '⏸'), h('b', {}, state.pause));
+  tagInput.classList.toggle('hidden', !state.classTag || state.wishMode !== 'open');
+  // Konfetti, wenn der eigene Wunsch gerade spielt
+  const playing = state.requests.find((r) => r.status === 'playing');
+  const pk = playing ? `${playing.id}` : '';
+  if (pk && pk !== lastPlaying && lastPlaying !== null) confetti({ y: 0.25 });
+  lastPlaying = pk || '';
   if (state.nowPlaying) {
     nowEl.classList.remove('hidden');
     clear(nowEl).append(h('div', { class: 'hero' }, cover(state.nowPlaying.title), h('div', { class: 'meta' },
@@ -107,7 +152,7 @@ async function search() {
 
 async function send(t) {
   try {
-    const out = await api('/guest/request', { method: 'POST', body: { trackId: t.id } });
+    const out = await api('/guest/request', { method: 'POST', body: { trackId: t.id, tag: tagInput.value } });
     state = out.state; render();
     input.value = ''; clear(results);
     if (out.duplicate) {
@@ -127,11 +172,12 @@ app.append(
   h('div', { class: 'wrap narrow' },
     h('div', { class: 'guest-hero' }, h('div', { class: 'eyebrow' }, BRAND.tagline || 'Mach mit'), h('h2', {}, 'Wünsch dir was!')),
     soonBox, nowEl, msgEl,
-    h('div', { class: 'card stack' }, searchbox, h('div', { class: 'row between' }, limitEl, dots), results),
-    mineWrap),
+    pauseEl, pollEl,
+    h('div', { class: 'card stack' }, searchbox, tagInput, h('div', { class: 'row between' }, limitEl, dots), results),
+    mineWrap, voteEl),
 );
 
 // Erst den State holen (setzt das Geraete-Cookie), dann den WebSocket oeffnen
-api('/guest/state').then((s) => { state = s; render(); maybeShowNotice(); }).catch(() => {}).finally(() => {
+api('/guest/state').then((s) => { state = s; lastPlaying = s.requests.find((r) => r.status === 'playing')?.id ? String(s.requests.find((r) => r.status === 'playing').id) : ''; render(); maybeShowNotice(); }).catch(() => {}).finally(() => {
   connect({ onStatus: (ok) => bar.setLive(ok), onGuest: (g) => { state = g; render(); } });
 });

@@ -459,3 +459,105 @@ html.fx, html.fx body { background: #000 !important; color: #fff; }
 .brand .logo.has-img { background: #fff; padding: 3px; }
 
 .fx-btns + .fx-later, .fx-later { height: clamp(56px, 9vh, 90px); font-size: clamp(1.1rem, 2vw, 1.7rem); border-radius: 18px; background: #151518; color: #cfcfd3; border: 1px solid #34343a; width: 100%; }
+
+/* ============================================================
+   Erweiterungen: Funktionsschalter, Passkeys, Voting, Umfragen, neue Ansichten, Effekte
+   ============================================================ */
+.wrap.narrow-wide { max-width: 860px; }
+.mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.bad-t { color: var(--bad); }
+.or { text-align: center; color: var(--muted); font-size: .82rem; display: flex; align-items: center; gap: 12px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.passkey-btn { height: 52px; font-size: 1rem; border-radius: var(--radius-sm); border: 1.5px solid var(--ink); background: transparent; color: var(--text); font-weight: 650; cursor: pointer; transition: background .15s, color .15s, transform .12s; }
+.passkey-btn:hover { background: var(--ink); color: var(--ink-text); }
+.passkey-btn:active { transform: scale(.98); }
+
+/* Funktionsschalter */
+.feat-list { display: grid; gap: 4px; }
+.feat { display: flex; gap: 14px; align-items: center; padding: 10px 12px; border-radius: 12px; cursor: pointer; transition: background .15s, opacity .2s; }
+.feat:hover { background: var(--bg-2); }
+.feat > span:last-child { display: grid; gap: 1px; }
+.feat.off b { color: var(--muted); font-weight: 560; }
+.switch { position: relative; width: 44px; height: 26px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; width: 100%; height: 100%; }
+.switch i { position: absolute; inset: 0; border-radius: 99px; background: var(--line-2); transition: background .2s; }
+.switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .22s cubic-bezier(.3,1.4,.5,1); }
+.switch input:checked + i { background: var(--ink); }
+.switch input:checked + i::after { transform: translateX(18px); background: var(--ink-text); }
+.switch input:focus-visible + i { box-shadow: var(--ring); }
+
+/* Voting & Umfragen (Gaeste) */
+.vote-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 99px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--text); font-weight: 700; cursor: pointer; transition: transform .12s, background .15s; }
+.vote-btn b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 650; }
+.vote-btn:not(:disabled):hover { border-color: var(--ink); }
+.vote-btn:not(:disabled):active { transform: scale(.92); }
+.vote-btn.mine { background: var(--ink); color: var(--ink-text); border-color: var(--ink); }
+.vote-btn.mine b { color: inherit; opacity: .7; }
+.vote-btn:disabled { opacity: .55; cursor: default; }
+.poll-opt { position: relative; overflow: hidden; display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 46px; padding: 0 16px; border-radius: 12px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--text); font-weight: 600; cursor: pointer; text-align: left; }
+.poll-opt i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--ink) 12%, transparent); transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.poll-opt span, .poll-opt b { position: relative; }
+.poll-opt.mine { border-color: var(--ink); }
+.poll-opt:disabled { cursor: default; }
+.pause-card { display: flex; gap: 14px; align-items: center; background: var(--warn-bg); border-color: transparent; }
+.banner-pause { padding: 10px 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn); font-weight: 650; }
+
+/* Zeitplan / Verlauf */
+.item.next { border-color: var(--ink); box-shadow: var(--shadow-2); }
+.item.done { opacity: .5; text-decoration: line-through; }
+.act-deny .grow { color: var(--bad); }
+.act-play .grow { font-weight: 650; }
+
+/* Charts */
+.charts { display: grid; gap: 12px; }
+.chart-row { display: flex; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+.chart-rank { width: 2ch; font-size: 2rem; font-weight: 800; letter-spacing: -.05em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart-row:first-child .chart-rank { color: var(--text); }
+.chart-bar { height: 6px; border-radius: 99px; background: var(--bg-2); margin-top: 8px; overflow: hidden; }
+.chart-bar i { display: block; height: 100%; background: var(--ink); border-radius: 99px; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.chart-votes { text-align: right; display: grid; }
+.chart-votes b { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.chart-votes span { font-size: .75rem; color: var(--muted); }
+
+/* Buehne */
+.stage { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto auto auto; gap: 4vh; padding: 5vh 6vw; align-content: center; }
+.stage-clock { font-size: clamp(2rem, 6vw, 5rem); font-weight: 760; letter-spacing: -.04em; }
+.stage-now { align-self: center; }
+.stage-next { padding: 18px 22px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); font-size: 1.2rem; }
+.stage-sched { display: grid; gap: 8px; font-size: 1.05rem; }
+
+/* Beamer-Zusaetze */
+.bm-extra { margin-top: 4vh; display: grid; gap: 18px; }
+.bm-extra:empty { display: none; }
+.bm-pause { display: flex; gap: 22px; align-items: center; padding: 28px 32px; border-radius: 26px; background: var(--card); border: 1px solid var(--line); }
+.bm-pause-ic { font-size: clamp(2.5rem, 6vw, 5rem); }
+.bm-poll { padding: 26px 30px; border-radius: 26px; background: var(--card); border: 1px solid var(--line); display: grid; gap: 12px; }
+.bm-bar { position: relative; overflow: hidden; display: flex; justify-content: space-between; padding: 14px 18px; border-radius: 14px; background: var(--bg-2); font-size: clamp(1rem, 2vw, 1.8rem); font-weight: 650; }
+.bm-bar i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--ink) 16%, transparent); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.bm-bar span, .bm-bar b { position: relative; }
+.bm-next { display: flex; gap: 12px; align-items: baseline; font-size: clamp(1rem, 2vw, 1.8rem); }
+body.fx-aurora::before { content: ''; position: fixed; inset: -20%; z-index: -1; background: radial-gradient(40% 40% at 20% 30%, color-mix(in srgb, var(--p1) 22%, transparent), transparent 70%), radial-gradient(35% 35% at 80% 70%, color-mix(in srgb, var(--p2) 20%, transparent), transparent 70%); animation: aurora 22s ease-in-out infinite alternate; filter: blur(30px); }
+@keyframes aurora { from { transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1); } to { transform: translate3d(5%, 4%, 0) rotate(8deg) scale(1.15); } }
+
+/* Recap */
+.recap-stat { text-align: center; display: grid; gap: 2px; }
+.recap-n { font-size: clamp(2.4rem, 8vw, 4.5rem); font-weight: 800; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.recap-stat span { color: var(--muted); font-size: .85rem; }
+
+/* Bewegung */
+.confetti-cv { position: fixed; inset: 0; pointer-events: none; z-index: 9999; }
+.pop-in { animation: popin .5s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes popin { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+.flash { animation: flash 1s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ink) 35%, transparent); background-color: color-mix(in srgb, var(--ink) 8%, var(--card)); } 100% { box-shadow: 0 0 0 14px transparent; } }
+.card.rise, .guest-hero { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+button { transition: transform .12s ease, background-color .15s, border-color .15s, opacity .15s; }
+button:not(:disabled):active { transform: scale(.97); }
+.modal { animation: popin .28s cubic-bezier(.2,.9,.3,1.2) both; }
+.modal-back { animation: fade .2s both; }
+.toast { animation: rise .3s both; }
+
+/* Admin hat Animationen ausgeschaltet oder das Geraet will weniger Bewegung -> alles ruhig */
+html.no-anim *, html.no-anim *::before, html.no-anim *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+html.no-confetti .confetti-cv { display: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .confetti-cv { display: none !important; } }

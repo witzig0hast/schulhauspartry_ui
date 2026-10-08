@@ -14,6 +14,10 @@ import { guestRouter, deviceMiddleware } from './routes/guest.js';
 import { staffRouter } from './routes/staff.js';
 import { adminRouter, spotifyCallbackRouter } from './routes/admin.js';
 import { opsRouter } from './routes/ops.js';
+import { securityRouter } from './routes/security.js';
+import { extrasRouter } from './routes/extras.js';
+import { RateLimiter, clientIp } from './security.js';
+import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
 import { startBackupScheduler } from './backup.js';
 import { brandInfo, brandCss, getLogo, escapeHtml } from './brand.js';
@@ -133,6 +137,16 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
       .replaceAll('__BRAND_NAME__', escapeHtml(b.name)).replaceAll('__BRAND_TAG__', escapeHtml(b.tagline)).replaceAll('__BRAND_LOGO__', b.logoVer ? `/brand/logo?v=${b.logoVer}` : '').replaceAll('__BRAND_V__', escapeHtml(b.version)).replaceAll('__FEATURES__', onList().join(','));
   };
 
+  // Allgemeine Bremse pro IP (der Admin stellt sie ein); Gaeste-Routen haben zusaetzlich eigene Limits
+  const apiLimiter = { check: (ip) => limiterFor(ip) };
+  const limiters = new Map();
+  function limiterFor(ip) {
+    const max = settings().security.apiPerMin;
+    let l = limiters.get(max);
+    if (!l) { l = new RateLimiter(max, 60000); limiters.set(max, l); }
+    return l.check(ip);
+  }
+
   function mount(env, base) {
     const router = express.Router();
     router.use(attachSession);
@@ -140,11 +154,19 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
 
     router.use('/api', (req, res, next) => { req.env = env; next(); });
     router.use('/api/guest', guestRouter(env, engines[env], hub));
+    router.use('/api', (req, res, next) => (req.path.startsWith('/guest') || apiLimiter.check(clientIp(req)).ok ? next() : res.status(429).json({ error: 'Zu viele Anfragen. Bitte kurz warten.' })));
+    router.use('/api', securityRouter(env, engines[env], hub));
+    router.use('/api', extrasRouter(env, engines[env], hub));
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));
     router.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 
+    router.get('/recap/:token', (req, res) => {
+      if (!isOn('viewRecap') || !recapValid(req.params.token)) return res.status(404).type('text').send('Not found');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.type('html').send(renderPage('recap.html', base, env));
+    });
     router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
@@ -184,6 +206,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   let stopBackup = () => {};
   if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); }
   timers.push(setInterval(sweepSessions, 10 * 60000));
+  timers.push(setInterval(() => { for (const l of limiters.values()) l.sweep(); }, 60000));
   timers.forEach((t) => t.unref?.());
 
   return {

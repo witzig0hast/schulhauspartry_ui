@@ -1,12 +1,13 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { requirePerm, createAccount, revokeAccount, deleteAccount, ROLES, ROLE_LABELS } from '../auth.js';
+import { requirePerm, adminIpGuard, clientIp, createAccount, revokeAccount, deleteAccount, ROLES, ROLE_LABELS } from '../auth.js';
 import { getDb } from '../db.js';
 import { applyPatch, publicSettings, settings, setPlayerToken } from '../settings.js';
 import * as rq from '../requests.js';
 import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
+import { audit } from '../audit.js';
 import { backupNow } from '../backup.js';
 import { FEATURES, GROUPS, allFlags } from '../features.js';
 
@@ -63,7 +64,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   const r = express.Router();
   const json = express.json({ limit: '16kb' });
   const adm = requirePerm('viewAdmin');
-  r.use('/admin', adm, json);
+  r.use('/admin', adminIpGuard, adm, json);
 
   r.get('/admin/settings', (req, res) => {
     const s = publicSettings();
@@ -85,6 +86,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     applyPatch(req.body || {}, { allow });
+    audit('settings.change', req.session.label, clientIp(req), Object.keys(req.body || {}).filter((k) => allow.includes(k)).join(', ').slice(0, 200));
     if (settings().test.realEnv !== before) setRealEnv();
     if (!settings().test.enabled && beforeEnabled) hub.closeEnv('test');
     for (const e of Object.keys(engines)) engines[e].syncSettings();
@@ -102,10 +104,11 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
   r.post('/admin/accounts', wrap((req, res) => {
     const out = createAccount(String(req.body?.role), String(req.body?.label || ''));
+    audit('account.create', req.session.label, clientIp(req), `${out.role} #${out.id}`);
     res.json({ ok: true, ...out }); // Klartext-Code nur dieses eine Mal
   }));
-  r.post('/admin/accounts/:id/revoke', wrap((req, res) => { revokeAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));
-  r.delete('/admin/accounts/:id', wrap((req, res) => { deleteAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));
+  r.post('/admin/accounts/:id/revoke', wrap((req, res) => { audit('account.revoke', req.session.label, clientIp(req), `#${req.params.id}`); revokeAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));
+  r.delete('/admin/accounts/:id', wrap((req, res) => { audit('account.delete', req.session.label, clientIp(req), `#${req.params.id}`); deleteAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));
   r.get('/admin/accounts/:id/decisions', (req, res) => {
     const rows = getDb().prepare(`SELECT id, title, artist, status, reason, decided_at FROM requests WHERE decided_by = ? AND env = ? ORDER BY decided_at DESC LIMIT 200`).all(Number(req.params.id), env);
     res.json({ decisions: rows });
@@ -141,6 +144,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     if (!target) throw new Error('Umgebung fehlt');
     if (target === 'live' && req.body?.confirm !== 'ZURÜCKSETZEN') throw new Error('Bestätigung fehlt');
     if (target === 'live') { try { backupNow('vor-reset'); } catch { /* ohne Backup-Ordner (Tests) */ } }
+    audit('reset', req.session.label, clientIp(req), target);
     rq.resetEnv(target);
     engines[target].resetAll();
     hub.pushEnv(target, { guests: true });

@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq } from '/assets/app.js';
+import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat } from '/assets/app.js';
 import { pendingList, upcomingList, ampel, bar, playerName, chatPanel } from '/assets/staff-ui.js';
 
 const app = $('#app');
@@ -57,6 +57,7 @@ function playerCard(n) {
         h('div', { class: 'row between small' }, h('span', { class: 'eyebrow' }, 'Fader'), r.faderVal), r.fader,
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Fade-Zeit'), r.fadeSec, h('span', { class: 'small muted' }, 's')),
         presetRow(r.fadeSec),
+        feat('gainMemory') ? h('button', { title: 'Der nächste Start dieses Songs nutzt diese Lautstärke', onclick: () => safe(async () => { const o = await api('/control/gain-remember', { method: 'POST', body: { player: n } }); toast(`Lautstärke gemerkt (${Math.round(o.gain * 100)} %)`); })() }, '📌 Lautstärke für diesen Song merken') : null,
         h('button', { class: 'primary', onclick: () => post('/control/fade-in', { player: n, sec: Number(r.fadeSec.value) }) }, '↗ Einblenden (Fade-In)'))));
 }
 
@@ -147,10 +148,18 @@ function operationsCard() {
   refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, '🆘 Notfall-Playlist');
   refs.panic = h('button', { class: 'bad', style: 'height:56px;font-size:1.05rem', onclick: onPanic }, '⛔  NOT-AUS');
   refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
+  refs.pauseBtn = feat('pauseMode') ? h('button', { onclick: () => post('/control/pause-mode', { on: !state?.pauseMode }) }, '⏸ Pausen-Modus') : null;
+  const pq = h('input', { placeholder: 'Frage an die Gäste (z. B. Nächster Stil?)', maxlength: 120 });
+  const pOpts = [h('input', { placeholder: 'Antwort 1', maxlength: 40 }), h('input', { placeholder: 'Antwort 2', maxlength: 40 }), h('input', { placeholder: 'Antwort 3 (optional)', maxlength: 40 })];
+  refs.pollInfo = h('div', { class: 'small muted' });
+  const pollCard = feat('polls') ? h('details', { class: 'more' }, h('summary', {}, '📊 Live-Umfrage'), h('div', { class: 'stack', style: 'margin-top:10px' }, pq, ...pOpts,
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => safe(async () => { await api('/poll', { method: 'POST', body: { question: pq.value, options: pOpts.map((i) => i.value) } }); toast('Umfrage gestartet'); })() }, 'Starten'),
+      h('button', { onclick: () => post('/poll/close') }, 'Beenden')), refs.pollInfo)) : null;
   return h('div', { class: 'card stack' },
     h('h2', {}, 'Betrieb'),
     h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     h('hr'),
+    refs.pauseBtn, pollCard,
     refs.panic, refs.panicClear, refs.emBtn, refs.endBtn);
 }
 
@@ -226,6 +235,8 @@ function render() {
   refs.duckState.textContent = state.ducking.active ? 'Ducking aktiv' : 'bereit'; refs.duckState.className = `badge ${state.ducking.active ? 'warn' : ''}`;
   for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'on' : '';
   setCheck(refs.noticeOn, state.notice.enabled); setVal(refs.noticeText, state.notice.text);
+  if (refs.pauseBtn) refs.pauseBtn.textContent = state.pauseMode ? '▶ Pause beenden' : '⏸ Pausen-Modus';
+  if (refs.pollInfo) refs.pollInfo.textContent = state.poll ? `${state.poll.question} – ${state.poll.options.map((o, i) => `${o}: ${state.poll.counts[i]}`).join(' · ')}${state.poll.status === 'open' ? '' : ' (beendet)'}` : 'Keine Umfrage aktiv.';
   refs.emBtn.textContent = state.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist';
   refs.endBtn.textContent = state.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus';
   refs.panicClear.classList.toggle('hidden', !state.panic);
