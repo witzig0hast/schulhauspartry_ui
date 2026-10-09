@@ -9,8 +9,8 @@ import { adminIpAllowed } from './ipallow.js';
 import { sendNotify } from './notify.js';
 import { config } from './config.js';
 
-export const ROLES = ['admin', 'tech', 'mod', 'orga', 'display'];
-export const ROLE_LABELS = { admin: 'Head-Admin', tech: 'Technik', mod: 'Moderation', orga: 'Orga (nur lesen)', display: 'FOH-Anzeige' };
+export const ROLES = ['admin', 'tech', 'mod', 'orga', 'display', 'light'];
+export const ROLE_LABELS = { admin: 'Head-Admin', tech: 'Technik', mod: 'Moderation', orga: 'Orga (nur lesen)', display: 'FOH-Anzeige', light: 'Lichttechnik (nur lesen)' };
 
 // Wer darf was
 export const PERMS = {
@@ -21,6 +21,7 @@ export const PERMS = {
   viewStats: ['admin', 'tech', 'mod', 'orga', 'display'],
   viewTicker: ['admin', 'tech', 'orga', 'display'],
   viewPrep: ['admin', 'tech'],
+  viewLight: ['admin', 'tech', 'orga', 'display', 'light'],
   viewStage: ['admin', 'tech', 'mod', 'orga', 'display'],
   viewSchedule: ['admin', 'tech', 'mod', 'orga', 'display'],
   viewActivity: ['admin', 'tech', 'mod', 'orga'],
@@ -31,7 +32,7 @@ export const PERMS = {
   control: ['admin', 'tech'],       // Fader, Fades, Crossfade, Ducking, Not-Aus, Ende
   wishMode: ['admin', 'tech'],      // Wuensche sperren / pausieren
   notice: ['admin', 'tech'],        // Orga-Hinweis
-  connections: ['admin', 'tech', 'display'], // Mics, Verbindungsampel
+  connections: ['admin', 'tech', 'display', 'light'], // Mics, Verbindungsampel
 };
 export const can = (role, perm) => !!role && (PERMS[perm] || []).includes(role);
 

@@ -160,6 +160,7 @@ const PAGES = [
   ['Board', '/board', 'Eigene Ansicht aus Bausteinen'],
   ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
   ['Bühne', '/stage', 'Jetzt, Nächster, Uhr, Zeitplan, Mics'],
+  ['Licht', '/light', 'Lichttechnik: jetzt, nächste Songs mit Genre, Übergang-Countdown'],
   ['Zeitplan', '/schedule', 'Programmpunkte mit Countdown'],
   ['Verlauf', '/activity', 'Was ist heute passiert?'],
   ['Wunsch-Charts', '/charts', 'Rangliste für einen Bildschirm (öffentlich)'],
@@ -394,9 +395,9 @@ function viewFeatures() {
   const vPer = num(v.votesPerWindow, { min: 1, max: 100, class: 'num' }), vWin = num(v.windowMin, { min: 1, max: 600, class: 'num' }), vSort = chk(v.sortByVotes);
   const gain = num(Math.round(lim.maxGain * 100), { min: 30, max: 100, class: 'num' }), maxSong = num(Math.round(lim.maxSongSec / 60 * 10) / 10, { min: 0, max: 30, step: 0.5, class: 'num' });
   const pmsg = h('input', { value: pz.message, maxlength: 120 });
-  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
-  const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
-  const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige' };
+  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/light', 'Licht'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
+  const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display', 'light'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
+  const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige', light: 'Lichttechnik' };
   return h('div', { class: 'stack', style: 'gap:16px' },
     h('div', { class: 'card stack' },
       h('div', { class: 'row between' }, h('h2', {}, 'Funktionen & Ansichten'), cnt),

@@ -52,6 +52,7 @@ const PAGES = {
   beamer: { file: 'beamer.html', perm: null },
   prep: { file: 'prep.html', perm: 'viewPrep' },
   stage: { file: 'stage.html', perm: 'viewStage' },
+  light: { file: 'light.html', perm: 'viewLight' },
   charts: { file: 'charts.html', perm: null },
   wall: { file: 'wall.html', perm: null },
   schedule: { file: 'schedule.html', perm: 'viewSchedule' },
@@ -62,7 +63,7 @@ const PAGES = {
 };
 
 // Seite -> Funktionsschalter (ausgeschaltete Ansichten gibt es dann nicht mehr)
-const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
+const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
   const problems = validateConfig();
@@ -169,7 +170,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.type('html').send(renderPage('recap.html', base, env));
     });
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|charts|wall|schedule|activity)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (PAGE_FEATURE[name] && !isOn(PAGE_FEATURE[name])) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Ausgeschaltet</title><p style="font:16px system-ui;padding:2rem">Diese Ansicht ist vom Admin ausgeschaltet.</p>');

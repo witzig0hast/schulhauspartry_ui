@@ -219,7 +219,7 @@ Admin → *Design*: Veranstaltungsname, Untertitel, Logo (PNG/JPG/WebP/SVG ohne 
 
 ## Funktionen ein-/ausschalten (nur Admin)
 
-Admin → **Funktionen**: Jede Ansicht, jede Funktion und jeder Effekt (Animationen, Konfetti, Beamer-Effekte, Töne …) hat einen eigenen Schalter. Ausgeschaltetes ist serverseitig gesperrt (404), nicht nur versteckt. Neue Ansichten: Bühne (`/stage`), Zeitplan (`/schedule`), Verlauf (`/activity`), Wunsch-Charts (`/charts`), Playlist des Abends (`/wall`) und der Party-Rückblick (geheimer Link, Admin → Start).
+Admin → **Funktionen**: Jede Ansicht, jede Funktion und jeder Effekt (Animationen, Konfetti, Beamer-Effekte, Töne …) hat einen eigenen Schalter. Ausgeschaltetes ist serverseitig gesperrt (404), nicht nur versteckt. Neue Ansichten: Licht (`/light`, eigene Rolle „Lichttechnik" nur lesen), Bühne (`/stage`), Zeitplan (`/schedule`), Verlauf (`/activity`), Wunsch-Charts (`/charts`), Playlist des Abends (`/wall`) und der Party-Rückblick (geheimer Link, Admin → Start).
 
 Neue Funktionen: Wunsch-Voting, Live-Umfragen, Klassen-Kürzel, Gast-Geräte sperren, Pausen-Modus, Stimmungs-Knopf, Übergabe-Notiz, Lautstärke-Merker pro Song, Fader-Limit, Song-Bremse, Flut-Alarm.
 

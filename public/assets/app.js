@@ -105,6 +105,7 @@ export function brandLogo(size = '') {
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
+  { label: 'Licht', path: '/light', roles: ['admin', 'tech', 'orga', 'display', 'light'], hint: 'Für die Lichttechnik: jetzt, nächste Songs, Übergang', f: 'viewLight', main: false },
   { label: 'Bühne', path: '/stage', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
   { label: 'Zeitplan', path: '/schedule', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },
   { label: 'Verlauf', path: '/activity', roles: ['admin', 'tech', 'mod', 'orga'], hint: 'Was ist heute passiert?', f: 'viewActivity' },

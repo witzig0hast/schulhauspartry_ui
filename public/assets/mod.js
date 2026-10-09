@@ -86,10 +86,7 @@ addEventListener('keydown', (e) => {
 });
 
 const hk = getHotkeys();
-// Stimmungs-Knopf, Uebergabe-Notiz, Umfrage-Stand
-let energy = 0;
-const energyRow = feat('energyKnob') ? h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Stimmung der nächsten 20 Min.:'),
-  ...[[-1, '😌 Ruhiger'], [0, 'Normal'], [1, '🔥 Mehr Energie']].map(([v, l]) => h('button', { class: 'small', onclick: safe(async () => { energy = v; await api('/control/energy', { method: 'POST', body: { v } }); toast(l); }) }, l))) : null;
+// Uebergabe-Notiz, Umfrage-Stand
 const hoText = h('textarea', { rows: 2, maxlength: 600, placeholder: 'Notiz für die nächste Schicht …' });
 const hoMeta = h('div', { class: 'tiny muted' });
 let hoShown = null;
@@ -102,7 +99,7 @@ function renderExtras() {
   pollBox.classList.toggle('hidden', !p);
   if (p) clear(pollBox).append(h('div', { class: 'eyebrow' }, p.status === 'open' ? 'Umfrage läuft' : 'Umfrage beendet'), h('b', {}, p.question), ...p.options.map((o, i) => h('div', { class: 'row between small' }, h('span', {}, o), h('b', {}, `${p.counts[i]}`))));
 }
-void energy;
+
 app.append(
   bar,
   h('div', { class: 'wrap' },
@@ -112,7 +109,7 @@ app.append(
       h('a', { class: 'btn', href: `${BASE}/focus`, title: 'Schwarzer Vollbild-Modus: zeigt nur neue Wünsche' }, '⤢ Fokus-Modus'),
       h('a', { class: 'btn', href: `${BASE}/ticker`, title: 'Live-Anzeige aller Wünsche und Entscheidungen' }, '◉ Live-Wünsche'),
       h('button', { class: 'ghost', title: 'Tastenkürzel ansehen und ändern', onclick: () => openHotkeyEditor() }, `⌨ Tasten (${hk.approve.toUpperCase()} = annehmen)`)),
-    energyRow, handoverCard, pollBox,
+    handoverCard, pollBox,
     h('div', { class: 'card' }, tabBar, body)),
 );
 connect({ ping: true, onStatus: (ok) => bar.setLive(ok), onState: (s) => { state = s; render(); } });

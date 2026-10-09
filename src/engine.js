@@ -24,6 +24,13 @@ function curveLevels(curve, p) {
   return [Math.cos(p * Math.PI / 2), Math.sin(p * Math.PI / 2)];
 }
 
+// Wann beginnt der Uebergang, gemessen vom Ende des Songs? (feste Vorlaufzeit oder "smart" nach dem Outro)
+export function leadFor(cfg, player, durationMs, meta) {
+  let lead = (cfg.auto.startBeforeEndSec[player] ?? 20) * 1000;
+  if (cfg.auto.smartOutro && isOn('smartOutro') && meta?.outro_ms && durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, durationMs - meta.outro_ms + 1000));
+  return lead;
+}
+
 export class Engine extends EventEmitter {
   constructor(env, { realConnections = false } = {}) {
     super();
@@ -197,10 +204,8 @@ export class Engine extends EventEmitter {
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
-    let lead = cfg.auto.startBeforeEndSec[this.current] * 1000;
     // Smart: den Uebergang beginnen, wenn der Song ausklingt (Outro), nicht mitten im Refrain
-    const meta = cfg.auto.smartOutro && isOn('smartOutro') ? getMeta(this.trackIdOf[this.current]) : null;
-    if (meta?.outro_ms && st.durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, st.durationMs - meta.outro_ms + 1000));
+    const lead = leadFor(cfg, this.current, st.durationMs, getMeta(this.trackIdOf[this.current]));
     const braked = isOn('songLimit') && cfg.limits.maxSongSec > 0 && st.positionMs > cfg.limits.maxSongSec * 1000;
     if (remaining > lead && !braked) return;
     if (!rq.upcoming(this.env).length) return;
@@ -445,6 +450,22 @@ export class Engine extends EventEmitter {
     const cf = this.crossfade;
     const cfg = settings();
     const up = rq.upcoming(this.env);
+    // Vorschau fuer die Lichttechnik: wann beginnt der naechste Uebergang, wann startet welcher Song (nur im Auto-Modus berechenbar)
+    let crossfadeIn = null;
+    const etas = [];
+    const cur = this.current && players[this.current];
+    if (cfg.auto.enabled && cur && cur.playing && cur.durationMs && !cf && !this.state.panic && !this.state.ended) {
+      const braked = isOn('songLimit') && cfg.limits.maxSongSec > 0 && cur.positionMs > cfg.limits.maxSongSec * 1000;
+      const lead = leadFor(cfg, this.current, cur.durationMs, getMeta(this.trackIdOf[this.current]));
+      let t = braked ? 0 : Math.max(0, cur.remainingMs - lead);
+      crossfadeIn = { inMs: t, leadMs: lead, crossfadeSec: cfg.auto.crossfadeSec, braked };
+      let player = this.current;
+      for (const u of up.slice(0, 12)) {
+        etas.push(t);
+        player = u.player || (player === 1 ? 2 : 1);
+        t += Math.max(0, u.durationMs - leadFor(cfg, player, u.durationMs, getMeta(u.trackId)));
+      }
+    }
     return {
       env: this.env,
       ts: Date.now(),
@@ -460,7 +481,8 @@ export class Engine extends EventEmitter {
       emergency: !!this.state.emergency,
       pauseMode: !!this.state.pauseMode && isOn('pauseMode'),
       counts: rq.counts(this.env),
-      upcoming: up.slice(0, 50),
+      upcoming: up.slice(0, 50).map((u, i) => ({ ...u, etaMs: etas[i] ?? null })),
+      crossfadeIn,
       upcomingTotal: up.length,
       connections: this.connections(),
       errors: this.errors.slice(0, 5),

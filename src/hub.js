@@ -7,6 +7,7 @@ import { getDb } from './db.js';
 import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
+import { familiesOf } from './genres.js';
 import { isBlocked } from './devices.js';
 import { isOn } from './features.js';
 import { votingList, voteState, currentPoll, scheduleList } from './extras.js';
@@ -14,7 +15,7 @@ import { votingList, voteState, currentPoll, scheduleList } from './extras.js';
 const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE id = ?').get(id)?.label || null : null);
 const publicReq = (r) => ({
   id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, tag: r.tag, votes: r.votes, player: r.player, status: r.status,
-  auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
+  auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, outroMs: getMeta(r.trackId)?.outro_ms ?? null, durationMs: r.durationMs, families: familiesOf(r.genres), popularity: r.popularity, etaMs: r.etaMs ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
 });
 
 // Baut den Zustand, den eine Rolle sehen darf.
@@ -47,6 +48,12 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   }
   if (!can(role, 'viewMod')) { delete out.history; delete out.blacklist; delete out.later; delete out.chat; delete out.claims; delete out.online; }
   if (!can(role, 'viewMod') && !can(role, 'viewTicker')) { delete out.pending; delete out.recent; }
+  out.crossfadeIn = snap.crossfadeIn || null;
+  if (can(role, 'viewLight')) out.playedNow = rq.history(engine.env, 3).map(publicReq); // Details (Genre, Jahr …) zum gerade laufenden Song
+  if (role === 'light') { // Lichttechnik: nur lesen, keine Namen der Mitarbeitenden
+    out.upcoming = out.upcoming.map((u) => ({ ...u, decidedBy: null, prioritizedBy: null }));
+    delete out.settings;
+  }
   out.me = extra.me ?? null;
   out.pauseMode = !!snap.pauseMode;
   if (can(role, 'viewMod') || can(role, 'viewFoh')) {

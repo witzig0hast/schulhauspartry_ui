@@ -11,7 +11,7 @@ import { buildAnalytics } from '../analytics.js';
 import { isOn, requireFeature } from '../features.js';
 import { logEvent } from '../db.js';
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh' };
+const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light' };
 
 const num = (v, d, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
 const player = (v) => { const n = Number(v); if (n !== 1 && n !== 2) throw Object.assign(new Error('Ungültiger Player'), { status: 400 }); return n; };
@@ -42,7 +42,7 @@ export function staffRouter(env, engine, hub) {
     res.json({ role: req.session.role, label: req.session.label, home: settings().roleHome?.[req.session.role] || HOME[req.session.role], env });
   });
 
-  r.get('/state', requireAnyPerm('viewMod', 'viewFoh'), (req, res) => {
+  r.get('/state', requireAnyPerm('viewMod', 'viewFoh', 'viewLight'), (req, res) => {
     res.json(staffState(engine, req.session.role, engine.snapshot(), { ...hub.extraFor(env), me: req.session.accountId ?? 'admin' }));
   });
 

@@ -120,7 +120,7 @@ export function applyPatch(patch, { allow }) {
   }
   if (has('pause') && 'message' in patch.pause) s.pause.message = str(patch.pause.message, 120);
   if (has('roleHome') && patch.roleHome && typeof patch.roleHome === 'object') {
-    for (const r of ['admin', 'tech', 'mod', 'orga', 'display']) if (r in patch.roleHome) { const v = String(patch.roleHome[r]); if (v === '' || /^\/[a-z]+$/.test(v)) s.roleHome[r] = v; }
+    for (const r of ['admin', 'tech', 'mod', 'orga', 'display', 'light']) if (r in patch.roleHome) { const v = String(patch.roleHome[r]); if (v === '' || /^\/[a-z]+$/.test(v)) s.roleHome[r] = v; }
   }
   if (has('roleBoards') && patch.roleBoards && typeof patch.roleBoards === 'object') {
     for (const r of ['admin', 'tech', 'mod', 'orga', 'display']) if (r in patch.roleBoards) {
