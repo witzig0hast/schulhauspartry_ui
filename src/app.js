@@ -16,6 +16,7 @@ import { adminRouter, spotifyCallbackRouter } from './routes/admin.js';
 import { opsRouter } from './routes/ops.js';
 import { securityRouter } from './routes/security.js';
 import { extrasRouter } from './routes/extras.js';
+import { vpnRouter } from './routes/vpn.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -157,6 +158,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', (req, res, next) => (req.path.startsWith('/guest') || apiLimiter.check(clientIp(req)).ok ? next() : res.status(429).json({ error: 'Zu viele Anfragen. Bitte kurz warten.' })));
     router.use('/api', securityRouter(env, engines[env], hub));
     router.use('/api', extrasRouter(env, engines[env], hub));
+    router.use('/api', vpnRouter());
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));

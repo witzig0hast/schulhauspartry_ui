@@ -19,6 +19,7 @@ App-Container (Heimserver) ──WireGuard──► Pi 5 (10.8.0.2:8080, Relay) 
 1. **Server:** In der `.env` `WG_SERVERURL=wg.deine-domain.de` setzen (DNS-Eintrag **ohne** Cloudflare-Proxy), am Router UDP 51820 auf den Server leiten, dann
    `docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.vpn.yml up -d` und `./scripts/vpn-peer.sh`. Das erzeugt `pi.conf` und `pc.conf`.
    Prüfen: `docker compose exec wg wg show` – beim Peer `pi` müssen `10.8.0.2/32` **und** `10.8.0.192/26` stehen.
+   **Oberfläche:** In der `.env` zusätzlich `WGCTL_TOKEN=<openssl rand -hex 24>` setzen und `docker compose up -d --build`. Dann gibt es im Admin den Tab **VPN**: Geräte (Handy, Laptop, Kollegen …) anlegen, QR-Code scannen oder Datei laden, Status/Handshake ansehen, Geräte entfernen. Ein Hinweis für die Verwaltung: Peers nur dort verwalten, nicht von Hand in der WireGuard-Konfiguration ändern.
 2. **PC:** `pc.conf` in die WireGuard-App importieren (nur bei Bedarf einschalten).
 3. **Pi:** `pi.conf` kopieren, Repo klonen, `cd schulhauspartry_ui/pi-relay && sudo ./install.sh ~/pi.conf`. Der Installer fragt, ob der Pi gerade **zu Hause** ist (merkt sich dann deinen Heimrouter), und zeigt am Ende Pi-URL(s) und Token.
 4. **App:** Pi-URLs mit Komma eintragen: `http://<LAN-IP des Pi>:8080, http://10.8.0.2:8080` (zuerst LAN, dann VPN – die App nimmt automatisch die, die antwortet).

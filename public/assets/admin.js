@@ -3,8 +3,8 @@ import { ampel } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['start', 'funktionen', 'sicherheit', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
-const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+const tabs = ['start', 'funktionen', 'sicherheit', 'vpn', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
+const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
@@ -424,6 +424,43 @@ function viewFeatures() {
     }) }, 'Feineinstellungen speichern')));
 }
 
+// ---------- VPN (WireGuard-Verwaltung) ----------
+function viewVpn() {
+  const box = h('div', { class: 'stack', style: 'gap:16px' });
+  const ago = (s) => (s == null ? 'noch nie' : s < 60 ? `vor ${s} s` : s < 3600 ? `vor ${Math.round(s / 60)} Min.` : `vor ${Math.round(s / 3600)} Std.`);
+  const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+  const showConfig = async (name, text) => {
+    const qr = await qrElement(text, { size: 260 }).catch(() => null);
+    const close = modal([h('h2', {}, `Konfiguration: ${name}`),
+      h('p', { class: 'small muted' }, 'Enthält den privaten Schlüssel. Nur für das Gerät „' + name + '“ verwenden. Mit dem Handy den QR-Code in der WireGuard-App scannen, oder als Datei importieren.'),
+      qr, h('textarea', { rows: 9, readonly: true, style: 'font-family:ui-monospace,monospace;font-size:.78rem' }, text),
+      h('div', { class: 'row' }, h('a', { class: 'btn', href: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`, download: `${name}.conf` }, '⬇ Als Datei'), h('button', { class: 'primary', onclick: () => close() }, 'Fertig'))]);
+  };
+  async function paint() {
+    let d;
+    try { d = await api('/admin/vpn'); } catch (e) { clear(box).append(h('div', { class: 'card stack' }, h('h2', {}, 'VPN-Verwaltung nicht erreichbar'), h('p', { class: 'small' }, e.message),
+      h('p', { class: 'small muted' }, 'Einrichtung: In der .env des Servers WGCTL_TOKEN=<zufälliger Wert> setzen (z. B. mit „openssl rand -hex 24“), dann „docker compose up -d --build“. Es muss docker-compose.vpn.yml aktiv sein (COMPOSE_FILE).'))); return; }
+    const name = h('input', { placeholder: 'Name, z. B. handy, laptop-anna', maxlength: 20 });
+    const behind = h('input', { type: 'checkbox' });
+    clear(box).append(
+      h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'WireGuard-Server'), h('span', { class: 'badge ok' }, 'läuft')),
+        h('p', { class: 'small muted' }, `Adresse: ${d.server.endpoint || '(WG_SERVERURL fehlt)'} · Tunnelnetz 10.8.0.0/24 · Geräte hinter dem Pi (z. B. X32): 10.8.0.192–255`)),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Geräte'),
+        h('div', { class: 'list' }, ...d.peers.map((p) => h('div', { class: 'item row between' },
+          h('div', {}, h('div', { class: 'row', style: 'gap:8px' }, h('span', { class: `dot ${p.online ? 'ok' : ''}` }), h('b', {}, p.name), h('span', { class: 'mono small muted' }, p.ip)),
+            h('div', { class: 'tiny muted' }, `${p.online ? 'verbunden' : 'offline'} · Handshake ${ago(p.handshakeAgoSec)} · ↓ ${kb(p.rx)} ↑ ${kb(p.tx)}${p.endpoint ? ` · ${p.endpoint}` : ''}${p.allowedIps.length > 1 ? ' · mit Geräten dahinter' : ''}`)),
+          h('div', { class: 'row' },
+            p.hasConfig ? h('button', { class: 'small', onclick: safe(async () => { const r = await fetch(`${BASE}/api/admin/vpn/peers/${encodeURIComponent(p.name)}/config`, { credentials: 'same-origin' }); if (!r.ok) throw new Error('Konfiguration nicht verfügbar'); showConfig(p.name, await r.text()); }) }, 'Konfiguration') : null,
+            h('button', { class: 'small bad', onclick: safe(async () => { if (!confirm(`Gerät „${p.name}“ entfernen? Es verliert sofort den Zugang.`)) return; await api(`/admin/vpn/peers/${encodeURIComponent(p.name)}`, { method: 'DELETE' }); toast('Entfernt'); paint(); }) }, 'Entfernen')))))),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Neues Gerät hinzufügen'),
+        h('div', { class: 'row' }, name, h('button', { class: 'primary', onclick: safe(async () => { const o = await api('/admin/vpn/peers', { method: 'POST', body: { name: name.value, behind: behind.checked } }); toast(`${o.name} angelegt (${o.ip})`); await paint(); showConfig(o.name, o.config); }) }, 'Anlegen')),
+        h('label', { class: 'check' }, behind, 'Hinter diesem Gerät liegen weitere Geräte (z. B. Pi mit X32): Adressen 10.8.0.192–255 hierhin leiten'),
+        h('p', { class: 'small muted' }, 'Danach QR-Code mit der WireGuard-App scannen (Handy) oder die Datei importieren (PC, Pi). Bitte Peers nur hier verwalten, nicht von Hand in der Konfiguration.')));
+  }
+  paint();
+  return box;
+}
+
 // ---------- Sicherheit ----------
 function viewSecurity() {
   const sec = data.settings.security;
@@ -472,7 +509,7 @@ function viewSecurity() {
 
 function render() {
   drawTabs();
-  clear(body).append({ start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append({ start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));

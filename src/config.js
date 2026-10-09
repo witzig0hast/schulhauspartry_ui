@@ -14,6 +14,9 @@ export const config = {
   trustCloudflare: env.TRUST_CLOUDFLARE === 'true',
   // Oeffentliche Basis-URL (fuer Spotify-OAuth-Redirect), z. B. https://party.example.de
   publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
+  // VPN-Verwaltung (Dienst wgctl im selben Container-Netzwerk, siehe docker-compose.vpn.yml)
+  wgctlUrl: (env.WGCTL_URL || 'http://127.0.0.1:3100').replace(/\/$/, ''),
+  wgctlToken: env.WGCTL_TOKEN || '',
   spotifyClientId: env.SPOTIFY_CLIENT_ID || '',
   spotifyClientSecret: env.SPOTIFY_CLIENT_SECRET || '',
 };

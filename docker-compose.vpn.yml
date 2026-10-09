@@ -24,9 +24,24 @@ services:
     sysctls:
       net.ipv4.conf.all.src_valid_mark: 1
     networks: [npm]
+  # Verwaltungsdienst fuer die Oberflaeche (Admin -> VPN): teilt sich das Netzwerk mit wg, lauscht nur auf 127.0.0.1 und verlangt ein Token
+  wgctl:
+    build: ./wgctl
+    restart: unless-stopped
+    network_mode: "service:wg"
+    cap_add: [NET_ADMIN]
+    depends_on: [wg]
+    environment:
+      WGCTL_TOKEN: ${WGCTL_TOKEN:-}
+      WG_SERVERURL: ${WG_SERVERURL:-}
+      WG_PORT: "51820"
+    volumes:
+      - wg-config:/config
   app:
     network_mode: "service:wg"
     networks: !reset null
     depends_on: [wg]
+    environment:
+      WGCTL_TOKEN: ${WGCTL_TOKEN:-}
 volumes:
   wg-config:
