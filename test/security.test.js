@@ -69,14 +69,6 @@ test('Geraet sperren: keine Wuensche, keine Votes mehr', async () => {
   assert.equal((await mod.post('/api/mod/device/unblock', { deviceId: blocked.id })).json.ok, true);
 });
 
-test('Klassen-Kuerzel wird gespeichert und bereinigt', async () => {
-  const g = await guest();
-  await wish(g, 'believer', { tag: '<b>8b</b>' });
-  const pend = (await mod.get('/api/state')).json.pending;
-  const r = pend.find((p) => p.tag);
-  assert.ok(r); assert.ok(!/[<>]/.test(r.tag));
-});
-
 test('Umfragen: nur Technik erstellt, Gaeste stimmen einmal ab', async () => {
   assert.equal((await mod.post('/api/poll', { question: 'Stil?', options: ['Pop', 'Rock'] })).status, 403);
   assert.equal((await tech.post('/api/poll', { question: 'Stil?', options: ['Pop'] })).status, 400);

@@ -14,7 +14,7 @@ import { votingList, voteState, currentPoll, scheduleList } from './extras.js';
 
 const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE id = ?').get(id)?.label || null : null);
 const publicReq = (r) => ({
-  id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, tag: r.tag, votes: r.votes, player: r.player, status: r.status,
+  id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, votes: r.votes, player: r.player, status: r.status,
   auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, outroMs: getMeta(r.trackId)?.outro_ms ?? null, durationMs: r.durationMs, families: familiesOf(r.genres), popularity: r.popularity, etaMs: r.etaMs ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
 });
 
@@ -81,7 +81,6 @@ export function guestState(engine, deviceId) {
     pause: engine.state.pauseMode && isOn('pauseMode') ? settings().pause.message : null,
     voting: isOn('voting') ? { list: votingList(engine.env, deviceId), ...voteState(engine.env, deviceId) } : null,
     poll: currentPoll(engine.env, deviceId),
-    classTag: isOn('classTag'),
     blocked: isBlocked(engine.env, deviceId),
     requests: rq.guestRequests(engine.env, deviceId, !!np),
   };

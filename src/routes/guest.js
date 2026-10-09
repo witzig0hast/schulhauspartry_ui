@@ -92,11 +92,7 @@ export function guestRouter(env, engine, hub) {
     if (br) { logAttempt(env, br.kind, track.id); return res.status(403).json({ error: br.text }); }
 
     const out = rq.submitWish(env, track, req.deviceId);
-    if (out.result === 'created') {
-      noteWish(env);
-      const tag = isOn('classTag') ? String(req.body?.tag || '').trim().slice(0, 12).replace(/[^\p{L}\p{N} ._-]/gu, '') : '';
-      if (tag) getDb().prepare('UPDATE requests SET tag = ? WHERE id = ?').run(tag, out.request.id);
-    }
+    if (out.result === 'created') noteWish(env);
     if (out.result === 'limit') {
       const min = Math.ceil(out.limit.retryAfterMs / 60000);
       return res.status(429).json({ error: `Du hast dein Limit erreicht. Versuch es in ca. ${min} Min. wieder.`, limit: out.limit });

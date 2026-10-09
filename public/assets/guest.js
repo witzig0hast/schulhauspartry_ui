@@ -14,7 +14,6 @@ const dots = h('div', { class: 'meter-dots' });
 const limitEl = h('div', { class: 'small muted' });
 const msgEl = h('div', { class: 'card hidden' });
 const mine = h('div', { class: 'list' });
-const tagInput = h('input', { type: 'text', maxlength: 12, placeholder: 'Klasse / Gruppe (optional, z. B. 8b)', autocomplete: 'off', class: 'hidden', 'aria-label': 'Klasse oder Gruppe' });
 const pauseEl = h('div', { class: 'card pause-card hidden' });
 const pollEl = h('div', { class: 'card stack poll-card hidden' });
 const voteEl = h('div', { class: 'card stack hidden' });
@@ -91,7 +90,6 @@ function render() {
   renderVoting();
   pauseEl.classList.toggle('hidden', !state.pause);
   if (state.pause) clear(pauseEl).append(h('div', { class: 'big-ic' }, '⏸'), h('b', {}, state.pause));
-  tagInput.classList.toggle('hidden', !state.classTag || state.wishMode !== 'open');
   // Konfetti, wenn der eigene Wunsch gerade spielt
   const playing = state.requests.find((r) => r.status === 'playing');
   const pk = playing ? `${playing.id}` : '';
@@ -152,7 +150,7 @@ async function search() {
 
 async function send(t) {
   try {
-    const out = await api('/guest/request', { method: 'POST', body: { trackId: t.id, tag: tagInput.value } });
+    const out = await api('/guest/request', { method: 'POST', body: { trackId: t.id } });
     state = out.state; render();
     input.value = ''; clear(results);
     if (out.duplicate) {
@@ -173,7 +171,7 @@ app.append(
     h('div', { class: 'guest-hero' }, h('div', { class: 'eyebrow' }, BRAND.tagline || 'Mach mit'), h('h2', {}, 'Wünsch dir was!')),
     soonBox, nowEl, msgEl,
     pauseEl, pollEl,
-    h('div', { class: 'card stack' }, searchbox, tagInput, h('div', { class: 'row between' }, limitEl, dots), results),
+    h('div', { class: 'card stack' }, searchbox, h('div', { class: 'row between' }, limitEl, dots), results),
     mineWrap, voteEl),
 );
 

@@ -30,7 +30,6 @@ export const FEATURES = [
   // --- Gaeste ---
   { id: 'voting', group: 'guest', label: 'Wunsch-Voting', desc: 'Gäste sehen offene Wünsche und geben ein „+1“.', def: true },
   { id: 'soonNotice', group: 'guest', label: '„Gleich dran“-Hinweis', desc: 'Hinweis auf dem Handy, wenn der eigene Song bald läuft.', def: true },
-  { id: 'classTag', group: 'guest', label: 'Klassen-Kürzel beim Wunsch', desc: 'Optionales Feld (z. B. „8b“), das nur die Moderation sieht.', def: true },
   { id: 'polls', group: 'guest', label: 'Live-Umfragen', desc: 'Die Technik startet eine Frage, Gäste stimmen ab, Ergebnis auf dem Beamer.', def: true },
   { id: 'guestNowPlaying', group: 'guest', label: '„Jetzt läuft“ auf der Gäste-Seite', desc: 'Zeigt Gästen den aktuellen Song.', def: true },
   // --- Team ---
