@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, cover, eq, toast, BASE, $, feat, safe } from '/assets/app.js';
-import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban, isPressing, onRelease } from '/assets/staff-ui.js';
 import { actionFor, openHotkeyEditor, getHotkeys, ACTIONS } from '/assets/hotkeys.js';
 
 // Moderation: ruhige Reiter statt alles auf einmal, Tastenkuerzel, Team-Chat.
@@ -10,7 +10,8 @@ let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'wuen
 let assignMode = 'auto';
 let chatSeen = 0;
 const memos = new WeakMap();
-const update = (box, key, build) => { if (memos.get(box) === key) return; memos.set(box, key); clear(box).append(build()); };
+// Nur neu aufbauen, wenn sich wirklich etwas geaendert hat und gerade nichts gedrueckt wird (sonst geht der Klick verloren)
+const update = (box, key, build) => { if (memos.get(box) === key || isPressing()) return; memos.set(box, key); clear(box).append(build()); };
 
 const roleBadge = h('span', { class: 'badge' });
 const onlineEl = h('span', { class: 'online-dots', title: 'Aktuell online' });
@@ -32,9 +33,11 @@ function renderTabs() {
   const n = { wuensche: state.pending.length, spaeter: state.later?.length || 0, queue: state.upcomingTotal, gespielt: state.history?.length || 0, gesperrt: state.blacklist?.length || 0, chat: Math.max(0, (state.chat?.length || 0) - chatSeen) };
   const labels = { wuensche: 'Wünsche', spaeter: 'Später', queue: 'Warteschlange', gespielt: 'Gespielt', gesperrt: 'Gesperrt', chat: 'Chat' };
   if (tab === 'chat') chatSeen = state.chat?.length || 0;
+  const tabKey = JSON.stringify([tab, n]);
+  if (tabBar.dataset.k !== tabKey && !isPressing()) { tabBar.dataset.k = tabKey;
   clear(tabBar).append(...TABS.map((k) => h('button', { class: tab === k ? 'active' : '', onclick: () => { tab = k; location.hash = k; render(); } },
-    labels[k], n[k] && !(k === 'chat' && tab === 'chat') ? h('span', { class: `count ${['wuensche', 'chat'].includes(k) ? '' : 'soft'}`, style: 'margin-left:8px' }, String(n[k])) : null)));
-  clear(body).append(boxes[tab]);
+    labels[k], n[k] && !(k === 'chat' && tab === 'chat') ? h('span', { class: `count ${['wuensche', 'chat'].includes(k) ? '' : 'soft'}`, style: 'margin-left:8px' }, String(n[k])) : null))); }
+  if (body.firstChild !== boxes[tab]) clear(body).append(boxes[tab]);
 }
 
 function render() {
@@ -57,7 +60,7 @@ function render() {
   renderTabs();
   renderExtras();
   state0Banner.classList.toggle('hidden', !state.pauseMode);
-  const claimKey = JSON.stringify(state.claims || []);
+  const claimKey = JSON.stringify((state.claims || []).filter((c) => c.by !== state.me)); // eigene Markierung loest keinen Neuaufbau aus
   const pk = (arr) => arr.map((p) => [p.id, p.votes]);
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));
   update(laterBox, JSON.stringify([pk(state.later || []), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, list: 'later', me: state.me }));
@@ -112,6 +115,7 @@ app.append(
     handoverCard, pollBox,
     h('div', { class: 'card' }, tabBar, body)),
 );
+onRelease(() => { if (state) render(); });
 connect({ ping: true, onStatus: (ok) => bar.setLive(ok), onState: (s) => { state = s; render(); } });
 api('/state').then((s) => { if (!state) { state = s; render(); } }).catch(() => {});
 void ACTIONS;

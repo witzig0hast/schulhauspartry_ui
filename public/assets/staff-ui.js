@@ -1,6 +1,17 @@
 import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon, feat } from '/assets/app.js';
 import { actionFor } from '/assets/hotkeys.js';
 
+// Waehrend ein Finger/die Maus gedrueckt ist, darf die Oberflaeche nicht neu aufgebaut werden:
+// sonst wird der Knopf unter dem Zeiger ausgetauscht und der Klick geht verloren.
+let pressing = false, pressTimer = null;
+const releaseFns = new Set();
+const endPress = () => { pressing = false; clearTimeout(pressTimer); for (const f of releaseFns) f(); };
+addEventListener('pointerdown', () => { pressing = true; clearTimeout(pressTimer); pressTimer = setTimeout(endPress, 4000); }, true);
+addEventListener('pointerup', () => { setTimeout(endPress, 60); }, true);
+addEventListener('pointercancel', endPress, true);
+export const isPressing = () => pressing;
+export const onRelease = (fn) => releaseFns.add(fn);
+
 export const playerName = (n) => `Player ${n}`;
 
 export function connectionDot(c) {

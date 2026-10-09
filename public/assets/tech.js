@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat } from '/assets/app.js';
-import { pendingList, upcomingList, ampel, bar, playerName, chatPanel } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, ampel, bar, playerName, chatPanel, isPressing, onRelease } from '/assets/staff-ui.js';
 
 const app = $('#app');
 let state = null;
@@ -219,7 +219,7 @@ function updateNext() {
 }
 
 function memoSet(box, key, build) {
-  if (memo[box.dataset.m ||= String(Math.random())] === key) return;
+  if (memo[box.dataset.m ||= String(Math.random())] === key || isPressing()) return;
   memo[box.dataset.m] = key; clear(box).append(build());
 }
 
@@ -262,5 +262,6 @@ app.append(
   (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges] })),
   h('div', { class: 'wrap stack' }, ...mainCards),
 );
+onRelease(() => { if (state) render(); });
 connect({ ping: true, onStatus: (ok) => refs.top.setLive(ok), onState: (s) => { state = s; render(); } });
 api('/state').then((s) => { if (!state) { state = s; render(); } }).catch(() => {});
