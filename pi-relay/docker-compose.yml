@@ -1,40 +1,15 @@
-# Zwei Betriebsarten (autonet.sh waehlt beim Start und alle 30 s automatisch):
-#   lan  = Server im selben Netz -> Relay direkt im Netz des Pi, KEIN VPN
-#   vpn  = Server woanders       -> WireGuard laeuft NUR im Container "wg"; das Relay haengt sich in dessen Netzwerk.
-#          Das Netzwerk des Pi selbst (SSH, X32, Internet) bleibt unveraendert.
+# Das Relay laeuft direkt im Netzwerk des Pi (host). Das VPN (WireGuard) laeuft auf dem Pi selbst und wird von autonet.sh
+# automatisch an-/ausgeschaltet: zu Hause aus, woanders an. Ports sind per Firewall (ufw) geschuetzt, das Relay verlangt zusaetzlich ein Token.
 services:
-  relay-lan:
-    profiles: [lan]
+  relay:
     build: .
     restart: unless-stopped
     network_mode: host
     env_file: .env
     environment:
       BIND: 0.0.0.0
-
-  wg:
-    profiles: [vpn]
-    image: lscr.io/linuxserver/wireguard:latest
-    restart: unless-stopped
-    cap_add: [NET_ADMIN]
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: Europe/Berlin
-    volumes:
-      - ./wg:/config/wg_confs
-    sysctls:
-      net.ipv4.conf.all.src_valid_mark: 1
-
-  relay-vpn:
-    profiles: [vpn]
-    build: .
-    restart: unless-stopped
-    network_mode: "service:wg"     # teilt sich das Netzwerk mit dem VPN-Container (Port 8080 gibt es nur im Tunnel)
-    depends_on:
-      wg:
-        condition: service_started
-        restart: true
-    env_file: .env
-    environment:
-      BIND: 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT:-8080}/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

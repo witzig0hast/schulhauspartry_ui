@@ -8,29 +8,35 @@ Bitfocus Companion ist dafür **nicht nötig** (kann zusätzlich auf dem Pi lauf
 App-Container (Heimserver) ──WireGuard──► Pi 5 (10.8.0.2:8080, Relay) ──OSC/UDP 10023──► X32
 ```
 
+## Überblick: wie alles zusammenhängt
+- **Eigener WireGuard-Server auf dem Heimserver** (Container `wg`, `docker-compose.vpn.yml`). Peers: `pi` (der Veranstaltungs-Pi) und `pc` (dein Rechner). Kein Tailscale/Twingate nötig; es werden keine DNS-Server verändert.
+- **Auf dem Pi läuft WireGuard direkt auf dem System**, aber mit schmalen Routen: nur das Tunnelnetz `10.8.0.0/24` geht durch den Tunnel, kein DNS, keine Standardroute. SSH, X32 und Internet des Pi bleiben normal. So erreichst du den Pi mit **allem, was darauf läuft** (SSH, Bitfocus Companion, n8n …): `ssh pi@10.8.0.2`, `http://10.8.0.2:8000` usw.
+- **Zu Hause aus, woanders an:** `autonet.sh` (läuft beim Start und alle 30 s) erkennt deinen Heimrouter an seiner MAC-Adresse. Zu Hause ist der Tunnel aus, bei einer Veranstaltung geht er von selbst an und wird per Ping überwacht (bei Ausfall neu gestartet). Das funktioniert auch, wenn der Veranstaltungsort zufällig dieselben Adressen wie dein Heimnetz hat.
+- **Das X32 von zu Hause erreichen:** Das X32 bekommt im Tunnel die feste, virtuelle Adresse **`10.8.0.200`**. Der Pi leitet sie auf die echte (wechselnde) X32-IP um. Von deinem PC (WireGuard an) öffnest du X32-Edit/Companion mit `10.8.0.200`. Weitere Geräte: in `pi-relay/.env` `EXTRA_DEVICES=10.8.0.201=192.168.1.20,10.8.0.202=…` (Adressen aus `10.8.0.192–255`). Ändert sich die X32-IP am Veranstaltungsort: `X32_HOST` in der `.env` ändern, der Rest passt sich innerhalb 30 s an.
+- **Pi → Heimnetz:** Der Pi erreicht im Tunnel den Server (`10.8.0.1`) und deinen PC (`10.8.0.3`, wenn WireGuard dort läuft).
+
 ## Schnellweg (empfohlen)
-1. **VPN-Zugang erzeugen:** entweder in der Fritz!Box (WireGuard-Verbindung für „einzelnes Gerät" → Datei `pi.conf`) oder mit dem eigenen WireGuard-Container auf dem Server (`./scripts/vpn-peer.sh`, siehe Abschnitt 2).
-2. `pi.conf` auf den Pi kopieren, Repo klonen, dann: `cd schulhauspartry_ui/pi-relay && sudo ./install.sh ~/pi.conf`.
-3. Das Skript fragt nach der X32-IP und (bei Fritz!Box) der LAN-IP des Heimservers und zeigt am Ende **Pi-URL(s)** und **Token** für die App.
+1. **Server:** In der `.env` `WG_SERVERURL=wg.deine-domain.de` setzen (DNS-Eintrag **ohne** Cloudflare-Proxy), am Router UDP 51820 auf den Server leiten, dann
+   `docker compose -f docker-compose.yml -f docker-compose.npm.yml -f docker-compose.vpn.yml up -d` und `./scripts/vpn-peer.sh`. Das erzeugt `pi.conf` und `pc.conf`.
+   Prüfen: `docker compose exec wg wg show` – beim Peer `pi` müssen `10.8.0.2/32` **und** `10.8.0.192/26` stehen.
+2. **PC:** `pc.conf` in die WireGuard-App importieren (nur bei Bedarf einschalten).
+3. **Pi:** `pi.conf` kopieren, Repo klonen, `cd schulhauspartry_ui/pi-relay && sudo ./install.sh ~/pi.conf`. Der Installer fragt, ob der Pi gerade **zu Hause** ist (merkt sich dann deinen Heimrouter), und zeigt am Ende Pi-URL(s) und Token.
+4. **App:** Pi-URLs mit Komma eintragen: `http://<LAN-IP des Pi>:8080, http://10.8.0.2:8080` (zuerst LAN, dann VPN – die App nimmt automatisch die, die antwortet).
+5. Zu Hause erreichst du den Pi (DHCP, wechselnde IP) mit `ssh pi@<hostname>.local` oder `<hostname>.fritz.box`.
 
-**Wie die Automatik arbeitet:** Beim Start des Pi (und danach alle 30 Sekunden) prüft `autonet.sh`, ob der Heimserver im selben Netz erreichbar ist.
-- **Ja → Modus „LAN":** das Relay läuft direkt im Netz des Pi, **ohne VPN**.
-- **Nein → Modus „VPN":** WireGuard startet **nur in einem Docker-Container**, das Relay hängt sich in dessen Netzwerk. Der Pi selbst (SSH, X32, Internet, andere Geräte im Netz) bleibt unverändert.
-- Gewechselt wird erst nach zwei gleichen Messungen (ca. 1 Minute), damit es nicht hin und her springt.
-- Log: `journalctl -u x32-relay-net -n 30`. Aktueller Modus: `cd pi-relay && docker compose ps`.
-
-**In der App** trägst du **beide** Adressen ein, durch Komma getrennt (zuerst LAN, dann VPN), z. B. `http://192.168.178.177:8080, http://192.168.178.207:8080`. Die App nimmt automatisch die, die antwortet. Gib dem Pi im Router eine feste IP (DHCP-Reservierung), damit die LAN-Adresse stabil bleibt.
+**Fritz!Box statt eigenem Server:** geht weiter (der Installer erkennt die Datei), ist aber eingeschränkt: Du erreichst den Pi nur über die Fritz!Box-Adresse, und das X32 nicht von zu Hause.
+**Tailscale auf dem Pi/Server:** Wenn es noch läuft und DNS ändert: `sudo tailscale up --accept-dns=false --accept-routes=false` oder `sudo tailscale down` / deinstallieren.
+**Log/Status:** `journalctl -u x32-relay-net -n 30`, `sudo wg show`, `cd pi-relay && docker compose ps`.
 
 ## Test ohne X32 (zu Hause)
 Im Ordner `pi-relay/` liegt ein simuliertes Pult (`fake-x32.js`): Es zeigt jeden Fader-Befehl der App an und simuliert Mikrofone.
 ```bash
 cd ~/schulhauspartry_ui/pi-relay
 nano .env                      # X32_HOST=127.0.0.1   (statt der echten Pult-IP)
-docker compose up -d --build relay-lan   # Relay neu starten (Modus LAN; im Test-Betrieb ist der Server im selben Netz)
+docker compose up -d --build   # Relay neu starten
 # zweites Terminal (oder in screen/tmux): das Fake-Pult starten, Mics 5 und 7 haben "Signal"
 docker run --rm --network host -v "$PWD":/app -w /app -e MIC_OPEN=5,7 node:22-alpine node fake-x32.js
 ```
-(Im VPN-Modus läuft das Relay in einem eigenen Netzwerk, dort ist `127.0.0.1` nicht der Pi – das Fake-Pult-Testen geht daher im LAN-Modus.)
 In der App: Admin → Verbindungen → Anbindung „HTTP-Relay“, Pi-URL `http://<LAN-IP des Pi>:8080`, Token. Bewegst du in der Technik-Ansicht einen Fader, erscheint im Terminal z. B. `Fader Kanal 1 -> 0.500`. Die Mikrofone erscheinen in der App als „offen“. Zurück zum echten Pult: in der `.env` wieder die X32-IP eintragen und das Relay neu starten.
 
 ## Kanäle einstellen (im Admin, nicht am Pi)
