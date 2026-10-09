@@ -113,7 +113,7 @@ function viewConnections() {
         }) }, 'Geräte laden'), h('button', { class: 'small primary', onclick: () => { const o = devSel.selectedOptions[0]; save({ spotify: { players: { [n]: { deviceId: devSel.value, deviceName: o?.dataset.name || '' } } } }); } }, 'Gerät speichern'))) : null);
   };
   const adapter = h('select', {}, h('option', { value: 'mock', selected: s.x32.adapter === 'mock' }, 'Simuliert (kein Pi nötig)'), h('option', { value: 'http', selected: s.x32.adapter === 'http' }, 'Pi 5 / X32 über HTTP-Relay'));
-  const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://10.8.0.2:8080' });
+  const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://192.168.178.177:8080, http://192.168.178.207:8080' });
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
   const ch = s.x32.channels;
   const chIn = (v, i) => num(v[i] ?? '', { min: 1, max: 32, class: 'num', placeholder: '–' });
@@ -137,7 +137,7 @@ function viewConnections() {
         h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
-      field('Anbindung', adapter), field('Pi-URL (Relay)', piUrl), field('Token', piToken),
+      field('Anbindung', adapter), field('Pi-URL(s) des Relays – mehrere durch Komma: zuerst die im LAN, dann die per VPN; die App nimmt automatisch die, die antwortet', piUrl), field('Token', piToken),
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
       h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),

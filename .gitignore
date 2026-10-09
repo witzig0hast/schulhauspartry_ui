@@ -2,3 +2,5 @@ node_modules/
 data/
 .env
 *.log
+pi-relay/.env
+pi-relay/wg/

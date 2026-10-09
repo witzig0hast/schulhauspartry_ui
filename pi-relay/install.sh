@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Einrichtung des Pi 5 in einem Rutsch: WireGuard-Tunnel + X32-Relay + Firewall.
-#   sudo ./install.sh /pfad/zu/pi.conf            (pi.conf kommt vom Server: scripts/vpn-peer.sh)
-# Optionen per Umgebungsvariable: X32_HOST=192.168.1.50  P1_CHANNELS=1,2  P2_CHANNELS=3,4  MIC_CHANNELS=5,6,7
+# Einrichtung des Pi 5 in einem Rutsch:
+#   * Relay (X32) in Docker
+#   * VPN (WireGuard) NUR in einem Container – das Netzwerk des Pi bleibt unveraendert
+#   * Automatik: beim Start (und alle 30 s) prueft der Pi, ob der Server im selben Netz ist -> sonst VPN
+#   sudo ./install.sh /pfad/zu/pi.conf        (pi.conf: von der Fritz!Box oder aus scripts/vpn-peer.sh)
+# Optionen per Umgebungsvariable: X32_HOST=192.168.1.50  SERVER_LAN_IP=192.168.178.50  P1_CHANNELS=1,2  P2_CHANNELS=3,4  MIC_CHANNELS=5,6,7
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "Bitte mit sudo starten."; exit 1; }
@@ -13,10 +16,10 @@ RUN_USER="${SUDO_USER:-pi}"
 # Sicherung: dieses Skript gehoert NUR auf den Pi neben dem X32, nie auf den Heimserver mit der App.
 if [ -f "$HERE/../docker-compose.npm.yml" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qiE 'nginx|npm|app-1|wg-1|schulhauspartry'; then
   echo "ABBRUCH: Auf diesem Rechner laeuft die App (oder der Nginx Proxy Manager) in Docker."
-  echo "Dieses Skript ist nur fuer den Pi am X32. Es aendert Firewall und Netzwerk und wuerde den Server aussperren."
+  echo "Dieses Skript ist nur fuer den Pi am X32."
   exit 1
 fi
-echo "Dieses Skript aendert Netzwerk (WireGuard) und Firewall dieses Geraets: $(hostname)"
+echo "Dieses Skript richtet Docker, Firewall und einen Autostart auf diesem Geraet ein: $(hostname)"
 read -r -p "Ist das der Pi, der neben dem X32 steht? (ja/nein) " A </dev/tty
 [ "$A" = "ja" ] || { echo "Abgebrochen."; exit 1; }
 
@@ -24,111 +27,95 @@ ask() { local var="$1" prompt="$2" def="$3"; if [ -z "${!var:-}" ]; then read -r
 
 echo "==> Pakete installieren"
 apt-get update -y
-apt-get install -y wireguard wireguard-tools ufw curl openssl
+apt-get install -y ufw curl openssl iputils-ping
 if ! command -v docker >/dev/null; then curl -fsSL https://get.docker.com | sh; fi
 usermod -aG docker "$RUN_USER" || true
 
-echo "==> WireGuard-Konfiguration vorbereiten"
-install -d -m 700 /etc/wireguard
-cp "$CONF_SRC" /etc/wireguard/wg0.conf
-# DNS des Pi nicht anfassen
-sed -i '/^DNS[[:space:]]*=/d' /etc/wireguard/wg0.conf
-ADDR="$(sed -n 's|^Address[[:space:]]*=[[:space:]]*\([0-9.]*\).*|\1|p' /etc/wireguard/wg0.conf | head -1)"
+# Reste einer frueheren Installation mit VPN auf dem Pi selbst entfernen (jetzt laeuft das VPN nur im Container)
+systemctl disable --now wg-quick@wg0 wg-watchdog.timer >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/wg-watchdog.service /etc/systemd/system/wg-watchdog.timer
+rm -rf /etc/systemd/system/wg-quick@wg0.service.d
+ip link delete wg0 >/dev/null 2>&1 || true
+
+echo "==> VPN-Konfiguration fuer den Container vorbereiten"
+install -d -m 700 "$HERE/wg"
+CONF="$HERE/wg/wg0.conf"
+cp "$CONF_SRC" "$CONF"
+sed -i '/^DNS[[:space:]]*=/d' "$CONF"                                   # DNS des Pi bleibt unberuehrt
+ADDR="$(sed -n 's|^Address[[:space:]]*=[[:space:]]*\([0-9.]*\).*|\1|p' "$CONF" | head -1)"
 ADDR="${ADDR:-10.8.0.2}"
-FRITZ=0
-case "$ADDR" in 10.8.0.*) ;; *) FRITZ=1 ;; esac
-if [ "$FRITZ" = 1 ]; then
-  echo "    Fritz!Box-Konfiguration erkannt (Tunnel-Adresse $ADDR)"
-  # Adresse nur als Einzel-Adresse (/32), sonst wird das ganze Heimnetz auf den Tunnel umgeleitet
-  sed -i '/^Address/ { s|/24|/32|g; s|/64|/128|g }' /etc/wireguard/wg0.conf
-  ask SERVER_IP "LAN-IP des Heimservers (der Rechner mit der App) im Heimnetz" "192.168.178.50"
-  PEER_NET="$SERVER_IP/32"
-  PING_TARGET="$SERVER_IP"
-else
-  PEER_NET="10.8.0.0/24"
-  PING_TARGET="10.8.0.1"
-fi
-# nur das Noetige durch den Tunnel schicken, Verbindung offen halten
-sed -i "s|^AllowedIPs[[:space:]]*=.*|AllowedIPs = $PEER_NET|" /etc/wireguard/wg0.conf
-grep -q '^PersistentKeepalive' /etc/wireguard/wg0.conf || sed -i '/^\[Peer\]/a PersistentKeepalive = 25' /etc/wireguard/wg0.conf
-chmod 600 /etc/wireguard/wg0.conf
-
-# Liegt der Pi gerade im selben Netz wie die Tunnel-Adresse (z. B. zu Hause), wuerde der Tunnel das LAN kapern.
-START_NOW=1
-if [ "$FRITZ" = 1 ] && ip -4 route show scope link 2>/dev/null | grep -q "^$(echo "$ADDR" | cut -d. -f1-3)\.0/24 dev \(eth\|wlan\|en\)"; then
-  START_NOW=0
-  echo "    HINWEIS: Der Pi haengt gerade im Heimnetz ($(echo "$ADDR" | cut -d. -f1-3).0/24). Der Tunnel wird jetzt NICHT gestartet,"
-  echo "    sonst bricht SSH ab. Bei der Party (anderes Netz): sudo systemctl enable --now wg-quick@wg0"
-fi
-if [ "$START_NOW" = 1 ]; then systemctl enable --now wg-quick@wg0; fi
-# Tunnel automatisch neu aufbauen, falls er mal haengt (z. B. nach Netzwerkwechsel)
-install -d /etc/systemd/system/wg-quick@wg0.service.d
-cat > /etc/systemd/system/wg-quick@wg0.service.d/restart.conf <<'UNIT'
-[Service]
-Restart=on-failure
-RestartSec=10
-UNIT
-cat > /etc/systemd/system/wg-watchdog.service <<UNIT
-[Unit]
-Description=WireGuard-Watchdog (Tunnel neu starten, wenn der Server nicht antwortet)
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'ip link show wg0 >/dev/null 2>&1 || exit 0; ping -c 2 -W 3 $PING_TARGET >/dev/null 2>&1 || systemctl restart wg-quick@wg0'
-UNIT
-cat > /etc/systemd/system/wg-watchdog.timer <<'UNIT'
-[Unit]
-Description=WireGuard-Watchdog alle 2 Minuten
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=2min
-[Install]
-WantedBy=timers.target
-UNIT
-systemctl daemon-reload
-if [ "$START_NOW" = 1 ]; then systemctl enable --now wg-watchdog.timer; fi
-
-TUNNEL_IP="$ADDR"
-if [ "$START_NOW" = 1 ]; then
-  echo "==> Tunnel pruefen (Pi hat $TUNNEL_IP)"
-  for _ in $(seq 1 10); do ping -c 1 -W 2 "$PING_TARGET" >/dev/null 2>&1 && OK=1 && break || sleep 2; done
-  if [ "${OK:-0}" = 1 ]; then echo "    Tunnel steht ($PING_TARGET antwortet)."; else
-    echo "    WARNUNG: $PING_TARGET antwortet nicht. Pruefe 'sudo wg show' (Handshake?)."; fi
-fi
+case "$ADDR" in
+  10.8.0.*) PEER_NET="10.8.0.0/24"; echo "    Konfiguration vom eigenen WireGuard-Container (Tunnel $ADDR)" ;;
+  *) echo "    Fritz!Box-Konfiguration erkannt (Tunnel-Adresse $ADDR)"
+     sed -i '/^Address/ { s|/24|/32|g; s|/64|/128|g }' "$CONF"
+     ask SERVER_LAN_IP "LAN-IP des Heimservers (Rechner mit der App) im Heimnetz" "192.168.178.50"
+     PEER_NET="$SERVER_LAN_IP/32" ;;
+esac
+sed -i "s|^AllowedIPs[[:space:]]*=.*|AllowedIPs = $PEER_NET|" "$CONF"   # nur das Noetige durch den Tunnel
+grep -q '^PersistentKeepalive' "$CONF" || sed -i '/^\[Peer\]/a PersistentKeepalive = 25' "$CONF"
+chmod 600 "$CONF"
 
 echo "==> Relay einrichten"
 ask X32_HOST "IP-Adresse des X32" "192.168.1.50"
+[ -n "${SERVER_LAN_IP:-}" ] || ask SERVER_LAN_IP "LAN-IP des Heimservers (leer lassen = immer VPN)" ""
 TOKEN="$(openssl rand -hex 24)"
 if [ -f "$HERE/.env" ] && grep -q '^RELAY_TOKEN=' "$HERE/.env"; then TOKEN="$(sed -n 's/^RELAY_TOKEN=//p' "$HERE/.env")"; echo "    vorhandener Token wird behalten"; fi
-BIND_ADDR="$TUNNEL_IP"; [ "$START_NOW" = 0 ] && BIND_ADDR="0.0.0.0"   # nur zum Test im LAN, bei der Party Tunnel-IP
 cat > "$HERE/.env" <<ENV
 X32_HOST=$X32_HOST
 X32_PORT=10023
 RELAY_TOKEN=$TOKEN
-BIND=$BIND_ADDR
 PORT=8080
 P1_CHANNELS=${P1_CHANNELS:-1,2}
 P2_CHANNELS=${P2_CHANNELS:-3,4}
 MIC_CHANNELS=${MIC_CHANNELS:-5,6,7}
+SERVER_LAN_IP=${SERVER_LAN_IP:-}
 ENV
 chmod 600 "$HERE/.env"
-chown "$RUN_USER" "$HERE/.env" 2>/dev/null || true
-( cd "$HERE" && docker compose up -d --build )
+chown -R "$RUN_USER" "$HERE/.env" 2>/dev/null || true
+chmod +x "$HERE/autonet.sh"
 
-echo "==> Firewall (nur SSH aus dem LAN, Relay nur im Tunnel)"
+echo "==> Autostart: Netz-Pruefung beim Start und alle 30 Sekunden"
+cat > /etc/systemd/system/x32-relay-net.service <<UNIT
+[Unit]
+Description=X32-Relay: LAN oder VPN automatisch waehlen
+After=docker.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=$HERE
+ExecStart=$HERE/autonet.sh
+UNIT
+cat > /etc/systemd/system/x32-relay-net.timer <<'UNIT'
+[Unit]
+Description=X32-Relay Netz-Pruefung
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=1s
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now x32-relay-net.timer
+
+echo "==> Firewall (nur SSH; 8080 wird je nach Modus automatisch fuers Heimnetz freigegeben)"
 ufw default deny incoming; ufw default allow outgoing
 ufw allow in on tailscale0 2>/dev/null || true
-ufw allow 22/tcp                                  # SSH (bei Bedarf auf dein LAN beschraenken: ufw allow from 192.168.1.0/24 to any port 22)
-ufw allow in on wg0 to any port 8080 proto tcp    # Relay nur ueber den Tunnel
-[ "$START_NOW" = 0 ] && ufw allow from "$(echo "$ADDR" | cut -d. -f1-3).0/24" to any port 8080 proto tcp   # nur LAN-Test zu Hause
+ufw allow 22/tcp                                  # SSH (bei Bedarf auf dein LAN beschraenken)
 ufw --force enable
 
+echo "==> Erster Lauf der Automatik"
+"$HERE/autonet.sh" || true; sleep 2; "$HERE/autonet.sh" || true
 sleep 3
-echo "==> Selbsttest"
-if curl -fsS "http://127.0.0.1:8080/healthz" >/dev/null; then echo "    Relay laeuft: http://$TUNNEL_IP:8080"; else echo "    WARNUNG: Relay antwortet nicht – 'docker compose logs' im Ordner $HERE"; fi
+LAN_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p')"
+MODE="?"
+( cd "$HERE" && docker compose ps --services --status running 2>/dev/null | grep -q relay-lan ) && MODE="LAN (ohne VPN)"
+( cd "$HERE" && docker compose ps --services --status running 2>/dev/null | grep -q relay-vpn ) && MODE="VPN (nur im Container)"
+echo "    Aktueller Modus: $MODE"
 echo
 echo "================ Fertig – in der App eintragen (Admin → Verbindungen → X32 / Pi 5) ================"
 echo "  Anbindung : Pi 5 / X32 über HTTP-Relay"
-if [ "$START_NOW" = 1 ]; then echo "  Pi-URL    : http://$TUNNEL_IP:8080"; else echo "  Pi-URL    : http://<LAN-IP dieses Pi>:8080   (LAN-Test zu Hause; bei der Party: http://$TUNNEL_IP:8080)"; fi
+echo "  Pi-URL(s) : http://$LAN_IP:8080, http://$ADDR:8080      (zuerst LAN, dann VPN – die App nimmt, was antwortet)"
 echo "  Token     : $TOKEN"
-echo "  Kanäle    : Player 1 = ${P1_CHANNELS:-1,2}, Player 2 = ${P2_CHANNELS:-3,4}, Mics = ${MIC_CHANNELS:-5,6,7}"
+echo "  Tipp      : dem Pi im Router eine feste IP geben (DHCP-Reservierung), sonst aendert sich die LAN-URL."
 echo "======================================================================================"

@@ -204,7 +204,7 @@ export function applyPatch(patch, { allow }) {
   if (has('x32')) {
     const x = patch.x32;
     if (['mock', 'http'].includes(x.adapter)) s.x32.adapter = x.adapter;
-    if ('piUrl' in x) s.x32.piUrl = str(x.piUrl, 200).trim();
+    if ('piUrl' in x) s.x32.piUrl = str(x.piUrl, 400).trim();
     if (x.piToken) s.x32.piToken = encrypt(str(x.piToken, 200));
     if (x.channels) {
       // leere Felder = nicht benutzt; mindestens ein Kanal bleibt, ungueltige Werte werden ignoriert

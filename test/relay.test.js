@@ -121,3 +121,23 @@ test('Relay: Kanalzuordnung kommt aus der App (POST /x32/config) und wird validi
     assert.deepEqual(x32.received.filter((m) => /\/mix\/fader$/.test(m.address)).map((m) => m.address), ['/ch/10/mix/fader']);
   } finally { await relay.stop(); x32.close(); }
 });
+
+test('App-Adapter: mehrere Pi-URLs, nimmt die erreichbare', async () => {
+  const { HttpX32 } = await import('../src/adapters/x32.js');
+  const { loadSettings, applyPatch } = await import('../src/settings.js');
+  const { openDb } = await import('../src/db.js');
+  const { config } = await import('../src/config.js');
+  config.secret = 'test-secret-test-secret-test-secret-1234';
+  openDb(':memory:'); loadSettings();
+  const x32 = await fakeX32();
+  const relay = createRelay({ x32Host: '127.0.0.1', x32Port: x32.port, token: TOKEN, bind: '127.0.0.1', port: 0 });
+  const port = await relay.start();
+  try {
+    applyPatch({ x32: { adapter: 'http', piUrl: `http://127.0.0.1:9, http://127.0.0.1:${port}/`, piToken: TOKEN } }, { allow: ['x32'] });
+    const a = new HttpX32();
+    const s = await a.readState();
+    assert.equal(s.mics.length, 3);
+    assert.equal(a.idx, 1);
+    assert.equal(a.health().ok, true);
+  } finally { await relay.stop(); x32.close(); }
+});

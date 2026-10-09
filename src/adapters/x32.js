@@ -40,12 +40,24 @@ export class HttpX32 {
     const t = piToken();
     return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
   }
-  _url(p) { return settings().x32.piUrl.replace(/\/$/, '') + p; }
+  // Pi-URL darf mehrere Adressen enthalten (LAN und VPN, durch Komma getrennt): es wird die genommen, die gerade antwortet
+  _urls() { return String(settings().x32.piUrl || '').split(/[\s,;]+/).map((u) => u.trim().replace(/\/$/, '')).filter((u) => /^https?:\/\//.test(u)); }
+  async _fetch(path, init = {}) {
+    const urls = this._urls();
+    if (!urls.length) throw new Error('Pi-URL fehlt');
+    this.idx = (this.idx || 0) % urls.length;
+    let last;
+    for (let k = 0; k < urls.length; k++) {
+      const i = (this.idx + k) % urls.length;
+      try { const res = await fetch(urls[i] + path, { ...init, signal: AbortSignal.timeout(1500) }); this.idx = i; return res; } catch (e) { last = e; }
+    }
+    throw last;
+  }
   async setPlayerLevel(player, amp) {
     const ch = settings().x32.channels[`p${player}`];
     try {
-      const res = await fetch(this._url('/x32/level'), {
-        method: 'POST', headers: this._headers(), signal: AbortSignal.timeout(1500),
+      const res = await this._fetch('/x32/level', {
+        method: 'POST', headers: this._headers(),
         body: JSON.stringify({ player, channels: ch, fader: ampToFader(amp) }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -57,13 +69,13 @@ export class HttpX32 {
     const c = settings().x32.channels;
     const key = JSON.stringify(c);
     if (key === this.sentKey && Date.now() - this.sentAt < 30000) return;
-    const res = await fetch(this._url('/x32/config'), { method: 'POST', headers: this._headers(), signal: AbortSignal.timeout(1500), body: JSON.stringify({ p1: c.p1, p2: c.p2, mics: c.mics }) });
+    const res = await this._fetch('/x32/config', { method: 'POST', headers: this._headers(), body: JSON.stringify({ p1: c.p1, p2: c.p2, mics: c.mics }) });
     if (res.ok) { this.sentKey = key; this.sentAt = Date.now(); }
   }
   async readState() {
     try {
       await this._pushConfig().catch(() => {}); // aeltere Relays kennen /x32/config nicht - dann gilt deren .env
-      const res = await fetch(this._url('/x32/state'), { headers: this._headers(), signal: AbortSignal.timeout(1500) });
+      const res = await this._fetch('/x32/state', { headers: this._headers() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const s = await res.json();
       this.ok = true; this.error = null; this.lastOk = Date.now();
