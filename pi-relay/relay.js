@@ -71,6 +71,21 @@ export function createRelay(opts = {}) {
         x32: { ok: Date.now() - state.lastSeen < 5000, lastSeenMs: state.lastSeen ? Date.now() - state.lastSeen : null },
       });
     }
+    if (req.method === 'POST' && req.url === '/x32/config') {
+      let body = '';
+      req.on('data', (d) => { body += d; if (body.length > 2048) req.destroy(); });
+      req.on('end', () => {
+        let j; try { j = JSON.parse(body); } catch { return json(400, { error: 'bad json' }); }
+        const list = (a, max) => (Array.isArray(a) && a.length && a.length <= max && a.every((c) => Number.isInteger(c) && c >= 1 && c <= 32) ? a : null);
+        const p1 = list(j.p1, 2), p2 = list(j.p2, 2), mics = list(j.mics, 3);
+        if (j.p1 !== undefined && !p1 || j.p2 !== undefined && !p2 || j.mics !== undefined && !mics) return json(400, { error: 'channels' });
+        if (p1) cfg.players[1] = p1;
+        if (p2) cfg.players[2] = p2;
+        if (mics) { cfg.mics = mics; pollMics(); }
+        json(200, { ok: true, p1: cfg.players[1], p2: cfg.players[2], mics: cfg.mics });
+      });
+      return undefined;
+    }
     if (req.method === 'POST' && req.url === '/x32/level') {
       let body = '';
       req.on('data', (d) => { body += d; if (body.length > 2048) req.destroy(); });

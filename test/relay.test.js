@@ -92,3 +92,32 @@ test('App-Adapter (HttpX32) spricht mit dem Relay', async () => {
     assert.equal(a.health().ok, true);
   } finally { await relay.stop(); x32.close(); }
 });
+
+test('Relay: Kanalzuordnung kommt aus der App (POST /x32/config) und wird validiert', async () => {
+  const { HttpX32 } = await import('../src/adapters/x32.js');
+  const { loadSettings, applyPatch, settings } = await import('../src/settings.js');
+  const { openDb } = await import('../src/db.js');
+  const { config } = await import('../src/config.js');
+  config.secret = 'test-secret-test-secret-test-secret-1234';
+  openDb(':memory:'); loadSettings();
+  const x32 = await fakeX32();
+  const relay = createRelay({ x32Host: '127.0.0.1', x32Port: x32.port, token: TOKEN, bind: '127.0.0.1', port: 0 });
+  const port = await relay.start();
+  const base = `http://127.0.0.1:${port}`, auth = { Authorization: `Bearer ${TOKEN}` };
+  try {
+    assert.equal((await fetch(`${base}/x32/config`, { method: 'POST', headers: auth, body: JSON.stringify({ p1: [99] }) })).status, 400);
+    assert.equal((await fetch(`${base}/x32/config`, { method: 'POST', body: '{}' })).status, 401);
+    applyPatch({ x32: { adapter: 'http', piUrl: base, piToken: TOKEN, micNames: ['Moderator', '', 'DJ'], channels: { p1: [10], p2: [11, 12], mics: [20, 21, ''] } } }, { allow: ['x32'] });
+    assert.deepEqual(settings().x32.channels.p1, [10]);
+    assert.deepEqual(settings().x32.channels.mics, [20, 21]);
+    assert.deepEqual(settings().x32.micNames, ['Moderator', 'Mic 2', 'DJ']);
+    const a = new HttpX32();
+    const st = await a.readState();
+    assert.deepEqual(relay.cfg.mics, [20, 21]);
+    assert.deepEqual(relay.cfg.players[2], [11, 12]);
+    assert.equal(st.mics[0].name, 'Moderator');
+    await a.setPlayerLevel(1, 1);
+    await sleep(100);
+    assert.deepEqual(x32.received.filter((m) => /\/mix\/fader$/.test(m.address)).map((m) => m.address), ['/ch/10/mix/fader']);
+  } finally { await relay.stop(); x32.close(); }
+});

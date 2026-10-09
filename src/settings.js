@@ -42,6 +42,7 @@ export const DEFAULTS = {
     piUrl: '',
     piToken: '',
     channels: { p1: [1, 2], p2: [3, 4], mics: [5, 6, 7] },
+    micNames: ['Mic 1', 'Mic 2', 'Mic 3'],
   },
   test: { enabled: false, prefix: null, realEnv: 'live', mockSpeed: 1 },
   spotify: { clientId: '', clientSecret: '', apiBudget: 60, players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '' } } },
@@ -206,11 +207,17 @@ export function applyPatch(patch, { allow }) {
     if ('piUrl' in x) s.x32.piUrl = str(x.piUrl, 200).trim();
     if (x.piToken) s.x32.piToken = encrypt(str(x.piToken, 200));
     if (x.channels) {
-      const ch = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n).map((c) => Math.round(clamp(c, 1, 32, 1))) : null);
+      // leere Felder = nicht benutzt; mindestens ein Kanal bleibt, ungueltige Werte werden ignoriert
+      const ch = (arr, n) => {
+        if (!Array.isArray(arr)) return null;
+        const out = [...new Set(arr.filter((c) => c !== '' && c != null).map(Number).filter((c) => Number.isInteger(c) && c >= 1 && c <= 32))].slice(0, n);
+        return out.length ? out : null;
+      };
       s.x32.channels.p1 = ch(x.channels.p1, 2) || s.x32.channels.p1;
       s.x32.channels.p2 = ch(x.channels.p2, 2) || s.x32.channels.p2;
       s.x32.channels.mics = ch(x.channels.mics, 3) || s.x32.channels.mics;
     }
+    if (Array.isArray(x.micNames)) s.x32.micNames = [0, 1, 2].map((i) => str(x.micNames[i], 24).trim() || `Mic ${i + 1}`);
   }
   if (has('test')) {
     const t = patch.test;

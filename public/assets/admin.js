@@ -116,8 +116,9 @@ function viewConnections() {
   const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://10.8.0.2:8080' });
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
   const ch = s.x32.channels;
-  const chIn = (v, i) => num(v[i], { min: 1, max: 32, class: 'num' });
+  const chIn = (v, i) => num(v[i] ?? '', { min: 1, max: 32, class: 'num', placeholder: '–' });
   const p1 = [chIn(ch.p1, 0), chIn(ch.p1, 1)], p2 = [chIn(ch.p2, 0), chIn(ch.p2, 1)], mics = [0, 1, 2].map((i) => chIn(ch.mics, i));
+  const micNames = [0, 1, 2].map((i) => h('input', { value: (s.x32.micNames || [])[i] || `Mic ${i + 1}`, maxlength: 24, 'aria-label': `Name Mikro ${i + 1}` }));
   return h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Status'),
       ...Object.entries(data.connections).map(([env, c]) => h('div', { class: 'stack' }, h('strong', {}, env === 'live' ? 'Live' : 'Testmodus'), ampel(c)))),
@@ -137,8 +138,11 @@ function viewConnections() {
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
       field('Anbindung', adapter), field('Pi-URL (Relay)', piUrl), field('Token', piToken),
-      h('div', { class: 'grid three' }, field('Player 1 (L/R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (L/R)', h('div', { class: 'row' }, ...p2)), field('Mic-Kanäle', h('div', { class: 'row' }, ...mics))),
-      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, channels: { p1: p1.map((i) => Number(i.value)), p2: p2.map((i) => Number(i.value)), mics: mics.map((i) => Number(i.value)) } } }) }, 'Speichern'),
+      h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
+      h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
+      h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
+      field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
+      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
 

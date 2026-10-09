@@ -15,6 +15,20 @@ App-Container (Heimserver) ──WireGuard──► Pi 5 (10.8.0.2:8080, Relay) 
    Das Skript richtet WireGuard (mit Auto-Neustart-Watchdog), das Relay (Docker, nur im Tunnel erreichbar) und die Firewall (ufw) ein und zeigt am Ende die Werte für die App an (URL + Token).
 3. In der App: Admin → Verbindungen → X32 / Pi 5 eintragen, fertig. Die Schritte unten sind die manuelle Variante / Hintergrund.
 
+## Test ohne X32 (zu Hause)
+Im Ordner `pi-relay/` liegt ein simuliertes Pult (`fake-x32.js`): Es zeigt jeden Fader-Befehl der App an und simuliert Mikrofone.
+```bash
+cd ~/schulhauspartry_ui/pi-relay
+nano .env                      # X32_HOST=127.0.0.1   (statt der echten Pult-IP)
+docker compose up -d --build   # Relay neu starten
+# zweites Terminal (oder in screen/tmux): das Fake-Pult starten, Mics 5 und 7 haben "Signal"
+docker run --rm --network host -v "$PWD":/app -w /app -e MIC_OPEN=5,7 node:22-alpine node fake-x32.js
+```
+In der App: Admin → Verbindungen → Anbindung „HTTP-Relay“, Pi-URL `http://<LAN-IP des Pi>:8080`, Token. Bewegst du in der Technik-Ansicht einen Fader, erscheint im Terminal z. B. `Fader Kanal 1 -> 0.500`. Die Mikrofone erscheinen in der App als „offen“. Zurück zum echten Pult: in der `.env` wieder die X32-IP eintragen und das Relay neu starten.
+
+## Kanäle einstellen (im Admin, nicht am Pi)
+Admin → Verbindungen → X32 / Pi 5 → **Kanalzuordnung**: Player 1/2 (1 Kanal Mono oder 2 Kanäle Stereo), bis zu 3 Mikrofon-Kanäle und deren Namen. Die App übermittelt das automatisch an den Pi (alle 30 s und bei jeder Änderung), die Kanäle in der Relay-`.env` sind nur Startwerte.
+
 ## 0. Vorbereitung am X32
 1. **Feste IP** vergeben: Setup → Network (z. B. `192.168.1.50`). Pi und X32 müssen im selben Netz sein (Kabel/Switch).
 2. Die Player-Audioquellen und Mics liegen auf **Eingangskanälen** (`ch/01`–`ch/32`). Standard in der App:
