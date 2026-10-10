@@ -31,6 +31,7 @@ export function createMonitor(engines) {
   async function tick() {
     for (const [env, e] of Object.entries(engines)) {
       if (!e.realConnections && env !== 'live') continue;
+      if (e.wishlist) continue; // ohne Wiedergabe gibt es nichts zu ueberwachen
       const c = e.connections();
       const hw = e.realConnections;
       if (hw && e.x32.kind === 'http') await check('x32', 'x32', env, c.x32.ok === false, 'X32/Pi ist nicht erreichbar – Fader und Mics gehen nicht.', 'X32/Pi ist wieder erreichbar.');

@@ -4,8 +4,9 @@ import { isFeature } from './features.js';
 
 export const DEFAULTS = {
   timezone: 'Europe/Berlin',
+  operation: { mode: 'full' },   // full = Spotify-Player/Crossfade/X32 | wishlist = nur Wuensche annehmen/ablehnen (ein DJ spielt selbst)
   // Single Sign-On (OpenID Connect, z. B. Authentik). roleMap: Gruppe im Anbieter -> Rolle in der App
-  sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, buttonLabel: 'Mit SSO anmelden' },
+  sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, autoCreate: true, autoLinkEmail: false, buttonLabel: 'Mit SSO anmelden' },
   security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true },
   voting: { votesPerWindow: 8, windowMin: 15, sortByVotes: true },
   handover: { text: '', by: '', ts: 0 },
@@ -122,7 +123,7 @@ export function applyPatch(patch, { allow }) {
   }
   if (has('pause') && 'message' in patch.pause) s.pause.message = str(patch.pause.message, 120);
   if (has('roleHome') && patch.roleHome && typeof patch.roleHome === 'object') {
-    for (const r of ['admin', 'tech', 'mod', 'orga', 'display', 'light']) if (r in patch.roleHome) { const v = String(patch.roleHome[r]); if (v === '' || /^\/[a-z]+$/.test(v)) s.roleHome[r] = v; }
+    for (const r of ['admin', 'tech', 'mod', 'orga', 'display', 'light', 'dj']) if (r in patch.roleHome) { const v = String(patch.roleHome[r]); if (v === '' || /^\/[a-z]+$/.test(v)) s.roleHome[r] = v; }
   }
   if (has('roleBoards') && patch.roleBoards && typeof patch.roleBoards === 'object') {
     for (const r of ['admin', 'tech', 'mod', 'orga', 'display']) if (r in patch.roleBoards) {
@@ -130,6 +131,7 @@ export function applyPatch(patch, { allow }) {
       s.roleBoards[r] = Array.isArray(b) ? b.slice(0, 30).map((x) => ({ id: str(x.id, 20), size: ['normal', 'wide', 'full'].includes(x.size) ? x.size : 'normal' })) : null;
     }
   }
+  if (has('operation') && ['full', 'wishlist'].includes(patch.operation?.mode)) s.operation.mode = patch.operation.mode;
   if (has('sso')) {
     const q = patch.sso, o = s.sso;
     if ('enabled' in q) o.enabled = !!q.enabled;
@@ -142,6 +144,8 @@ export function applyPatch(patch, { allow }) {
     if (Array.isArray(q.roleMap)) o.roleMap = q.roleMap.slice(0, 40).map((r) => ({ group: str(r?.group, 120).trim(), role: String(r?.role) })).filter((r) => r.group && ['admin', 'tech', 'mod', 'orga', 'display', 'light'].includes(r.role));
     if ('defaultRole' in q) o.defaultRole = ['tech', 'mod', 'orga', 'display', 'light', 'admin'].includes(q.defaultRole) ? q.defaultRole : '';
     if ('allowAdmin' in q) o.allowAdmin = !!q.allowAdmin;
+    if ('autoCreate' in q) o.autoCreate = !!q.autoCreate;
+    if ('autoLinkEmail' in q) o.autoLinkEmail = !!q.autoLinkEmail;
     if ('buttonLabel' in q) o.buttonLabel = str(q.buttonLabel, 40).trim() || 'Mit SSO anmelden';
   }
   if (has('features') && patch.features && typeof patch.features === 'object') {

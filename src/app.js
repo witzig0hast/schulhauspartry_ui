@@ -18,6 +18,7 @@ import { securityRouter } from './routes/security.js';
 import { extrasRouter } from './routes/extras.js';
 import { vpnRouter } from './routes/vpn.js';
 import { ssoRouter } from './routes/sso.js';
+import { djRouter } from './routes/dj.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -54,6 +55,7 @@ const PAGES = {
   prep: { file: 'prep.html', perm: 'viewPrep' },
   stage: { file: 'stage.html', perm: 'viewStage' },
   light: { file: 'light.html', perm: 'viewLight' },
+  dj: { file: 'dj.html', perm: 'viewDj' },
   charts: { file: 'charts.html', perm: null },
   wall: { file: 'wall.html', perm: null },
   schedule: { file: 'schedule.html', perm: 'viewSchedule' },
@@ -64,7 +66,7 @@ const PAGES = {
 };
 
 // Seite -> Funktionsschalter (ausgeschaltete Ansichten gibt es dann nicht mehr)
-const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
+const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', dj: 'viewDj', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
   const problems = validateConfig();
@@ -160,6 +162,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', (req, res, next) => (req.path.startsWith('/guest') || apiLimiter.check(clientIp(req)).ok ? next() : res.status(429).json({ error: 'Zu viele Anfragen. Bitte kurz warten.' })));
     router.use('/api', securityRouter(env, engines[env], hub));
     router.use('/api', extrasRouter(env, engines[env], hub));
+    router.use('/api', djRouter(env, engines[env], hub));
     router.use('/api', vpnRouter());
     if (env === 'live') router.use('/api', ssoRouter());   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
     router.use('/api', staffRouter(env, engines[env], hub));
@@ -172,7 +175,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.type('html').send(renderPage('recap.html', base, env));
     });
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|charts|wall|schedule|activity)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|dj|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (PAGE_FEATURE[name] && !isOn(PAGE_FEATURE[name])) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Ausgeschaltet</title><p style="font:16px system-ui;padding:2rem">Diese Ansicht ist vom Admin ausgeschaltet.</p>');

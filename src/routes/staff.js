@@ -11,7 +11,7 @@ import { buildAnalytics } from '../analytics.js';
 import { isOn, requireFeature } from '../features.js';
 import { logEvent } from '../db.js';
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light' };
+const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 
 const num = (v, d, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
 const player = (v) => { const n = Number(v); if (n !== 1 && n !== 2) throw Object.assign(new Error('Ungültiger Player'), { status: 400 }); return n; };
@@ -112,7 +112,9 @@ export function staffRouter(env, engine, hub) {
   }));
 
   // ----- Technik -----
-  const ctl = requirePerm('control');
+  const ctlPerm = requirePerm('control');
+  // Im Wunschlisten-Modus gibt es keine Wiedergabe ueber die App (ein DJ spielt selbst)
+  const ctl = (req, res, next) => ctlPerm(req, res, () => (settings().operation.mode === 'wishlist' ? res.status(409).json({ error: 'Wunschlisten-Modus: Die App spielt keine Musik ab (der DJ spielt selbst).' }) : next()));
   r.post('/control/play', ctl, wrap(async (req, res) => { await engine.play(player(req.body.player)); res.json({ ok: true }); }));
   r.post('/control/pause', ctl, wrap(async (req, res) => { await engine.pause(player(req.body.player)); res.json({ ok: true }); }));
   r.post('/control/fade-in', ctl, wrap(async (req, res) => { await engine.fadeIn(player(req.body.player), num(req.body.sec, 5, 0.1, 120)); res.json({ ok: true }); }));
@@ -143,7 +145,7 @@ export function staffRouter(env, engine, hub) {
   }));
 
   // Auto-Crossfade, Ducking und Orga-Hinweis darf auch die Technik aendern
-  r.post('/settings/tech', ctl, wrap((req, res) => {
+  r.post('/settings/tech', ctlPerm, wrap((req, res) => {
     const allow = ['auto', 'ducking', 'notice', 'wishMessages'];
     applyPatch(req.body || {}, { allow });
     hub.pushEnv(env, { guests: true });

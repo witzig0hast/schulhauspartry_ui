@@ -141,6 +141,16 @@ export function openDb(dataDir) {
       public INTEGER NOT NULL DEFAULT 0,
       done INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS sso_links (
+      issuer TEXT NOT NULL,
+      sub TEXT NOT NULL,
+      kind TEXT NOT NULL,            -- 'account' (bestehender Code-Zugang) oder 'head' (Head-Admin)
+      account_id INTEGER,
+      email TEXT,
+      name TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (issuer, sub)
+    );
     CREATE TABLE IF NOT EXISTS vote_actions (
       env TEXT NOT NULL,
       device_id TEXT NOT NULL,
@@ -189,6 +199,7 @@ export function openDb(dataDir) {
   addColumn('requests', 'year', 'INTEGER');
   addColumn('requests', 'popularity', 'INTEGER');
   addColumn('requests', 'tag', 'TEXT');
+  addColumn('accounts', 'email', 'TEXT');
   addColumn('sessions', 'ip', 'TEXT');
   addColumn('sessions', 'ua', 'TEXT');
   addColumn('sessions', 'last_seen', 'INTEGER');

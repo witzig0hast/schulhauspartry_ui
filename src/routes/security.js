@@ -13,7 +13,7 @@ import { listDevices, blockDevice, unblockDevice, deviceOfRequest } from '../dev
 const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } };
 const authLimiter = new RateLimiter(20, 10 * 60 * 1000);
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light' };
+const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 
 export function securityRouter(env, engine, hub) {
   const r = express.Router();

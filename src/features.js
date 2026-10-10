@@ -20,6 +20,7 @@ export const FEATURES = [
   { id: 'viewAnalytics', group: 'views', label: 'Analytics', desc: 'Genres, Interpreten, Zeitverlauf …', def: true },
   { id: 'viewPrep', group: 'views', label: 'Vorbereitung', desc: 'Checkliste und Testknöpfe vor der Party.', def: true },
   { id: 'viewFoh', group: 'views', label: 'FOH-Anzeige', desc: 'Statusanzeige zum Ansehen.', def: true },
+  { id: 'viewDj', group: 'views', label: 'DJ-Ansicht', desc: 'Angenommene Wünsche als Arbeitsliste: „Läuft jetzt“ und „Gespielt“ markieren (vor allem im Wunschlisten-Modus).', def: true },
   { id: 'viewLight', group: 'views', label: 'Licht-Ansicht', desc: 'Für die Lichttechnik: aktueller Song, die nächsten mit Genre, Übergang-Countdown.', def: true },
   { id: 'viewStage', group: 'views', label: 'Bühnen-Ansicht', desc: 'Jetzt läuft, Nächster Song, Uhr, Zeitplan und Mics auf einen Blick.', def: true },
   { id: 'viewCharts', group: 'views', label: 'Wunsch-Charts (öffentlich)', desc: 'Rangliste der meistgewünschten Songs für den Bildschirm.', def: true },

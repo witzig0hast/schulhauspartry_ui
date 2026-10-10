@@ -48,6 +48,7 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   }
   if (!can(role, 'viewMod')) { delete out.history; delete out.blacklist; delete out.later; delete out.chat; delete out.claims; delete out.online; }
   if (!can(role, 'viewMod') && !can(role, 'viewTicker')) { delete out.pending; delete out.recent; }
+  out.mode = snap.mode || 'full';
   out.crossfadeIn = snap.crossfadeIn || null;
   if (can(role, 'viewLight')) out.playedNow = rq.history(engine.env, 3).map(publicReq); // Details (Genre, Jahr …) zum gerade laufenden Song
   if (role === 'light') { // Lichttechnik: nur lesen, keine Namen der Mitarbeitenden
@@ -78,6 +79,7 @@ export function guestState(engine, deviceId) {
     notice: g.notice,
     explicitMode: g.explicitMode,
     limit: rq.limitState(engine.env, deviceId),
+    mode: settings().operation.mode,
     pause: engine.state.pauseMode && isOn('pauseMode') ? settings().pause.message : null,
     voting: isOn('voting') ? { list: votingList(engine.env, deviceId), ...voteState(engine.env, deviceId) } : null,
     poll: currentPoll(engine.env, deviceId),

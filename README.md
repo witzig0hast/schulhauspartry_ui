@@ -239,3 +239,15 @@ Admin → Sicherheit → **Single Sign-On**. Per OpenID Connect (Authorization-C
 4. **Admin per SSO** ist standardmäßig aus; wenn erlaubt, sind SSO-Admins nicht der Head-Admin (kein VPN, kein Passwort ändern) und unterliegen der Admin-IP-Liste.
 
 SSO-Konten erscheinen unter Codes mit „SSO", können dort gesperrt oder gelöscht werden und haben eigene Namen in der Entscheidungs-Statistik. Die Rolle wird bei jeder Anmeldung aus den Gruppen neu gesetzt. Eine Abmeldung im Identity-Provider beendet bestehende Sitzungen der App nicht sofort: sie enden nach der Inaktivitäts-/Maximaldauer (Admin → Sicherheit) oder per „Abmelden" in der Sitzungsliste.
+
+## Betriebsart: Normalbetrieb oder nur Wunschliste (mit DJ)
+
+Admin → Start → **Betriebsart**. *Normalbetrieb*: die App spielt (Spotify-Player, Warteschlange, Crossfade, X32). *Nur Wunschliste*: Wünsche werden nur angenommen oder abgelehnt, ein DJ spielt selbst. Dann sind Player-Steuerung, Crossfade, Pult-Anbindung, Auto-Sortierung und Hardware-Alarme aus. Die neue Rolle **DJ** (Codes → Rolle „DJ") hat die Ansicht `/dj`: angenommene Wünsche als Arbeitsliste mit „▶ Läuft jetzt" und „✓ Gespielt" (↩ bei Versehen). Die Markierungen erscheinen bei den Gästen („Jetzt läuft"), im Beamer, in der Setlist und im Bericht. Der DJ darf auch Wünsche annehmen/ablehnen; Moderation und Technik dürfen mitmarkieren. Beim Wechsel in den Wunschlisten-Modus werden laufende Player angehalten.
+
+## Bestehende Zugänge mit SSO verbinden
+
+SSO muss kein neues Konto anlegen:
+- **Selbst verbinden:** eingeloggt (Code oder Passwort) auf 🔑 → „Mit SSO verbinden". Danach führt die SSO-Anmeldung auf genau diesen Zugang (gleiche Rolle, gleicher Verlauf, auch ohne Gruppenzuordnung). Der Head-Admin verbindet seinen Zugang genauso. Ein SSO-Konto kann nur mit einem Zugang verbunden sein.
+- **Per E-Mail:** Admin → Codes → ✉ (E-Mail der Person eintragen) und in der SSO-Karte „Bestehende Zugänge automatisch per E-Mail verbinden" einschalten. Es zählt nur eine vom Anbieter bestätigte E-Mail.
+- **Keine neuen Konten:** In der SSO-Karte „Neue Konten automatisch anlegen" ausschalten, dann kommen nur verbundene Zugänge per SSO hinein.
+- Der Admin kann Verbindungen unter Codes lösen („SSO lösen"). Gesperrte Zugänge bleiben auch per SSO gesperrt; für den Head-Admin gelten weiter IP-Liste und „Admin nur mit Passkey".

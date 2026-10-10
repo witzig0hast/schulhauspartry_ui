@@ -72,7 +72,7 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
         u.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'E') : null,
         u.votes > 1 ? h('span', { class: 'badge' }, `+${u.votes - 1}`) : null,
         u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `★ Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
-        h('span', { class: `badge p${u.player}` }, `P${u.player}`),
+        u.player ? h('span', { class: `badge p${u.player}` }, `P${u.player}`) : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Priorisieren', 'aria-label': 'Priorisieren', onclick: safe(async () => { const o = await api('/mod/prioritize', { method: 'POST', body: { id: u.id } }); toast(`Priorisiert – kommt auf Platz ${o.position}`); onAfter?.(); }) }, '★') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Entfernen', 'aria-label': 'Entfernen', onclick: safe(async () => { await api('/mod/remove', { method: 'POST', body: { id: u.id } }); onAfter?.(); }) }, '✕') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Song sperren', 'aria-label': 'Song sperren', onclick: () => { if (confirm(`„${u.title}“ sperren und aus der Warteschlange nehmen?`)) ban({ kind: 'track', trackId: u.trackId, title: u.title, artist: u.artist }, `„${u.title}“`, onAfter); } }, '⛔') : null)));

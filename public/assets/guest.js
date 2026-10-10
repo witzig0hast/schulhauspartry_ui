@@ -119,6 +119,7 @@ function render() {
     if ((r.status === 'pending' || r.status === 'approved') && r.ahead != null) extra.push(h('div', { class: 'small muted' }, r.status === 'pending'
       ? (r.ahead > 0 ? `Wartet auf Freigabe – bis zu ${r.ahead} ${r.ahead === 1 ? 'Lied' : 'Lieder'} vor dir` : 'Wartet auf Freigabe')
       : (r.ahead === 0 ? 'Du bist als Nächstes dran!' : `Noch ${r.ahead} ${r.ahead === 1 ? 'Lied' : 'Lieder'} vor dir`)));
+    if (r.status === 'approved' && r.ahead == null) extra.push(h('div', { class: 'small muted' }, 'Angenommen – der DJ spielt ihn bei passender Gelegenheit.'));
     if (r.status === 'denied' && r.reason) extra.push(h('div', { class: 'small muted' }, `Grund: ${r.reason}`));
     if (r.votes > 1) extra.push(h('div', { class: 'small muted' }, `+${r.votes - 1} weitere wünschen sich das auch`));
     mine.append(h('div', { class: 'item' + (r.status === 'denied' ? ' denied' : '') },

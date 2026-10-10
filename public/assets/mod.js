@@ -31,7 +31,7 @@ boxes.spaeter.append(laterBox);
 
 function renderTabs() {
   const n = { wuensche: state.pending.length, spaeter: state.later?.length || 0, queue: state.upcomingTotal, gespielt: state.history?.length || 0, gesperrt: state.blacklist?.length || 0, chat: Math.max(0, (state.chat?.length || 0) - chatSeen) };
-  const labels = { wuensche: 'Wünsche', spaeter: 'Später', queue: 'Warteschlange', gespielt: 'Gespielt', gesperrt: 'Gesperrt', chat: 'Chat' };
+  const labels = { wuensche: 'Wünsche', spaeter: 'Später', queue: state.mode === 'wishlist' ? 'Angenommen' : 'Warteschlange', gespielt: 'Gespielt', gesperrt: 'Gesperrt', chat: 'Chat' };
   if (tab === 'chat') chatSeen = state.chat?.length || 0;
   const tabKey = JSON.stringify([tab, n]);
   if (tabBar.dataset.k !== tabKey && !isPressing()) { tabBar.dataset.k = tabKey;
@@ -44,7 +44,7 @@ function render() {
   if (!state) return;
   const canAct = ['admin', 'tech', 'mod'].includes(state.role);
   roleBadge.textContent = state.role === 'orga' ? 'Nur lesen' : 'Moderation';
-  assignRow.classList.toggle('hidden', !canAct);
+  assignRow.classList.toggle('hidden', !canAct || state.mode === 'wishlist');
   onlineEl.textContent = state.online?.length ? `● ${state.online.length} online: ${state.online.join(', ')}` : '';
 
   const list = [1, 2].map((n) => ({ n, p: state.players[n] }));

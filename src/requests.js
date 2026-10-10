@@ -80,14 +80,15 @@ export function submitWish(env, track, deviceId, now = Date.now()) {
 }
 
 export function guestRequests(env, deviceId, playingNow) {
+  const wl = settings().operation.mode === 'wishlist';
   const upIds = upcoming(env).map((u) => u.id);
   const rows = db().prepare(`SELECT r.* FROM requests r JOIN votes v ON v.request_id = r.id
     WHERE r.env = ? AND v.device_id = ? ORDER BY r.created_at DESC LIMIT 20`).all(env, deviceId).map(mapRow);
   return rows.map((r) => ({
     id: r.id, title: r.title, artist: r.artist, status: r.status === 'later' ? 'pending' : r.status, reason: r.status === 'denied' ? r.reason : null,
     votes: r.votes, player: r.status === 'approved' || r.status === 'playing' ? r.player : null,
-    ahead: songsAhead(env, r, playingNow),
-    position: r.status === 'approved' ? upIds.indexOf(r.id) : null, // 0 = naechster Song der Warteschlange
+    ahead: wl ? null : songsAhead(env, r, playingNow),                           // im Wunschlisten-Modus gibt es keine feste Reihenfolge
+    position: r.status === 'approved' && !wl ? upIds.indexOf(r.id) : null, // 0 = naechster Song der Warteschlange
     prioritized: !!r.prioritizedAt,
   }));
 }
@@ -117,7 +118,7 @@ export function decide(env, id, { action, reason, player, accountId }, currentPl
       db().prepare("UPDATE requests SET status='denied', reason=?, decided_by=?, decided_at=? WHERE id=? AND status IN ('pending','later')")
         .run(String(reason || '').slice(0, 80) || null, accountId ?? null, now, id);
     } else {
-      const p = player === 1 || player === 2 ? player : assignPlayer(env, currentPlayer);
+      const p = settings().operation.mode === 'wishlist' ? null : (player === 1 || player === 2 ? player : assignPlayer(env, currentPlayer));
       const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
       db().prepare("UPDATE requests SET status='approved', player=?, queue_pos=?, decided_by=?, decided_at=? WHERE id=? AND status IN ('pending','later')")
         .run(p, (max ?? 0) + 1, accountId ?? null, now, id);
@@ -165,6 +166,38 @@ export function markPlaying(env, requestId, player, now = Date.now()) {
 export function recordExternalPlay(env, player, title, artist, now = Date.now()) {
   db().prepare("UPDATE requests SET status='played' WHERE env = ? AND status='playing'").run(env);
   db().prepare('INSERT INTO plays(env, ts, player, title, artist, request_id) VALUES(?,?,?,?,?,NULL)').run(env, now, player, title || '?', artist || '');
+}
+
+// ---------- DJ / Wunschlisten-Modus: Songs von Hand als "laeuft" / "gespielt" markieren ----------
+export function djNow(env, id, now = Date.now()) {
+  return transaction(() => {
+    const r = db().prepare('SELECT * FROM requests WHERE id = ? AND env = ?').get(id, env);
+    if (!r || !['approved', 'played'].includes(r.status)) return { ok: false, status: 409, error: 'Nur angenommene Songs können als „läuft jetzt“ markiert werden.' };
+    db().prepare("UPDATE requests SET status='played' WHERE env = ? AND status='playing'").run(env);
+    db().prepare("UPDATE requests SET status='playing', player=NULL, played_at=? WHERE id=?").run(now, id);
+    db().prepare('INSERT INTO plays(env, ts, player, title, artist, request_id) VALUES(?,?,?,?,?,?)').run(env, now, 0, r.title, r.artist, id);
+    return { ok: true, request: getRequest(id) };
+  });
+}
+export function djPlayed(env, id, now = Date.now()) {
+  return transaction(() => {
+    const r = db().prepare('SELECT * FROM requests WHERE id = ? AND env = ?').get(id, env);
+    if (!r || !['approved', 'playing'].includes(r.status)) return { ok: false, status: 409, error: 'Dieser Song ist nicht in der Liste der angenommenen.' };
+    if (r.status === 'approved') db().prepare('INSERT INTO plays(env, ts, player, title, artist, request_id) VALUES(?,?,?,?,?,?)').run(env, now, 0, r.title, r.artist, id);
+    db().prepare("UPDATE requests SET status='played', played_at=COALESCE(played_at, ?) WHERE id=?").run(now, id);
+    return { ok: true, request: getRequest(id) };
+  });
+}
+// Versehentlich markiert: zurueck in die Liste der angenommenen (ans Ende)
+export function djUndo(env, id) {
+  return transaction(() => {
+    const r = db().prepare('SELECT * FROM requests WHERE id = ? AND env = ?').get(id, env);
+    if (!r || !['playing', 'played'].includes(r.status)) return { ok: false, status: 409, error: 'Nichts rückgängig zu machen.' };
+    const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+    db().prepare("UPDATE requests SET status='approved', queue_pos=?, played_at=NULL WHERE id=?").run((max ?? 0) + 1, id);
+    db().prepare('DELETE FROM plays WHERE env = ? AND request_id = ?').run(env, id);
+    return { ok: true, request: getRequest(id) };
+  });
 }
 
 export function reassignPlayer(id, player) { db().prepare('UPDATE requests SET player = ? WHERE id = ?').run(player, id); }

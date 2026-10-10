@@ -56,6 +56,10 @@ export async function prepChecks(env, engine, engines) {
   add('filler', 'Ablauf', 'Lückenfüller', s.filler.enabled && s.filler.playlist ? 'ok' : 'info', s.filler.enabled && s.filler.playlist ? 'aktiv' : 'aus – bei leerer Warteschlange kann es still werden.');
   add('wish', 'Ablauf', 'Wünsche der Gäste', engine.wishMode === 'open' ? 'ok' : 'warn', { open: 'offen', paused: 'pausiert', closed: 'geschlossen' }[engine.wishMode], engine.wishMode !== 'open' ? { id: 'wish-open', label: 'Wünsche öffnen' } : null);
   void engines;
+  if (engine.wishlist) { // ohne Wiedergabe ueber die App sind Player, Pult und Mics nicht noetig
+    add('mode', 'Grundlagen', 'Betriebsart', 'info', 'Nur Wunschliste: Wünsche werden angenommen/abgelehnt, der DJ spielt selbst (Admin → Start).');
+    for (const c of checks) if (/^(player\d|x32|mics|pi|fader)/.test(c.id)) { c.status = 'info'; c.detail = `nicht nötig (Wunschlisten-Modus) – ${c.detail}`; c.action = null; }
+  }
   return checks;
 }
 

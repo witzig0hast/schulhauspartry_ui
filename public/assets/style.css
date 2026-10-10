@@ -592,3 +592,9 @@ html.no-confetti .confetti-cv { display: none !important; }
 .lt-eta { white-space: nowrap; font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
 .lt-t { font-size: clamp(1.2rem, 2vw, 1.9rem); font-weight: 720; letter-spacing: -.03em; line-height: 1.15; }
 .lt-a { color: var(--muted); font-size: 1.05rem; }
+
+/* Betriebsart */
+.mode-opt { text-align: left; display: grid; gap: 4px; padding: 16px 18px; height: auto; border-radius: 16px; border: 2px solid var(--line-2); background: var(--card); color: var(--text); cursor: pointer; font-weight: 400; }
+.mode-opt b { font-size: 1.05rem; }
+.mode-opt span { color: var(--muted); font-size: .88rem; line-height: 1.35; }
+.mode-opt.on { border-color: var(--ink); box-shadow: var(--shadow-2); }

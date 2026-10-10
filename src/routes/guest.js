@@ -107,7 +107,7 @@ export function guestRouter(env, engine, hub) {
       const ahead = rq.songsAhead(env, out.request, !!np);
       let info;
       if (out.request.status === 'playing') info = 'Dein Song läuft gerade!';
-      else if (out.request.status === 'approved') info = `Dein Song wurde bereits vorgeschlagen und wird voraussichtlich in ca. ${ahead} Songs abgespielt.`;
+      else if (out.request.status === 'approved') info = settings().operation.mode === 'wishlist' ? 'Dein Song wurde bereits angenommen – der DJ spielt ihn bei passender Gelegenheit.' : `Dein Song wurde bereits vorgeschlagen und wird voraussichtlich in ca. ${ahead} Songs abgespielt.`;
       else info = 'Dein Song wurde bereits vorgeschlagen und wartet noch auf Freigabe.';
       return res.json({ ok: true, duplicate: true, alreadyVoted: out.alreadyVoted, info, votes: out.request.votes, state: guestState(engine, req.deviceId) });
     }

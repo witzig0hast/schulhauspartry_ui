@@ -225,6 +225,7 @@ function memoSet(box, key, build) {
 
 function render() {
   if (!state) return;
+  refs.modeBanner.classList.toggle('hidden', state.mode !== 'wishlist');
   updatePlayer(1); updatePlayer(2); fillPresets(); updateMics(); updateNext();
   const cf = state.crossfade;
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
@@ -253,11 +254,12 @@ function render() {
   memoSet(refs.upBox, JSON.stringify(state.upcoming.map((u) => [u.id, u.player, u.prioritized])), () => upcomingList(state, { canAct: true }));
 }
 
+refs.modeBanner = h('div', { class: 'card hidden', style: 'background:var(--warn-bg);border-color:transparent' }, h('b', {}, 'Wunschlisten-Modus: '), 'Die App spielt keine Musik ab und steuert das Pult nicht – der DJ spielt selbst. Fader, Crossfade und Player sind gesperrt. Umschalten: Admin → Start.');
 refs.badges = h('span', { class: 'row' });
 refs.ampel = h('div'); refs.errors = h('div');
 refs.chatBox = h('div', { style: 'margin-top:12px' }); refs.chatSum = h('summary', {}, 'Team-Chat');
 const chatCard = h('details', { class: 'card more' }, refs.chatSum, refs.chatBox);
-const mainCards = [h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), chatCard, advancedCard()];
+const mainCards = [refs.modeBanner, h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), chatCard, advancedCard()];
 app.append(
   (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges] })),
   h('div', { class: 'wrap stack' }, ...mainCards),

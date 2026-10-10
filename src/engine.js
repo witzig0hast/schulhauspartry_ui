@@ -102,9 +102,16 @@ export class Engine extends EventEmitter {
   persist() { setSetting(`engine:${this.env}`, this.state); }
 
   // ----- Hauptschleife -----
+  // Wunschlisten-Modus: die App spielt nichts ab, ein DJ spielt selbst. Hier laeuft dann nur noch die Verwaltung der Wuensche.
+  get wishlist() { return settings().operation.mode === 'wishlist'; }
+
   async tick() {
     const now = Date.now();
     const cfg = settings();
+    if (this.wishlist) {
+      if (!this.lastBroadcast || now - this.lastBroadcast >= BROADCAST_MS) { this.lastBroadcast = now; this.emit('tick'); }
+      return;
+    }
 
     if (now - this.lastPoll >= (this.players[1].kind === 'real' || this.players[2].kind === 'real' ? 1000 : TICK_MS)) {
       this.lastPoll = now;
@@ -252,7 +259,7 @@ export class Engine extends EventEmitter {
 
   // Nach jeder Aenderung der Warteschlange: automatisch sortieren (Genre-Balance/Stimmung) und Meta des naechsten Songs holen
   afterQueueChange() {
-    try { applyAutoOrder(this.env, this.current); } catch (e) { this.fail('auto-order', e); }
+    if (!this.wishlist) { try { applyAutoOrder(this.env, this.current); } catch (e) { this.fail('auto-order', e); } }
     const next = rq.upcoming(this.env)[0];
     if (next) ensureMeta(this.spotify, { id: next.trackId }).catch(() => {});
     this.emit('change');
@@ -404,6 +411,7 @@ export class Engine extends EventEmitter {
   get wishMode() { return this.state.wishMode; }
 
   nowPlaying() {
+    if (this.wishlist) { const r = rq.nowPlayingRequest(this.env); return r ? { player: null, title: r.title, artist: r.artist } : null; }
     for (const p of [this.current, other(this.current || 1)]) {
       if (!p) continue;
       const st = this.players[p].status();
@@ -468,6 +476,7 @@ export class Engine extends EventEmitter {
     }
     return {
       env: this.env,
+      mode: this.wishlist ? 'wishlist' : 'full',
       ts: Date.now(),
       players,
       current: this.current,

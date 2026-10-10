@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
 import { audit } from '../audit.js';
-import { testConnection } from '../sso.js';
+import { testConnection, unlinkFor } from '../sso.js';
 import { backupNow } from '../backup.js';
 import { FEATURES, GROUPS, allFlags } from '../features.js';
 
@@ -84,10 +84,16 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
+    const modeBefore = settings().operation.mode;
     applyPatch(req.body || {}, { allow });
+    if (settings().operation.mode !== modeBefore) {
+      audit('mode.change', req.session.label, clientIp(req), `${modeBefore} -> ${settings().operation.mode}`);
+      // beim Wechsel in den Wunschlisten-Modus laufende Player anhalten (die App steuert sie danach nicht mehr)
+      if (settings().operation.mode === 'wishlist') for (const e of Object.values(engines)) for (const n of [1, 2]) e.players[n].pause().catch(() => {});
+    }
     audit('settings.change', req.session.label, clientIp(req), Object.keys(req.body || {}).filter((k) => allow.includes(k)).join(', ').slice(0, 200));
     if (settings().test.realEnv !== before) setRealEnv();
     if (!settings().test.enabled && beforeEnabled) hub.closeEnv('test');
@@ -106,14 +112,28 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status IN ('approved','playing','played','removed')) AS approved,
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status = 'denied') AS denied,
       (SELECT COUNT(*) FROM requests WHERE prioritized_by = a.id) AS prioritized,
-      (a.code_hash LIKE 'sso:%') AS sso
+      (a.code_hash LIKE 'sso:%') AS sso, a.email AS email,
+      (SELECT COUNT(*) FROM sso_links l WHERE l.kind = 'account' AND l.account_id = a.id) AS sso_links
       FROM accounts a ORDER BY a.id`).all();
-    res.json({ accounts: rows.map((x) => ({ ...x, revoked: !!x.revoked, sso: !!x.sso, roleLabel: ROLE_LABELS[x.role] })) });
+    res.json({ accounts: rows.map((x) => ({ ...x, revoked: !!x.revoked, sso: !!x.sso, ssoLinked: x.sso_links > 0, roleLabel: ROLE_LABELS[x.role] })) });
   });
   r.post('/admin/accounts', wrap((req, res) => {
     const out = createAccount(String(req.body?.role), String(req.body?.label || ''));
     audit('account.create', req.session.label, clientIp(req), `${out.role} #${out.id}`);
     res.json({ ok: true, ...out }); // Klartext-Code nur dieses eine Mal
+  }));
+  // E-Mail fuer die automatische SSO-Zuordnung und Verbindung zu einem SSO-Konto loesen
+  r.post('/admin/accounts/:id/email', wrap((req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Ungültige E-Mail-Adresse.');
+    getDb().prepare("UPDATE accounts SET email = ? WHERE id = ? AND code_hash NOT LIKE 'sso:%'").run(email || null, Number(req.params.id));
+    audit('account.email', req.session.label, clientIp(req), `#${req.params.id}`);
+    res.json({ ok: true });
+  }));
+  r.delete('/admin/accounts/:id/sso', wrap((req, res) => {
+    const n = unlinkFor(Number(req.params.id));
+    audit('sso.unlink', req.session.label, clientIp(req), `#${req.params.id}`);
+    res.json({ ok: true, removed: n });
   }));
   r.post('/admin/accounts/:id/revoke', wrap((req, res) => { audit('account.revoke', req.session.label, clientIp(req), `#${req.params.id}`); revokeAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));
   r.delete('/admin/accounts/:id', wrap((req, res) => { audit('account.delete', req.session.label, clientIp(req), `#${req.params.id}`); deleteAccount(Number(req.params.id)); hub.kickSession(Number(req.params.id)); res.json({ ok: true }); }));

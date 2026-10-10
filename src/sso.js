@@ -88,11 +88,11 @@ const pending = new Map(); // state -> { nonce, verifier, bind, next, exp }
 const sweep = () => { const n = Date.now(); for (const [k, v] of pending) if (v.exp < n) pending.delete(k); };
 const rnd = (n = 32) => crypto.randomBytes(n).toString('base64url');
 
-export async function startLogin(next) {
+export async function startLogin(next, link = null) {
   const c = ssoConfig(), d = await discover();
   sweep();
   const state = rnd(), nonce = rnd(), verifier = rnd(48), bind = rnd();
-  pending.set(state, { nonce, verifier, bind, next: typeof next === 'string' ? next : '', exp: Date.now() + 10 * 60000 });
+  pending.set(state, { nonce, verifier, bind, link, next: typeof next === 'string' ? next : '', exp: Date.now() + 10 * 60000 });
   const u = new URL(d.authorization_endpoint);
   u.search = new URLSearchParams({
     response_type: 'code', client_id: c.clientId, redirect_uri: redirectUri(), scope: c.scopes || 'openid profile email', state, nonce,
@@ -140,7 +140,7 @@ export async function completeLogin({ code, state, bind }) {
     const u = await getJson(d.userinfo_endpoint, { headers: { Authorization: `Bearer ${t.json.access_token}`, Accept: 'application/json' } }).catch(() => null);
     if (u?.ok && u.json?.sub === claims.sub) Object.assign(claims, { ...u.json, ...claims });
   }
-  return { claims, next: p.next, issuer: d.issuer };
+  return { claims, next: p.next, issuer: d.issuer, link: p.link };
 }
 
 // ---------- Konto anlegen/aktualisieren ----------
@@ -166,4 +166,58 @@ export async function testConnection() {
   const d = await discover(true);
   const r = await getJson(d.jwks_uri);
   return { issuer: d.issuer, authorization: d.authorization_endpoint, token: d.token_endpoint, keys: Array.isArray(r.json?.keys) ? r.json.keys.length : 0, groupsSupported: (d.claims_supported || []).includes('groups') || undefined, redirectUri: redirectUri(), secretSet: !!c.secret };
+}
+
+
+// ---------- Bestehende Konten mit SSO verbinden ----------
+// Ein SSO-Benutzer (Aussteller + "sub") kann mit einem bestehenden Code-Zugang oder dem Head-Admin verknuepft werden.
+// Dann meldet er sich per SSO unter diesem Konto an (Rolle und Verlauf bleiben), statt ein neues Konto zu bekommen.
+export const findLink = (issuer, sub) => getDb().prepare('SELECT * FROM sso_links WHERE issuer = ? AND sub = ?').get(issuer, String(sub)) || null;
+export const linksOf = (accountId) => getDb().prepare(accountId == null ? "SELECT * FROM sso_links WHERE kind = 'head'" : "SELECT * FROM sso_links WHERE kind = 'account' AND account_id = ?").all(...(accountId == null ? [] : [accountId]));
+export const unlinkFor = (accountId) => getDb().prepare(accountId == null ? "DELETE FROM sso_links WHERE kind = 'head'" : "DELETE FROM sso_links WHERE kind = 'account' AND account_id = ?").run(...(accountId == null ? [] : [accountId])).changes;
+
+export function linkIdentity(issuer, claims, target) {   // target: { accountId } (null = Head-Admin)
+  const db = getDb();
+  const existing = findLink(issuer, claims.sub);
+  const same = existing && (target.accountId == null ? existing.kind === 'head' : existing.kind === 'account' && existing.account_id === target.accountId);
+  if (existing && !same) throw new SsoError('taken', 'Dieses SSO-Konto ist schon mit einem anderen Zugang verbunden.');
+  if (target.accountId != null) {
+    const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(target.accountId);
+    if (!acc) throw new SsoError('failed', 'Konto nicht gefunden');
+    if (String(acc.code_hash).startsWith('sso:')) throw new SsoError('failed', 'Dieses Konto wird schon per SSO verwaltet.');
+  }
+  if (!same) {
+    db.prepare('INSERT INTO sso_links(issuer, sub, kind, account_id, email, name, created_at) VALUES(?,?,?,?,?,?,?)')
+      .run(issuer, String(claims.sub), target.accountId == null ? 'head' : 'account', target.accountId ?? null, claims.email ? String(claims.email).toLowerCase().slice(0, 120) : null, String(claims.name || claims.preferred_username || '').slice(0, 60) || null, Date.now());
+  }
+  // Gab es fuer diese Person schon ein automatisch angelegtes SSO-Konto, wandert dessen Verlauf zum verbundenen Zugang
+  const auto = db.prepare('SELECT id FROM accounts WHERE code_hash = ?').get(`sso:${sha256(`${issuer}|${claims.sub}`)}`);
+  if (auto && target.accountId != null && auto.id !== target.accountId) {
+    db.prepare('UPDATE requests SET decided_by = ? WHERE decided_by = ?').run(target.accountId, auto.id);
+    db.prepare('UPDATE requests SET prioritized_by = ? WHERE prioritized_by = ?').run(target.accountId, auto.id);
+    db.prepare('DELETE FROM sessions WHERE account_id = ?').run(auto.id);
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(auto.id);
+  } else if (auto && target.accountId == null) {
+    db.prepare('DELETE FROM sessions WHERE account_id = ?').run(auto.id);
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(auto.id);
+  }
+}
+
+// Wer meldet sich an? Reihenfolge: bestehende Verknuepfung -> E-Mail-Zuordnung (nur wenn erlaubt) -> neues Konto (nur wenn erlaubt)
+export function resolveLogin(issuer, claims, c = ssoConfig()) {
+  const db = getDb();
+  const link = findLink(issuer, claims.sub);
+  if (link) {
+    if (link.kind === 'head') return { kind: 'head' };
+    const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(link.account_id);
+    if (acc) return { kind: 'account', account: acc };
+    db.prepare('DELETE FROM sso_links WHERE issuer = ? AND sub = ?').run(issuer, String(claims.sub));   // Konto wurde geloescht
+  }
+  if (c.autoLinkEmail && claims.email && claims.email_verified !== false) {
+    const rows = db.prepare("SELECT * FROM accounts WHERE lower(email) = ? AND code_hash NOT LIKE 'sso:%' AND revoked = 0").all(String(claims.email).toLowerCase());
+    if (rows.length === 1) { linkIdentity(issuer, claims, { accountId: rows[0].id }); return { kind: 'account', account: rows[0] }; }
+  }
+  if (c.autoCreate === false) return { kind: 'deny', code: 'nolink' };
+  const role = mapRole(claims, c);
+  return role ? { kind: 'new', role } : { kind: 'deny', code: 'norole' };
 }

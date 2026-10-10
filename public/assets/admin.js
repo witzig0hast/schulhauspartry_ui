@@ -71,10 +71,12 @@ function viewCodes() {
     clear(table).append(h('table', {},
       h('thead', {}, h('tr', {}, ...['Bezeichnung', 'Rolle', 'Angenommen', 'Abgelehnt', 'Priorisiert', 'Zuletzt', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, ...accounts.map((a) => h('tr', {},
-        h('td', {}, h('strong', {}, a.label), a.sso ? h('span', { class: 'badge', style: 'margin-left:6px', title: 'Anmeldung über SSO' }, 'SSO') : null, a.revoked ? h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'gesperrt') : null),
+        h('td', {}, h('strong', {}, a.label), a.sso ? h('span', { class: 'badge', style: 'margin-left:6px', title: 'Konto wurde über SSO angelegt' }, 'SSO') : null, a.ssoLinked ? h('span', { class: 'badge ok', style: 'margin-left:6px', title: 'Mit einem SSO-Konto verbunden' }, 'SSO verbunden') : null, a.email ? h('div', { class: 'tiny muted' }, a.email) : null, a.revoked ? h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'gesperrt') : null),
         h('td', {}, a.roleLabel), h('td', {}, a.approved), h('td', {}, a.denied), h('td', {}, a.prioritized), h('td', {}, a.last_seen ? fmtClock(a.last_seen) : '–'),
         h('td', {}, h('div', { class: 'row' },
           h('button', { class: 'small', onclick: safe(async () => { const { decisions } = await api(`/admin/accounts/${a.id}/decisions`); showDecisions(a, decisions); }) }, 'Entscheidungen'),
+          !a.sso ? h('button', { class: 'small ghost', title: 'E-Mail für die automatische SSO-Zuordnung', onclick: safe(async () => { const e = prompt('E-Mail-Adresse dieser Person im SSO (leer = entfernen):', a.email || ''); if (e == null) return; await api(`/admin/accounts/${a.id}/email`, { method: 'POST', body: { email: e } }); refresh(); }) }, '✉') : null,
+          a.ssoLinked ? h('button', { class: 'small', onclick: safe(async () => { if (!confirm(`SSO-Verbindung von „${a.label}“ lösen?`)) return; await api(`/admin/accounts/${a.id}/sso`, { method: 'DELETE' }); refresh(); }) }, 'SSO lösen') : null,
           !a.revoked ? h('button', { class: 'small', onclick: safe(async () => { await api(`/admin/accounts/${a.id}/revoke`, { method: 'POST', body: {} }); refresh(); }) }, 'Sperren') : null,
           h('button', { class: 'small bad', onclick: safe(async () => { if (!confirm(`Code "${a.label}" endgültig löschen?`)) return; await api(`/admin/accounts/${a.id}`, { method: 'DELETE' }); refresh(); }) }, 'Löschen'))))))));
   }
@@ -162,6 +164,7 @@ const PAGES = [
   ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
   ['Bühne', '/stage', 'Jetzt, Nächster, Uhr, Zeitplan, Mics'],
   ['Licht', '/light', 'Lichttechnik: jetzt, nächste Songs mit Genre, Übergang-Countdown'],
+  ['DJ', '/dj', 'DJ: angenommene Wünsche, Läuft jetzt / Gespielt markieren'],
   ['Zeitplan', '/schedule', 'Programmpunkte mit Countdown'],
   ['Verlauf', '/activity', 'Was ist heute passiert?'],
   ['Wunsch-Charts', '/charts', 'Rangliste für einen Bildschirm (öffentlich)'],
@@ -191,7 +194,19 @@ function viewStart() {
     else if (typed != null) toast('Nicht bestätigt – nichts gelöscht', true);
   };
   const c = data.counts;
+  const mode = data.settings.operation.mode;
+  const setMode = (m) => () => {
+    if (m === mode) return;
+    if (m === 'wishlist' && !confirm('In den Wunschlisten-Modus wechseln?\n\nDie App spielt dann keine Musik mehr ab und steuert das Pult nicht mehr. Laufende Player werden angehalten. Wünsche werden nur noch angenommen oder abgelehnt, ein DJ spielt selbst.')) return;
+    save({ operation: { mode: m } }, m === 'wishlist' ? 'Wunschlisten-Modus an' : 'Normalbetrieb an');
+  };
+  const opt = (m, title, text) => h('button', { class: `mode-opt ${mode === m ? 'on' : ''}`, onclick: setMode(m), 'aria-pressed': String(mode === m) }, h('b', {}, title), h('span', {}, text));
   return h('div', { class: 'stack', style: 'gap:16px' },
+    h('div', { class: 'card stack' }, h('h2', {}, 'Betriebsart'),
+      h('p', { class: 'small muted' }, 'Spielt die App die Musik selbst (Spotify, Crossfade, Pult) oder gibt es einen DJ, der selbst spielt und die App nur die Wünsche verwaltet? Umschalten ist jederzeit möglich.'),
+      h('div', { class: 'grid two' },
+        opt('full', 'Normalbetrieb', 'Spotify-Player, Warteschlange, Crossfade, Ducking und X32 – die App spielt.'),
+        opt('wishlist', 'Nur Wunschliste', 'Wünsche annehmen oder ablehnen, ein DJ spielt selbst und markiert Songs in der DJ-Ansicht als „läuft“/„gespielt“. Kein Spotify-Player, kein Pult.'))),
     h('div', { class: 'card stack' }, h('h2', {}, 'Links – Live'), h('p', { class: 'small muted' }, 'Diese Adressen sind die echte Party. Zugang bekommt man mit einem Code (außer die Gäste-Seite).'), linkTable('')),
     h('div', { class: 'card stack' },
       h('div', { class: 'row between' }, h('h2', {}, 'Links – Testmodus'), h('span', { class: `badge ${t.enabled ? 'ok' : ''}` }, t.enabled ? 'AN' : 'AUS')),
@@ -396,9 +411,9 @@ function viewFeatures() {
   const vPer = num(v.votesPerWindow, { min: 1, max: 100, class: 'num' }), vWin = num(v.windowMin, { min: 1, max: 600, class: 'num' }), vSort = chk(v.sortByVotes);
   const gain = num(Math.round(lim.maxGain * 100), { min: 30, max: 100, class: 'num' }), maxSong = num(Math.round(lim.maxSongSec / 60 * 10) / 10, { min: 0, max: 30, step: 0.5, class: 'num' });
   const pmsg = h('input', { value: pz.message, maxlength: 120 });
-  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/light', 'Licht'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
-  const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display', 'light'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
-  const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige', light: 'Lichttechnik' };
+  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/light', 'Licht'], ['/dj', 'DJ'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
+  const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display', 'light', 'dj'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
+  const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige', light: 'Lichttechnik', dj: 'DJ' };
   return h('div', { class: 'stack', style: 'gap:16px' },
     h('div', { class: 'card stack' },
       h('div', { class: 'row between' }, h('h2', {}, 'Funktionen & Ansichten'), cnt),
@@ -470,7 +485,7 @@ function ssoCard() {
   const on = chk(o.enabled), issuer = h('input', { value: o.issuer, placeholder: 'https://auth.example.de/application/o/schulhauspartry/' }), cid = h('input', { value: o.clientId, autocomplete: 'off' });
   const sec = h('input', { type: 'password', placeholder: o.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password' });
   const scopes = h('input', { value: o.scopes }), gclaim = h('input', { value: o.groupsClaim }), label = h('input', { value: o.buttonLabel, maxlength: 40 });
-  const allowAdmin = chk(o.allowAdmin);
+  const allowAdmin = chk(o.allowAdmin), autoCreate = chk(o.autoCreate !== false), autoLinkEmail = chk(!!o.autoLinkEmail);
   const def = h('select', {}, h('option', { value: '' }, 'Kein Zugang'), ...SSO_ROLES.filter(([v]) => v !== 'admin').map(([v, l]) => h('option', { value: v, selected: o.defaultRole === v }, l)));
   let map = o.roleMap.map((m) => ({ ...m }));
   const mapBox = h('div', { class: 'stack', style: 'gap:8px' });
@@ -481,7 +496,7 @@ function ssoCard() {
     h('button', { class: 'small', onclick: () => { map.push({ group: '', role: 'mod' }); paint(); } }, '+ Gruppe zuordnen'));
   paint();
   const result = h('div', { class: 'small' });
-  const saveSso = () => save({ sso: { enabled: on.checked, issuer: issuer.value, clientId: cid.value, clientSecret: sec.value, scopes: scopes.value, groupsClaim: gclaim.value, buttonLabel: label.value, defaultRole: def.value, allowAdmin: allowAdmin.checked, roleMap: map } }, 'SSO gespeichert');
+  const saveSso = () => save({ sso: { enabled: on.checked, issuer: issuer.value, clientId: cid.value, clientSecret: sec.value, scopes: scopes.value, groupsClaim: gclaim.value, buttonLabel: label.value, defaultRole: def.value, allowAdmin: allowAdmin.checked, autoCreate: autoCreate.checked, autoLinkEmail: autoLinkEmail.checked, roleMap: map } }, 'SSO gespeichert');
   return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🔐 Single Sign-On (SSO)'), h('span', { class: `badge ${o.enabled ? 'ok' : ''}` }, o.enabled ? 'an' : 'aus')),
     h('p', { class: 'small muted' }, 'Mitarbeitende melden sich über deinen Identity-Provider an (Authentik, Keycloak, Authelia … per OpenID Connect). Die Rolle in der App kommt aus den Gruppen des Anbieters. Codes und Passkeys funktionieren weiter.'),
     h('label', { class: 'check' }, on, 'SSO aktivieren'),
@@ -491,6 +506,9 @@ function ssoCard() {
     h('div', { class: 'small' }, h('b', {}, 'Rückkehr-Adresse (Redirect-URI) beim Anbieter eintragen: '), h('code', { style: 'user-select:all' }, data.ssoRedirectUri)),
     h('div', { class: 'eyebrow' }, 'Gruppen → Rollen'), mapBox,
     h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Wer in keiner dieser Gruppen ist, bekommt', def)),
+    h('label', { class: 'check' }, autoCreate, 'Neue Konten automatisch anlegen (aus: nur wer schon mit einem bestehenden Zugang verbunden ist, kann sich per SSO anmelden)'),
+    h('label', { class: 'check' }, autoLinkEmail, 'Bestehende Zugänge automatisch per E-Mail verbinden (die E-Mail trägst du unter Codes beim Zugang ein, Symbol ✉; der Anbieter muss die E-Mail bestätigt haben)'),
+    h('p', { class: 'small muted' }, 'Verbinden kann sich auch jede Person selbst: eingeloggt auf das 🔑-Symbol oben → „Mit SSO verbinden“. Der Head-Admin verbindet seinen Zugang genauso.'),
     h('label', { class: 'check' }, allowAdmin, 'Admin-Rolle per SSO erlauben (sonst werden Admin-Gruppen ignoriert; SSO-Admins sind nicht der Head-Admin und können z. B. kein VPN verwalten)'),
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSso }, 'Speichern'),
       h('button', { onclick: safe(async () => { await saveSso(); try { const r = await api('/admin/sso/test', { method: 'POST', body: {} }); clear(result).append(h('span', { class: 'badge ok' }, 'Verbindung ok'), ` ${r.keys} Schlüssel, Aussteller ${r.issuer}`); } catch (e) { clear(result).append(h('span', { class: 'badge bad' }, 'Fehler'), ` ${e.message}`); } }) }, 'Speichern & Verbindung testen')), result,

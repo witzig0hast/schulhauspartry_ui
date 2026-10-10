@@ -9,26 +9,27 @@ import { adminIpAllowed } from './ipallow.js';
 import { sendNotify } from './notify.js';
 import { config } from './config.js';
 
-export const ROLES = ['admin', 'tech', 'mod', 'orga', 'display', 'light'];
-export const ROLE_LABELS = { admin: 'Head-Admin', tech: 'Technik', mod: 'Moderation', orga: 'Orga (nur lesen)', display: 'FOH-Anzeige', light: 'Lichttechnik (nur lesen)' };
+export const ROLES = ['admin', 'tech', 'mod', 'orga', 'display', 'light', 'dj'];
+export const ROLE_LABELS = { admin: 'Head-Admin', tech: 'Technik', mod: 'Moderation', orga: 'Orga (nur lesen)', display: 'FOH-Anzeige', light: 'Lichttechnik (nur lesen)', dj: 'DJ' };
 
 // Wer darf was
 export const PERMS = {
   viewTech: ['admin', 'tech'],
-  viewMod: ['admin', 'tech', 'mod', 'orga'],
+  viewMod: ['admin', 'tech', 'mod', 'dj', 'orga'],
   viewFoh: ['admin', 'tech', 'orga', 'display'],
-  viewBoard: ['admin', 'tech', 'mod', 'orga', 'display'],
-  viewStats: ['admin', 'tech', 'mod', 'orga', 'display'],
-  viewTicker: ['admin', 'tech', 'orga', 'display'],
+  viewBoard: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],
+  viewStats: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],
+  viewTicker: ['admin', 'tech', 'dj', 'orga', 'display'],
   viewPrep: ['admin', 'tech'],
+  viewDj: ['admin', 'tech', 'mod', 'dj'],
   viewLight: ['admin', 'tech', 'orga', 'display', 'light'],
-  viewStage: ['admin', 'tech', 'mod', 'orga', 'display'],
-  viewSchedule: ['admin', 'tech', 'mod', 'orga', 'display'],
-  viewActivity: ['admin', 'tech', 'mod', 'orga'],
-  chatWrite: ['admin', 'tech', 'mod'],
+  viewStage: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],
+  viewSchedule: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],
+  viewActivity: ['admin', 'tech', 'mod', 'dj', 'orga'],
+  chatWrite: ['admin', 'tech', 'mod', 'dj'],
   viewAdmin: ['admin'],
-  moderate: ['admin', 'tech', 'mod'],
-  prioritize: ['admin', 'tech', 'mod'],
+  moderate: ['admin', 'tech', 'mod', 'dj'],
+  prioritize: ['admin', 'tech', 'mod', 'dj'],
   control: ['admin', 'tech'],       // Fader, Fades, Crossfade, Ducking, Not-Aus, Ende
   wishMode: ['admin', 'tech'],      // Wuensche sperren / pausieren
   notice: ['admin', 'tech'],        // Orga-Hinweis

@@ -105,6 +105,7 @@ export function brandLogo(size = '') {
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
+  { label: 'DJ', path: '/dj', roles: ['admin', 'tech', 'mod', 'dj'], hint: 'Angenommene Wünsche, „Läuft jetzt“ / „Gespielt“ markieren', f: 'viewDj' },
   { label: 'Licht', path: '/light', roles: ['admin', 'tech', 'orga', 'display', 'light'], hint: 'Für die Lichttechnik: jetzt, nächste Songs, Übergang', f: 'viewLight', main: false },
   { label: 'Bühne', path: '/stage', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
   { label: 'Zeitplan', path: '/schedule', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },
@@ -130,7 +131,7 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   const bar = h('div', { class: 'topbar' },
     h('div', { class: 'brand' }, brandLogo(), h('div', {}, h('div', { class: 'name' }, BRAND.name), h('div', { class: 'sub' }, title))),
     navBox, h('div', { class: 'grow' }), live ? pill : null, ...right,
-    nav && passkeysSupported() ? h('button', { class: 'small ghost', title: 'Passkey für dieses Gerät', 'aria-label': 'Passkey', onclick: () => openPasskeys() }, '🔑') : null,
+    nav && (passkeysSupported() || feat('sso')) ? h('button', { class: 'small ghost', title: 'Passkey & SSO', 'aria-label': 'Passkey', onclick: () => openPasskeys() }, '🔑') : null,
     nav ? h('button', { class: 'small ghost', onclick: logout }, 'Abmelden') : null, themeButton());
   const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);
   bar.style.position = 'static';
@@ -168,7 +169,12 @@ export function buildTag() {
   if (!el) { el = h('div', { class: 'ping', id: 'buildtag' }, `v${BUILD}`); document.body.append(el); }
   return el;
 }
-addEventListener('DOMContentLoaded', () => buildTag());
+addEventListener('DOMContentLoaded', () => {
+  buildTag();
+  const sso = new URLSearchParams(location.search).get('sso');
+  const msg = { linked: 'Mit SSO verbunden ✓', taken: 'Dieses SSO-Konto ist schon mit einem anderen Zugang verbunden.', failed: 'SSO-Verbindung fehlgeschlagen.' }[sso];
+  if (msg) { toast(msg, sso !== 'linked'); history.replaceState(null, '', location.pathname + location.hash); }
+});
 
 // ---- WebSocket mit Reconnect; optionaler Ping (nur Spezialansichten) ----
 export function connect({ onState, onGuest, onStatus, ping = false }) {
@@ -248,8 +254,19 @@ export async function openPasskeys() {
     clear(list).append(...(passkeys.length ? passkeys.map((p) => h('div', { class: 'item row between' }, h('div', {}, h('b', {}, p.label), h('div', { class: 'tiny muted' }, `angelegt ${new Date(p.createdAt).toLocaleDateString('de-DE')}${p.lastUsed ? ` · zuletzt ${new Date(p.lastUsed).toLocaleDateString('de-DE')}` : ''}`)),
       h('button', { class: 'small bad', onclick: async () => { try { await api(`/passkey/${encodeURIComponent(p.id)}`, { method: 'DELETE' }); paint(); } catch (e) { toast(e.message, true); } } }, 'Löschen'))) : [h('div', { class: 'muted small' }, 'Noch kein Passkey.')]));
   };
-  const close = modal([h('h2', {}, 'Passkey'), h('p', { class: 'small muted' }, 'Damit meldest du dich auf diesem Gerät per Fingerabdruck, Gesicht oder Geräte-PIN an – ohne Code.'), list,
+  const ssoBox = h('div', { class: 'stack hidden', style: 'gap:8px;margin-top:6px' });
+  fetch(`${BASE}/api/sso/status`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((st) => {
+    if (!st || !st.enabled || st.managed) return;
+    ssoBox.classList.remove('hidden');
+    ssoBox.append(h('h2', { style: 'font-size:1rem' }, 'Single Sign-On'),
+      st.linked.length ? h('div', { class: 'item row between' }, h('div', {}, h('b', {}, 'Verbunden'), h('div', { class: 'tiny muted' }, st.linked.map((l) => l.email || l.name || 'SSO-Konto').join(', '))),
+        h('button', { class: 'small bad', onclick: async () => { try { await api('/sso/link', { method: 'DELETE', body: {} }); toast('SSO getrennt'); close(); } catch (e) { toast(e.message, true); } } }, 'Trennen'))
+        : h('div', { class: 'stack', style: 'gap:6px' }, h('p', { class: 'small muted' }, 'Verbinde diesen Zugang mit deinem SSO-Konto. Danach meldest du dich per SSO unter genau diesem Zugang an (gleiche Rolle, gleicher Verlauf).'),
+          h('a', { class: 'btn primary', href: `${BASE}/api/sso/link`, style: 'text-decoration:none;text-align:center' }, '🔐 Mit SSO verbinden')));
+  }).catch(() => {});
+  const close = modal([h('h2', {}, 'Passkey & SSO'), h('p', { class: 'small muted' }, 'Damit meldest du dich auf diesem Gerät per Fingerabdruck, Gesicht oder Geräte-PIN an – ohne Code.'), list,
     h('label', { class: 'field' }, 'Name des Geräts', label),
+    ssoBox,
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: async () => { try { await passkeyRegister(label.value); toast('Passkey gespeichert'); paint(); } catch (e) { toast(e.name === 'NotAllowedError' ? 'Abgebrochen' : e.message, true); } } }, 'Für dieses Gerät anlegen'), h('button', { onclick: () => close() }, 'Schließen'))]);
   paint().catch(() => {});
 }
