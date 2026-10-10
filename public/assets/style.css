@@ -594,7 +594,7 @@ html.no-confetti .confetti-cv { display: none !important; }
 .lt-a { color: var(--muted); font-size: 1.05rem; }
 
 /* Betriebsart */
-.mode-opt { text-align: left; display: grid; gap: 4px; padding: 16px 18px; height: auto; border-radius: 16px; border: 2px solid var(--line-2); background: var(--card); color: var(--text); cursor: pointer; font-weight: 400; }
-.mode-opt b { font-size: 1.05rem; }
-.mode-opt span { color: var(--muted); font-size: .88rem; line-height: 1.35; }
+.mode-opt { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; width: 100%; height: auto; min-height: 0; padding: 16px 18px; border-radius: 16px; border: 2px solid var(--line-2); background: var(--card); color: var(--text); cursor: pointer; font-weight: 400; text-align: left; white-space: normal; }
+.mode-opt b { display: block; font-size: 1.05rem; }
+.mode-opt span { display: block; color: var(--muted); font-size: .88rem; line-height: 1.35; white-space: normal; }
 .mode-opt.on { border-color: var(--ink); box-shadow: var(--shadow-2); }
