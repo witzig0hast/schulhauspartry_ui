@@ -4,6 +4,8 @@ import { isFeature } from './features.js';
 
 export const DEFAULTS = {
   timezone: 'Europe/Berlin',
+  // Single Sign-On (OpenID Connect, z. B. Authentik). roleMap: Gruppe im Anbieter -> Rolle in der App
+  sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, buttonLabel: 'Mit SSO anmelden' },
   security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true },
   voting: { votesPerWindow: 8, windowMin: 15, sortByVotes: true },
   handover: { text: '', by: '', ts: 0 },
@@ -127,6 +129,20 @@ export function applyPatch(patch, { allow }) {
       const b = patch.roleBoards[r];
       s.roleBoards[r] = Array.isArray(b) ? b.slice(0, 30).map((x) => ({ id: str(x.id, 20), size: ['normal', 'wide', 'full'].includes(x.size) ? x.size : 'normal' })) : null;
     }
+  }
+  if (has('sso')) {
+    const q = patch.sso, o = s.sso;
+    if ('enabled' in q) o.enabled = !!q.enabled;
+    if ('issuer' in q) { const u = str(q.issuer, 300).trim(); if (u === '' || /^https:\/\/[^\s]+$/i.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[^\s]*)?$/i.test(u)) o.issuer = u; }
+    if ('clientId' in q) o.clientId = str(q.clientId, 200).trim();
+    if (q.clientSecret) o.clientSecret = encrypt(str(q.clientSecret, 400));
+    if (q.clearSecret) o.clientSecret = '';
+    if ('scopes' in q) o.scopes = str(q.scopes, 200).trim().replace(/[^\w .:-]/g, '') || 'openid profile email';
+    if ('groupsClaim' in q) o.groupsClaim = str(q.groupsClaim, 60).trim().replace(/[^\w.:-]/g, '') || 'groups';
+    if (Array.isArray(q.roleMap)) o.roleMap = q.roleMap.slice(0, 40).map((r) => ({ group: str(r?.group, 120).trim(), role: String(r?.role) })).filter((r) => r.group && ['admin', 'tech', 'mod', 'orga', 'display', 'light'].includes(r.role));
+    if ('defaultRole' in q) o.defaultRole = ['tech', 'mod', 'orga', 'display', 'light', 'admin'].includes(q.defaultRole) ? q.defaultRole : '';
+    if ('allowAdmin' in q) o.allowAdmin = !!q.allowAdmin;
+    if ('buttonLabel' in q) o.buttonLabel = str(q.buttonLabel, 40).trim() || 'Mit SSO anmelden';
   }
   if (has('features') && patch.features && typeof patch.features === 'object') {
     for (const [id, on] of Object.entries(patch.features)) if (isFeature(id) && typeof on === 'boolean') s.features[id] = on;
@@ -277,6 +293,7 @@ export function publicSettings() {
   }
   s.x32.piToken = s.x32.piToken ? '***' : '';
   s.notify.token = s.notify.token ? '***' : '';
+  s.sso.clientSecret = s.sso.clientSecret || process.env.SSO_CLIENT_SECRET ? '***' : '';
   return s;
 }
 

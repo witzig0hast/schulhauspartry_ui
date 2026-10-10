@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
 import { audit } from '../audit.js';
+import { testConnection } from '../sso.js';
 import { backupNow } from '../backup.js';
 import { FEATURES, GROUPS, allFlags } from '../features.js';
 
@@ -74,6 +75,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       publicUrl: config.publicUrl,
       features: { list: FEATURES, groups: GROUPS, flags: allFlags() },
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
+      ssoRedirectUri: `${config.publicUrl || ''}/api/sso/callback`,
       spotifyConfigured: !!(s.spotify.clientId && s.spotify.clientSecret) || !!config.spotifyClientId,
       env,
       counts: Object.fromEntries(Object.keys(engines).map((e) => [e, rq.counts(e)])),
@@ -82,7 +84,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     applyPatch(req.body || {}, { allow });
@@ -93,14 +95,20 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     res.json({ ok: true });
   }));
 
+  r.post('/admin/sso/test', wrap(async (req, res) => {
+    try { res.json({ ok: true, ...(await testConnection()) }); }
+    catch (e) { res.status(400).json({ error: e.message }); }
+  }));
+
   // ----- Codes -----
   r.get('/admin/accounts', (req, res) => {
     const rows = getDb().prepare(`SELECT a.id, a.role, a.label, a.created_at, a.revoked, a.last_seen,
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status IN ('approved','playing','played','removed')) AS approved,
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status = 'denied') AS denied,
-      (SELECT COUNT(*) FROM requests WHERE prioritized_by = a.id) AS prioritized
+      (SELECT COUNT(*) FROM requests WHERE prioritized_by = a.id) AS prioritized,
+      (a.code_hash LIKE 'sso:%') AS sso
       FROM accounts a ORDER BY a.id`).all();
-    res.json({ accounts: rows.map((x) => ({ ...x, revoked: !!x.revoked, roleLabel: ROLE_LABELS[x.role] })) });
+    res.json({ accounts: rows.map((x) => ({ ...x, revoked: !!x.revoked, sso: !!x.sso, roleLabel: ROLE_LABELS[x.role] })) });
   });
   r.post('/admin/accounts', wrap((req, res) => {
     const out = createAccount(String(req.body?.role), String(req.body?.label || ''));

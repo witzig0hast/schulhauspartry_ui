@@ -228,3 +228,14 @@ Neue Funktionen: Wunsch-Voting, Live-Umfragen, Gast-Geräte sperren, Pausen-Modu
 * **Passkeys** (Fingerabdruck/Gesicht/Geräte-PIN) für Admin und alle Codes: 🔑 in der Kopfzeile, Verwaltung unter Admin → Sicherheit. Bei Aussperrung: Server mit `ADMIN_RECOVERY=1` starten (Passwort-Login wieder erlaubt).
 * Optional: Admin-Login nur per Passkey, Admin nur von bestimmten IP-Adressen/Netzen, Sitzungs-Timeouts, Abmelden einzelner Geräte, Passwort ändern, Sicherheitsprotokoll, Flut-Alarm per ntfy.
 * `__Host-`-Cookies unter HTTPS, CSRF-Prüfung (Origin + Sec-Fetch-Site), Rate-Limits pro IP, gehashte Codes/Sitzungen.
+
+## Single Sign-On (SSO, z. B. Authentik)
+
+Admin → Sicherheit → **Single Sign-On**. Per OpenID Connect (Authorization-Code-Flow mit PKCE, ID-Token wird auf Signatur, Aussteller, Zielgruppe, Ablauf und nonce geprüft). Auf der Login-Seite erscheint dann „Mit SSO anmelden".
+
+1. In Authentik eine Anwendung mit **OAuth2/OpenID-Provider** anlegen: Client-Typ „Vertraulich", Redirect-URI `https://<deine-domain>/api/sso/callback` (Modus „Strikt"), Scopes `openid profile email`.
+2. Client-ID, Client-Secret und die Issuer-URL (`…/application/o/<slug>/`) im Admin eintragen (`PUBLIC_URL` muss gesetzt sein). Das Secret kann auch per `SSO_CLIENT_SECRET` in der `.env` stehen.
+3. Unter „Gruppen → Rollen" Authentik-Gruppen den Rollen zuordnen (Technik, Moderation, Orga, Licht, FOH). Ohne passende Gruppe gibt es keinen Zugang (oder die eingestellte Standardrolle).
+4. **Admin per SSO** ist standardmäßig aus; wenn erlaubt, sind SSO-Admins nicht der Head-Admin (kein VPN, kein Passwort ändern) und unterliegen der Admin-IP-Liste.
+
+SSO-Konten erscheinen unter Codes mit „SSO", können dort gesperrt oder gelöscht werden und haben eigene Namen in der Entscheidungs-Statistik. Die Rolle wird bei jeder Anmeldung aus den Gruppen neu gesetzt. Eine Abmeldung im Identity-Provider beendet bestehende Sitzungen der App nicht sofort: sie enden nach der Inaktivitäts-/Maximaldauer (Admin → Sicherheit) oder per „Abmelden" in der Sitzungsliste.

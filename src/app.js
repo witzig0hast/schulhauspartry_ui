@@ -17,6 +17,7 @@ import { opsRouter } from './routes/ops.js';
 import { securityRouter } from './routes/security.js';
 import { extrasRouter } from './routes/extras.js';
 import { vpnRouter } from './routes/vpn.js';
+import { ssoRouter } from './routes/sso.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -160,6 +161,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', securityRouter(env, engines[env], hub));
     router.use('/api', extrasRouter(env, engines[env], hub));
     router.use('/api', vpnRouter());
+    if (env === 'live') router.use('/api', ssoRouter());   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));

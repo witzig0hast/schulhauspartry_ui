@@ -16,6 +16,7 @@ const origin = () => location.origin;
 
 async function load() {
   data = await api('/admin/settings');
+  { const t = location.hash.slice(1); if (tabs.includes(t)) tab = t; }
   render();
 }
 
@@ -70,7 +71,7 @@ function viewCodes() {
     clear(table).append(h('table', {},
       h('thead', {}, h('tr', {}, ...['Bezeichnung', 'Rolle', 'Angenommen', 'Abgelehnt', 'Priorisiert', 'Zuletzt', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, ...accounts.map((a) => h('tr', {},
-        h('td', {}, h('strong', {}, a.label), a.revoked ? h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'gesperrt') : null),
+        h('td', {}, h('strong', {}, a.label), a.sso ? h('span', { class: 'badge', style: 'margin-left:6px', title: 'Anmeldung über SSO' }, 'SSO') : null, a.revoked ? h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'gesperrt') : null),
         h('td', {}, a.roleLabel), h('td', {}, a.approved), h('td', {}, a.denied), h('td', {}, a.prioritized), h('td', {}, a.last_seen ? fmtClock(a.last_seen) : '–'),
         h('td', {}, h('div', { class: 'row' },
           h('button', { class: 'small', onclick: safe(async () => { const { decisions } = await api(`/admin/accounts/${a.id}/decisions`); showDecisions(a, decisions); }) }, 'Entscheidungen'),
@@ -462,6 +463,45 @@ function viewVpn() {
   return box;
 }
 
+// ---------- Single Sign-On (OpenID Connect, z. B. Authentik) ----------
+const SSO_ROLES = [['tech', 'Technik'], ['mod', 'Moderation'], ['orga', 'Orga (nur lesen)'], ['light', 'Lichttechnik'], ['display', 'FOH-Anzeige'], ['admin', 'Admin (nur wenn erlaubt)']];
+function ssoCard() {
+  const o = data.settings.sso;
+  const on = chk(o.enabled), issuer = h('input', { value: o.issuer, placeholder: 'https://auth.example.de/application/o/schulhauspartry/' }), cid = h('input', { value: o.clientId, autocomplete: 'off' });
+  const sec = h('input', { type: 'password', placeholder: o.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password' });
+  const scopes = h('input', { value: o.scopes }), gclaim = h('input', { value: o.groupsClaim }), label = h('input', { value: o.buttonLabel, maxlength: 40 });
+  const allowAdmin = chk(o.allowAdmin);
+  const def = h('select', {}, h('option', { value: '' }, 'Kein Zugang'), ...SSO_ROLES.filter(([v]) => v !== 'admin').map(([v, l]) => h('option', { value: v, selected: o.defaultRole === v }, l)));
+  let map = o.roleMap.map((m) => ({ ...m }));
+  const mapBox = h('div', { class: 'stack', style: 'gap:8px' });
+  const paint = () => clear(mapBox).append(...map.map((m, i) => h('div', { class: 'row nowrap' },
+    h('input', { value: m.group, placeholder: 'Gruppe im Anbieter, z. B. party-technik', oninput: (e) => { m.group = e.target.value; } }),
+    h('select', { onchange: (e) => { m.role = e.target.value; } }, ...SSO_ROLES.map(([v, l]) => h('option', { value: v, selected: m.role === v }, l))),
+    h('button', { class: 'small ghost', onclick: () => { map.splice(i, 1); paint(); } }, '✕'))),
+    h('button', { class: 'small', onclick: () => { map.push({ group: '', role: 'mod' }); paint(); } }, '+ Gruppe zuordnen'));
+  paint();
+  const result = h('div', { class: 'small' });
+  const saveSso = () => save({ sso: { enabled: on.checked, issuer: issuer.value, clientId: cid.value, clientSecret: sec.value, scopes: scopes.value, groupsClaim: gclaim.value, buttonLabel: label.value, defaultRole: def.value, allowAdmin: allowAdmin.checked, roleMap: map } }, 'SSO gespeichert');
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🔐 Single Sign-On (SSO)'), h('span', { class: `badge ${o.enabled ? 'ok' : ''}` }, o.enabled ? 'an' : 'aus')),
+    h('p', { class: 'small muted' }, 'Mitarbeitende melden sich über deinen Identity-Provider an (Authentik, Keycloak, Authelia … per OpenID Connect). Die Rolle in der App kommt aus den Gruppen des Anbieters. Codes und Passkeys funktionieren weiter.'),
+    h('label', { class: 'check' }, on, 'SSO aktivieren'),
+    h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Issuer-URL (bei Authentik: „OpenID-Konfigurations-Aussteller")', issuer), h('label', { class: 'field' }, 'Client-ID', cid),
+      h('label', { class: 'field' }, 'Client-Secret', sec), h('label', { class: 'field' }, 'Beschriftung des Anmelde-Knopfs', label),
+      h('label', { class: 'field' }, 'Scopes', scopes), h('label', { class: 'field' }, 'Name des Gruppen-Felds', gclaim)),
+    h('div', { class: 'small' }, h('b', {}, 'Rückkehr-Adresse (Redirect-URI) beim Anbieter eintragen: '), h('code', { style: 'user-select:all' }, data.ssoRedirectUri)),
+    h('div', { class: 'eyebrow' }, 'Gruppen → Rollen'), mapBox,
+    h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Wer in keiner dieser Gruppen ist, bekommt', def)),
+    h('label', { class: 'check' }, allowAdmin, 'Admin-Rolle per SSO erlauben (sonst werden Admin-Gruppen ignoriert; SSO-Admins sind nicht der Head-Admin und können z. B. kein VPN verwalten)'),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSso }, 'Speichern'),
+      h('button', { onclick: safe(async () => { await saveSso(); try { const r = await api('/admin/sso/test', { method: 'POST', body: {} }); clear(result).append(h('span', { class: 'badge ok' }, 'Verbindung ok'), ` ${r.keys} Schlüssel, Aussteller ${r.issuer}`); } catch (e) { clear(result).append(h('span', { class: 'badge bad' }, 'Fehler'), ` ${e.message}`); } }) }, 'Speichern & Verbindung testen')), result,
+    h('details', { class: 'more' }, h('summary', {}, 'Einrichtung in Authentik (Kurzanleitung)'), h('ol', { class: 'small', style: 'margin:10px 0 0 18px;display:grid;gap:4px' },
+      h('li', {}, 'Authentik → Anwendungen → „Anwendung mit Provider erstellen" → Provider-Typ OAuth2/OpenID.'),
+      h('li', {}, 'Client-Typ „Vertraulich", Redirect-URI wie oben (Modus „Strikt"), Signaturschlüssel wählen (empfohlen) oder leer lassen (dann HS256 mit dem Secret).'),
+      h('li', {}, 'Scopes: openid, profile, email. Authentik liefert die Gruppen im Feld „groups".'),
+      h('li', {}, 'Client-ID und Secret hier eintragen, Issuer-URL = die „OpenID-Konfigurations-Aussteller"-URL des Providers.'),
+      h('li', {}, 'In Authentik Gruppen anlegen (z. B. party-technik) und der Anwendung zuordnen; hier unter „Gruppen → Rollen" verknüpfen.'))));
+}
+
 // ---------- Sicherheit ----------
 function viewSecurity() {
   const sec = data.settings.security;
@@ -484,6 +524,7 @@ function viewSecurity() {
         pkList,
         h('label', { class: 'check' }, only, 'Admin-Login NUR mit Passkey (Passwort wird für Admin gesperrt)'),
         h('p', { class: 'small muted' }, `Admin-Passkeys: ${d.adminPasskeys}. Erst einschalten, wenn mindestens ein Passkey funktioniert. Notfall: Server mit Umgebungsvariable ADMIN_RECOVERY=1 starten – dann geht das Passwort wieder.`)),
+      ssoCard(),
       h('div', { class: 'grid two' },
         h('div', { class: 'card stack' }, h('h2', {}, 'Sitzungen & Limits'),
           h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Abmelden nach'), idle, h('span', { class: 'small muted' }, 'Min. Inaktivität · spätestens nach'), maxH, h('span', { class: 'small muted' }, 'Std.')),
