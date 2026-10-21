@@ -75,6 +75,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       publicUrl: config.publicUrl,
       features: { list: FEATURES, groups: GROUPS, flags: allFlags() },
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
+      evening: Object.fromEntries(Object.entries(engines).map(([k, v]) => [k, v.snapshot().opening])),
       ssoRedirectUri: `${config.publicUrl || ''}/api/sso/callback`,
       spotifyConfigured: !!(s.spotify.clientId && s.spotify.clientSecret) || !!config.spotifyClientId,
       env,
@@ -84,11 +85,16 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['start', 'opening', 'operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     const modeBefore = settings().operation.mode;
+    const gateBefore = settings().opening.enabled, atBefore = settings().opening.at;
     applyPatch(req.body || {}, { allow });
+    const gate = settings().opening;
+    if (gate.enabled && !gateBefore) for (const e of Object.values(engines)) e.armOpening();
+    else if (!gate.enabled && gateBefore) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.openWishes(); }
+    else if (gate.enabled && gate.at !== atBefore) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.armOpening(); }
     if (settings().operation.mode !== modeBefore) {
       audit('mode.change', req.session.label, clientIp(req), `${modeBefore} -> ${settings().operation.mode}`);
       // beim Wechsel in den Wunschlisten-Modus laufende Player anhalten (die App steuert sie danach nicht mehr)

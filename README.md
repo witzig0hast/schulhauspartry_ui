@@ -252,3 +252,10 @@ SSO muss kein neues Konto anlegen:
 - **Per E-Mail:** Admin → Codes → ✉ (E-Mail der Person eintragen) und in der SSO-Karte „Bestehende Zugänge automatisch per E-Mail verbinden" einschalten. Es zählt nur eine vom Anbieter bestätigte E-Mail.
 - **Keine neuen Konten:** In der SSO-Karte „Neue Konten automatisch anlegen" ausschalten, dann kommen nur verbundene Zugänge per SSO hinein.
 - Der Admin kann Verbindungen unter Codes lösen („SSO lösen"). Gesperrte Zugänge bleiben auch per SSO gesperrt; für den Head-Admin gelten weiter IP-Liste und „Admin nur mit Passkey".
+
+## Abend-Start: Start-Playlist und Freischaltung der Wünsche
+
+Admin → Automatik → **Abend-Start**.
+- **Wünsche freischalten:** Mit „Wünsche sind zu, bis sie freigeschaltet werden" bleiben die Wünsche geschlossen (Gäste sehen den Hinweistext mit Uhrzeit und Countdown). Sie öffnen zur eingestellten Uhrzeit (z. B. 18:00) automatisch oder sofort per Knopf („🔓 Wünsche jetzt freischalten" in Technik und Admin → Start). Die Moderation sieht einen Hinweis.
+- **Start-Playlist:** Eine Playlist (Link/ID), die zum Auftakt läuft: Technik → „▶ Start-Playlist starten" (oder automatisch zur Startzeit). Die App hält mindestens N Songs in der Warteschlange, solange noch kein Wunsch angenommen wurde; danach übernimmt der normale Lückenfüller. Angenommene Wünsche kommen immer **vor** die automatisch eingereihten Songs (und in Annahme-Reihenfolge).
+- Beides ist einzeln unter Funktionen schaltbar. Im Wunschlisten-Modus (mit DJ) gilt nur die Freischaltung.

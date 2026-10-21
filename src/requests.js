@@ -120,8 +120,15 @@ export function decide(env, id, { action, reason, player, accountId }, currentPl
     } else {
       const p = settings().operation.mode === 'wishlist' ? null : (player === 1 || player === 2 ? player : assignPlayer(env, currentPlayer));
       const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+      // Wuensche kommen vor die automatisch eingereihten Fuelltitel (Start-Playlist/Luckenfueller), aber hinter fruehere Wuensche
+      const firstAuto = db().prepare("SELECT MIN(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id = 'auto'").get(env).m;
+      let pos = (max ?? 0) + 1;
+      if (firstAuto != null) {
+        const lastWish = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id != 'auto' AND queue_pos < ?").get(env, firstAuto).m;
+        pos = lastWish == null ? firstAuto - 1 : (lastWish + firstAuto) / 2;
+      }
       db().prepare("UPDATE requests SET status='approved', player=?, queue_pos=?, decided_by=?, decided_at=? WHERE id=? AND status IN ('pending','later')")
-        .run(p, (max ?? 0) + 1, accountId ?? null, now, id);
+        .run(p, pos, accountId ?? null, now, id);
     }
     return { ok: true, request: getRequest(id) };
   });
@@ -268,6 +275,11 @@ export function addAuto(env, track, currentPlayer, now = Date.now()) {
       assignPlayer(env, currentPlayer), (max ?? 0) + 1, JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null);
     return getRequest(Number(info.lastInsertRowid));
   });
+}
+
+// Gab es an diesem Abend schon einen angenommenen Gaeste-/Team-Wunsch? (sonst laeuft noch die Start-Playlist)
+export function noWishesYet(env) {
+  return !db().prepare("SELECT 1 FROM requests WHERE env = ? AND device_id != 'auto' AND status IN ('approved','playing','played') LIMIT 1").get(env);
 }
 
 // Track-IDs, die zuletzt gespielt oder noch in der Warteschlange sind (fuer Lueckenfueller)

@@ -104,7 +104,7 @@ function render() {
 
   const open = state.wishMode === 'open';
   msgEl.classList.toggle('hidden', open);
-  if (!open) clear(msgEl).append(h('strong', {}, state.message || 'Wünsche sind gerade nicht möglich.'));
+  if (!open) clear(msgEl).append(h('strong', {}, state.message || 'Wünsche sind gerade nicht möglich.'), state.opensAt ? h('div', { class: 'lt-cd-v mono', id: 'opens-cd', style: 'font-size:2rem;margin-top:8px' }, '') : null);
   input.disabled = !open;
   if (!open) clear(results);
 
@@ -180,3 +180,6 @@ app.append(
 api('/guest/state').then((s) => { state = s; lastPlaying = s.requests.find((r) => r.status === 'playing')?.id ? String(s.requests.find((r) => r.status === 'playing').id) : ''; render(); maybeShowNotice(); }).catch(() => {}).finally(() => {
   connect({ onStatus: (ok) => bar.setLive(ok), onGuest: (g) => { state = g; render(); } });
 });
+
+// Countdown bis zur Freischaltung
+setInterval(() => { const el = document.getElementById('opens-cd'); if (!el || !state?.opensAt) return; const s = Math.max(0, Math.round((state.opensAt - Date.now()) / 1000)); el.textContent = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }, 500);

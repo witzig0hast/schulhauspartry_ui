@@ -148,6 +148,8 @@ function operationsCard() {
   refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, '🆘 Notfall-Playlist');
   refs.panic = h('button', { class: 'bad', style: 'height:56px;font-size:1.05rem', onclick: onPanic }, '⛔  NOT-AUS');
   refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
+  refs.openBtn = h('button', { class: 'primary hidden', onclick: () => post('/control/open-wishes') }, '🔓 Wünsche jetzt freischalten');
+  refs.startBtn = feat('startPlaylist') ? h('button', { class: 'hidden', onclick: () => post('/control/start-evening') }, '▶ Start-Playlist starten') : null;
   refs.pauseBtn = feat('pauseMode') ? h('button', { onclick: () => post('/control/pause-mode', { on: !state?.pauseMode }) }, '⏸ Pausen-Modus') : null;
   const pq = h('input', { placeholder: 'Frage an die Gäste (z. B. Nächster Stil?)', maxlength: 120 });
   const pOpts = [h('input', { placeholder: 'Antwort 1', maxlength: 40 }), h('input', { placeholder: 'Antwort 2', maxlength: 40 }), h('input', { placeholder: 'Antwort 3 (optional)', maxlength: 40 })];
@@ -159,7 +161,7 @@ function operationsCard() {
     h('h2', {}, 'Betrieb'),
     h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     h('hr'),
-    refs.pauseBtn, pollCard,
+    refs.openBtn, refs.startBtn, refs.pauseBtn, pollCard,
     refs.panic, refs.panicClear, refs.emBtn, refs.endBtn);
 }
 
@@ -236,6 +238,8 @@ function render() {
   refs.duckState.textContent = state.ducking.active ? 'Ducking aktiv' : 'bereit'; refs.duckState.className = `badge ${state.ducking.active ? 'warn' : ''}`;
   for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'on' : '';
   setCheck(refs.noticeOn, state.notice.enabled); setVal(refs.noticeText, state.notice.text);
+  refs.openBtn.classList.toggle('hidden', !state.opening?.awaiting);
+  if (refs.startBtn) { refs.startBtn.classList.toggle('hidden', !state.hasStart || state.mode === 'wishlist'); refs.startBtn.textContent = state.opening?.started ? '▶ Start-Playlist auffüllen' : '▶ Start-Playlist starten'; }
   if (refs.pauseBtn) refs.pauseBtn.textContent = state.pauseMode ? '▶ Pause beenden' : '⏸ Pausen-Modus';
   if (refs.pollInfo) refs.pollInfo.textContent = state.poll ? `${state.poll.question} – ${state.poll.options.map((o, i) => `${o}: ${state.poll.counts[i]}`).join(' · ')}${state.poll.status === 'open' ? '' : ' (beendet)'}` : 'Keine Umfrage aktiv.';
   refs.emBtn.textContent = state.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist';

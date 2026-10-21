@@ -194,6 +194,14 @@ function viewStart() {
     else if (typed != null) toast('Nicht bestätigt – nichts gelöscht', true);
   };
   const c = data.counts;
+  const ev = data.evening?.live || {};
+  const evCard = h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Abend-Start'),
+    h('span', { class: `badge ${ev.awaiting ? 'warn' : 'ok'}` }, ev.awaiting ? `Wünsche zu${ev.opensAt ? ` · öffnen ${new Date(ev.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : ''}` : 'Wünsche offen')),
+    h('div', { class: 'row' },
+      ev.awaiting ? h('button', { class: 'primary', onclick: safe(async () => { await api('/control/open-wishes', { method: 'POST', body: {} }); toast('Wünsche freigeschaltet'); await load(); }) }, '🔓 Wünsche jetzt freischalten') : null,
+      data.settings.start.playlist ? h('button', { onclick: safe(async () => { await api('/control/start-evening', { method: 'POST', body: {} }); toast('Start-Playlist läuft'); await load(); }) }, ev.started ? '▶ Start-Playlist erneut auffüllen' : '▶ Start-Playlist starten') : null,
+      h('a', { class: 'btn', href: '#automatik', onclick: () => { tab = 'automatik'; render(); } }, 'Einstellungen')),
+    h('p', { class: 'small muted' }, 'Zeiten und Playlist unter Automatik → Abend-Start.'));
   const mode = data.settings.operation.mode;
   const setMode = (m) => () => {
     if (m === mode) return;
@@ -202,6 +210,7 @@ function viewStart() {
   };
   const opt = (m, title, text) => h('button', { class: `mode-opt ${mode === m ? 'on' : ''}`, onclick: setMode(m), 'aria-pressed': String(mode === m) }, h('b', {}, title), h('span', {}, text));
   return h('div', { class: 'stack', style: 'gap:16px' },
+    evCard,
     h('div', { class: 'card stack' }, h('h2', {}, 'Betriebsart'),
       h('p', { class: 'small muted' }, 'Spielt die App die Musik selbst (Spotify, Crossfade, Pult) oder gibt es einen DJ, der selbst spielt und die App nur die Wünsche verwaltet? Umschalten ist jederzeit möglich.'),
       h('div', { class: 'grid two' },
@@ -259,6 +268,9 @@ function viewAutomation() {
   const nTok = h('input', { type: 'password', placeholder: nt.token ? '(gesetzt – leer lassen zum Behalten)' : 'Zugriffstoken (optional)', autocomplete: 'new-password' }), nDown = num(nt.downSec, { min: 5, max: 300 });
   const EVLABEL = { x32: 'X32/Pi nicht erreichbar', spotify: 'Spotify-Problem oder -Limit', player: 'Player getrennt', panic: 'Not-Aus ausgelöst', queueEmpty: 'Warteschlange leer', emergency: 'Notfall-Playlist gestartet', backup: 'Backup fehlgeschlagen' };
   const evs = Object.fromEntries(Object.keys(nt.events).map((k) => [k, chk(nt.events[k])]));
+  const sta = s.start, opn = s.opening;
+  const stPl = h('input', { value: sta.playlist, placeholder: 'Playlist-Link oder -ID' }), stMin = num(sta.minQueue, { min: 1, max: 10, class: 'num' }), stAuto = chk(sta.autoStart), stAt = h('input', { type: 'time', value: sta.startAt });
+  const opOn = chk(opn.enabled), opAt = h('input', { type: 'time', value: opn.at }), opAuto = chk(opn.auto), opMsg = h('input', { value: opn.message, maxlength: 200 });
   const bOn = chk(bk.enabled), bEvery = num(bk.everyMin, { min: 5, max: 1440, class: 'num' }), bKeep = num(bk.keep, { min: 1, max: 200, class: 'num' });
   const bList = h('div', { class: 'stack', style: 'gap:6px' });
   const loadBackups = async () => {
@@ -272,6 +284,8 @@ function viewAutomation() {
     timezone: tz.value,
     auto: { smartOutro: smart.checked },
     autoOrder: { enabled: aoOn.checked, mood: moodOn.checked, maxRepeat: Number(maxRep.value), window: Number(win.value), phases },
+    start: { playlist: stPl.value, minQueue: Number(stMin.value), autoStart: stAuto.checked, startAt: stAt.value },
+    opening: { enabled: opOn.checked, at: opAt.value, auto: opAuto.checked, message: opMsg.value },
     filler: { enabled: fOn.checked, playlist: fPl.value, minQueue: Number(fMin.value), avoidMin: Number(fAvoid.value) },
     emergency: { playlist: ePl.value, player: Number(ePlayer.value), shuffle: eShuf.checked },
     notify: { enabled: nOn.checked, url: nUrl.value, topic: nTopic.value, token: nTok.value, downSec: Number(nDown.value), events: Object.fromEntries(Object.entries(evs).map(([k, i]) => [k, i.checked])) },
@@ -295,6 +309,19 @@ function viewAutomation() {
       h('div', { class: 'card stack' }, h('h2', {}, 'Lückenfüller'), row(fOn, 'Bei leerer Warteschlange automatisch Songs einreihen'),
         h('label', { class: 'field' }, 'Playlist (öffentlich oder dein eigenes Konto)', fPl),
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Auffüllen, wenn weniger als'), fMin, h('span', { class: 'small muted' }, 'Songs warten · Wiederholung frühestens nach'), fAvoid, h('span', { class: 'small muted' }, 'Min.')))),
+    h('div', { class: 'card stack' }, h('h2', {}, '🌅 Abend-Start'),
+      h('p', { class: 'small muted' }, 'Zum Auftakt läuft eine Start-Playlist, die Wünsche bleiben zu, bis du sie freischaltest oder die Uhrzeit erreicht ist. Sobald Wünsche angenommen werden, kommen sie vor die Songs der Start-Playlist.'),
+      h('div', { class: 'eyebrow' }, 'Start-Playlist'),
+      h('label', { class: 'field' }, 'Playlist (Link oder ID)', stPl),
+      h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Immer mindestens'), stMin, h('span', { class: 'small muted' }, 'Songs in der Warteschlange, solange noch kein Wunsch angenommen wurde')),
+      row(stAuto, 'Automatisch starten um'), stAt,
+      h('div', { class: 'small muted' }, 'Startknopf: Technik-Ansicht → „▶ Start-Playlist starten“. Die Playlist wird gemischt, ohne gesperrte oder explizite Songs (je nach Einstellung).'),
+      h('hr'),
+      h('div', { class: 'eyebrow' }, 'Wünsche freischalten'),
+      row(opOn, 'Wünsche sind zu, bis sie freigeschaltet werden'),
+      h('div', { class: 'row' }, row(opAuto, 'Automatisch freischalten um'), opAt),
+      h('label', { class: 'field' }, 'Hinweis für Gäste ({zeit} wird durch die Uhrzeit ersetzt)', opMsg),
+      h('div', { class: 'small muted' }, 'Beim Einschalten werden die Wünsche sofort geschlossen. Freischalten geht jederzeit von Hand (Technik/Admin) – dann zählt die Uhrzeit nicht mehr.')),
     h('div', { class: 'card stack' }, h('h2', {}, '🆘 Notfall-Playlist'), h('p', { class: 'small muted' }, 'Ein Knopf in der Technik stoppt alles und startet diese Playlist (gemischt) – falls etwas ausfällt.'),
       h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Playlist', ePl), h('label', { class: 'field' }, 'Auf Player', ePlayer)), row(eShuf, 'Gemischt abspielen')),
     h('div', { class: 'card stack' }, h('h2', {}, '🔔 Alarm aufs Handy (ntfy)'),

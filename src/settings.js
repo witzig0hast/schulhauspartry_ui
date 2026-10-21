@@ -4,6 +4,9 @@ import { isFeature } from './features.js';
 
 export const DEFAULTS = {
   timezone: 'Europe/Berlin',
+  // Abend-Start: Start-Playlist und Freischaltung der Wuensche
+  start: { playlist: '', minQueue: 3, autoStart: false, startAt: '17:30' },
+  opening: { enabled: false, at: '18:00', auto: true, message: 'Die Wünsche öffnen um {zeit} Uhr – bis dahin läuft schon Musik!' },
   operation: { mode: 'full' },   // full = Spotify-Player/Crossfade/X32 | wishlist = nur Wuensche annehmen/ablehnen (ein DJ spielt selbst)
   // Single Sign-On (OpenID Connect, z. B. Authentik). roleMap: Gruppe im Anbieter -> Rolle in der App
   sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, autoCreate: true, autoLinkEmail: false, buttonLabel: 'Mit SSO anmelden' },
@@ -139,6 +142,21 @@ export function applyPatch(patch, { allow }) {
       const b = patch.roleBoards[r];
       s.roleBoards[r] = Array.isArray(b) ? b.slice(0, 30).map((x) => ({ id: str(x.id, 20), size: ['normal', 'wide', 'full'].includes(x.size) ? x.size : 'normal' })) : null;
     }
+  }
+  const hhmm = (v, d) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v)) ? String(v) : d);
+  if (has('start')) {
+    const q = patch.start, o = s.start;
+    if ('playlist' in q) o.playlist = str(q.playlist, 200).trim();
+    if ('minQueue' in q) o.minQueue = Math.round(clamp(q.minQueue, 1, 10, o.minQueue));
+    if ('autoStart' in q) o.autoStart = !!q.autoStart;
+    if ('startAt' in q) o.startAt = hhmm(q.startAt, o.startAt);
+  }
+  if (has('opening')) {
+    const q = patch.opening, o = s.opening;
+    if ('enabled' in q) o.enabled = !!q.enabled;
+    if ('at' in q) o.at = hhmm(q.at, o.at);
+    if ('auto' in q) o.auto = !!q.auto;
+    if ('message' in q) o.message = str(q.message, 200).trim() || 'Die Wünsche öffnen um {zeit} Uhr.';
   }
   if (has('operation') && ['full', 'wishlist'].includes(patch.operation?.mode)) s.operation.mode = patch.operation.mode;
   if (has('sso')) {

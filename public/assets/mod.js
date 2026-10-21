@@ -59,7 +59,8 @@ function render() {
 
   renderTabs();
   renderExtras();
-  state0Banner.classList.toggle('hidden', !state.pauseMode);
+  state0Banner.classList.toggle('hidden', !state.pauseMode && !state.opening?.awaiting);
+  state0Banner.textContent = state.opening?.awaiting ? `🔒 Die Wünsche sind noch geschlossen${state.opening.opensAt ? ` (öffnen ${new Date(state.opening.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})` : ''} – Technik/Admin schaltet sie frei.` : '⏸ Pausen-Modus ist an – Wünsche sind pausiert.';
   const claimKey = JSON.stringify((state.claims || []).filter((c) => c.by !== state.me)); // eigene Markierung loest keinen Neuaufbau aus
   const pk = (arr) => arr.map((p) => [p.id, p.votes]);
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));

@@ -31,6 +31,10 @@ export function extrasRouter(env, engine, hub) {
     res.json({ ok: true, gain: engine.rememberGain(p) });
   }));
 
+  // Abend-Start: Wuensche freischalten, Start-Playlist starten
+  r.post('/control/open-wishes', requirePerm('wishMode'), wrap((req, res) => { engine.openWishes(); logEvent(env, 'wishmode', { mode: 'open', gate: true }); push(); res.json({ ok: true }); }));
+  r.post('/control/start-evening', requireFeature('startPlaylist'), requirePerm('control'), wrap(async (req, res) => { await engine.startEvening(); push(); res.json({ ok: true }); }));
+
   // Umfragen
   r.post('/poll', requireFeature('polls'), requirePerm('control'), wrap((req, res) => {
     const id = x.createPoll(env, req.body?.question, req.body?.options);

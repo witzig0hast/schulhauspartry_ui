@@ -7,8 +7,8 @@ import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
 import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
 import { MockX32, HttpX32 } from './adapters/x32.js';
 import { governor } from './adapters/spotify-governor.js';
-import { maybeFill } from './filler.js';
-import { applyAutoOrder } from './autoorder.js';
+import { maybeFill, fillStart } from './filler.js';
+import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
 import { isOn } from './features.js';
 import { getDb } from './db.js';
@@ -108,6 +108,7 @@ export class Engine extends EventEmitter {
   async tick() {
     const now = Date.now();
     const cfg = settings();
+    this.checkSchedule(now, cfg);
     if (this.wishlist) {
       if (!this.lastBroadcast || now - this.lastBroadcast >= BROADCAST_MS) { this.lastBroadcast = now; this.emit('tick'); }
       return;
@@ -134,6 +135,50 @@ export class Engine extends EventEmitter {
       this.lastBroadcast = now;
       this.emit('tick');
     }
+  }
+
+  // ----- Abend-Start: Freischaltung der Wuensche und Start-Playlist -----
+  checkSchedule(now, cfg) {
+    // Wuensche zur eingestellten Uhrzeit freischalten
+    if (this.state.awaitOpen && this.state.openAtTs && now >= this.state.openAtTs) { this.openWishes(); logEvent(this.env, 'wishmode', { auto: 'open' }); }
+    // Start-Playlist automatisch starten (einmal pro Abend, in den 6 Stunden nach der Startzeit)
+    const st = cfg.start;
+    if (st.autoStart && isOn('startPlaylist') && !this.wishlist && !this.state.started && now - (this.lastStartTry || 0) > 30000) {
+      const [h, m] = st.startAt.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
+      const since = (nh * 60 + nm) - (h * 60 + m);
+      if (since >= 0 && since < 360) { this.lastStartTry = now; this.startEvening().catch((e) => this.fail('start', e)); }
+    }
+  }
+
+  // Wuensche schliessen und bis zur Freischaltung (Uhrzeit oder Knopf) geschlossen halten
+  armOpening() {
+    const o = settings().opening;
+    this.state.awaitOpen = true; this.state.wishMode = 'closed'; this.state.openAtTs = null;
+    if (o.auto && o.at) {
+      const [h, m] = o.at.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
+      const d = (h * 60 + m) - (nh * 60 + nm);
+      if (d > 0) this.state.openAtTs = Date.now() + d * 60000 - new Date().getSeconds() * 1000;   // nur wenn die Uhrzeit heute noch bevorsteht
+    }
+    this.persist(); this.emit('change');
+  }
+  openWishes() {
+    this.state.awaitOpen = false; this.state.openAtTs = null; this.state.wishMode = 'open';
+    this.persist(); this.emit('change');
+  }
+
+  // Start-Playlist: Warteschlange fuellen und mit Einblenden loslegen
+  async startEvening() {
+    if (this.wishlist) throw new Error('Im Wunschlisten-Modus spielt die App keine Musik.');
+    if (this.state.panic || this.state.ended) throw new Error('Not-Aus oder Ende-Modus ist aktiv.');
+    const sp = settings().start;
+    if (!sp.playlist && this.spotify.kind === 'real') throw new Error('Keine Start-Playlist eingetragen (Admin → Automatik → Abend-Start).');
+    this.state.started = true; this.persist();
+    const n = await fillStart(this, Math.max(2, sp.minQueue));
+    if (!n) { this.state.started = false; this.persist(); throw new Error('Die Start-Playlist liefert keine passenden Songs.'); }
+    const playing = [1, 2].some((p) => this.players[p].status().playing);
+    if (!playing) await this.fadeIn(1, 4);
+    logEvent(this.env, 'start', {});
+    this.emit('change');
   }
 
   // Ein von aussen (z. B. direkt in Spotify) gestarteter Song wird uebernommen.
@@ -400,13 +445,16 @@ export class Engine extends EventEmitter {
     this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
     this.trackIdOf = { 1: null, 2: null };
     this.state = { wishMode: 'open', ended: false, panic: false, emergency: false }; this.persist();
+    if (settings().opening.enabled && isOn('openingGate')) this.armOpening();
     for (const p of [1, 2]) { this.players[p].reset?.(); this.players[p].pause().catch(() => {}); }
     this.emit('change');
   }
 
   setWishMode(mode) {
     if (!['open', 'paused', 'closed'].includes(mode)) throw new Error('Ungültiger Modus');
-    this.state.wishMode = mode; this.persist(); this.emit('change');
+    this.state.wishMode = mode;
+    if (mode === 'open') { this.state.awaitOpen = false; this.state.openAtTs = null; }   // von Hand geoeffnet: Freischaltung erledigt
+    this.persist(); this.emit('change');
   }
   get wishMode() { return this.state.wishMode; }
 
@@ -489,6 +537,7 @@ export class Engine extends EventEmitter {
       panic: this.state.panic,
       emergency: !!this.state.emergency,
       pauseMode: !!this.state.pauseMode && isOn('pauseMode'),
+      opening: { awaiting: !!this.state.awaitOpen, opensAt: this.state.openAtTs || null, started: !!this.state.started },
       counts: rq.counts(this.env),
       upcoming: up.slice(0, 50).map((u, i) => ({ ...u, etaMs: etas[i] ?? null })),
       crossfadeIn,

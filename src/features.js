@@ -43,6 +43,8 @@ export const FEATURES = [
   // --- Musik ---
   { id: 'autoOrder', group: 'music', label: 'Auto-Ordnung (Genre-Balance & Stimmung)', desc: 'Sortiert die Warteschlange sanft um.', def: true },
   { id: 'energyKnob', group: 'music', label: 'Stimmungs-Knopf („Ruhiger“ / „Mehr Energie“)', desc: 'Verschiebt die Auto-Ordnung für eine Weile.', def: true },
+  { id: 'startPlaylist', group: 'music', label: 'Start-Playlist', desc: 'Zum Auftakt läuft eine Playlist, bis die ersten Wünsche kommen; Wünsche kommen danach vor die Fülltitel.', def: true },
+  { id: 'openingGate', group: 'guest', label: 'Wünsche erst zur Freischaltung', desc: 'Die Wünsche bleiben zu (mit Hinweis und Uhrzeit), bis du sie freischaltest oder die Uhrzeit erreicht ist.', def: true },
   { id: 'filler', group: 'music', label: 'Lückenfüller', desc: 'Füllt eine leere Warteschlange automatisch.', def: true },
   { id: 'smartOutro', group: 'music', label: 'Smarter Crossfade (Outro)', desc: 'Übergang beginnt, wenn der Song ausklingt.', def: true },
   { id: 'replayRule', group: 'music', label: 'Regel für schon gespielte Songs', desc: 'Erlauben, pausieren oder sperren.', def: true },

@@ -49,6 +49,8 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   if (!can(role, 'viewMod')) { delete out.history; delete out.blacklist; delete out.later; delete out.chat; delete out.claims; delete out.online; }
   if (!can(role, 'viewMod') && !can(role, 'viewTicker')) { delete out.pending; delete out.recent; }
   out.mode = snap.mode || 'full';
+  out.opening = snap.opening;
+  out.hasStart = !!settings().start.playlist && isOn('startPlaylist');
   out.crossfadeIn = snap.crossfadeIn || null;
   if (can(role, 'viewLight')) out.playedNow = rq.history(engine.env, 3).map(publicReq); // Details (Genre, Jahr …) zum gerade laufenden Song
   if (role === 'light') { // Lichttechnik: nur lesen, keine Namen der Mitarbeitenden
@@ -67,6 +69,8 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   return out;
 }
 
+const openingText = (engine) => settings().opening.message.replace('{zeit}', settings().opening.at);
+
 export function guestState(engine, deviceId) {
   const g = guestSettings();
   const np = engine.nowPlaying();
@@ -75,7 +79,8 @@ export function guestState(engine, deviceId) {
     nowPlaying: np && isOn('guestNowPlaying') ? { title: np.title, artist: np.artist } : null,
     wishMode: mode,
     ended: engine.state.ended,
-    message: mode === 'open' ? null : (engine.state.ended ? g.wishMessages.ended : (mode === 'paused' ? g.wishMessages.paused : g.wishMessages.closed)),
+    message: mode === 'open' ? null : (engine.state.ended ? g.wishMessages.ended : engine.state.awaitOpen && isOn('openingGate') ? openingText(engine) : (mode === 'paused' ? g.wishMessages.paused : g.wishMessages.closed)),
+    opensAt: engine.state.awaitOpen && isOn('openingGate') ? engine.state.openAtTs || null : null,
     notice: g.notice,
     explicitMode: g.explicitMode,
     limit: rq.limitState(engine.env, deviceId),

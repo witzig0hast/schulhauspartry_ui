@@ -10,9 +10,34 @@ export function playlistId(input) {
   return m ? m[1] : null;
 }
 
+// Songs aus einer Playlist waehlen: ohne Wiederholungen, ohne gesperrte/explizite Songs
+async function pickTracks(engine, playlist, n, avoidMin, now) {
+  const id = playlistId(playlist);
+  const tracks = await engine.spotify.getPlaylistTracks?.(id || playlist);
+  if (!tracks?.length) return [];
+  const recent = rq.recentTrackIds(engine.env, now - avoidMin * 60000);
+  const ok = tracks.filter((t) => !recent.has(t.id) && !isBlacklisted(t.id, t.artist) && !playedBlock(engine.env, t.id, now) && !(settings().explicitMode === 'block' && t.explicit));
+  for (let i = ok.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ok[i], ok[j]] = [ok[j], ok[i]]; }
+  return ok.slice(0, n);
+}
+
+// Abend-Start: Songs der Start-Playlist in die Warteschlange legen (mindestens `count`)
+export async function fillStart(engine, count, now = Date.now()) {
+  const sp = settings().start;
+  const have = rq.upcoming(engine.env).length;
+  if (have >= count) return have;
+  const tracks = await pickTracks(engine, sp.playlist, count - have, 240, now);
+  for (const t of tracks) rq.addAuto(engine.env, t, engine.current);
+  if (tracks.length) engine.emit('change');
+  return have + tracks.length;
+}
+
 export async function maybeFill(engine, now = Date.now()) {
-  const cfg = settings().filler;
-  if (!cfg.enabled || !cfg.playlist || !isOn('filler')) return null;
+  // Solange noch kein Wunsch angenommen wurde, fuellt die Start-Playlist die Warteschlange; danach der normale Lueckenfueller
+  const sp = settings().start;
+  const startMode = isOn('startPlaylist') && !!sp.playlist && engine.state.started && rq.noWishesYet(engine.env);
+  const cfg = startMode ? { enabled: true, playlist: sp.playlist, minQueue: sp.minQueue, avoidMin: 240 } : settings().filler;
+  if (!cfg.enabled || !cfg.playlist || (!startMode && !isOn('filler'))) return null;
   if (engine.state.ended || engine.state.panic || engine.state.emergency) return null;
   const playing = engine.current && engine.players[engine.current].status().playing;
   if (!playing) return null;
