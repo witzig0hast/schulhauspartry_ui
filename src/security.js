@@ -89,12 +89,24 @@ export function cookieString(name, value, { maxAgeSec, secure, httpOnly = true, 
   return s;
 }
 
+// Private/lokale Adressen (Docker, Nginx Proxy Manager, localhost)
+export function isPrivateIp(ip) {
+  const a = String(ip || '').replace(/^::ffff:/, '');
+  return /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || a === '::1' || /^f[cd][0-9a-f]{2}:/i.test(a) || /^fe80:/i.test(a);
+}
+// Echte Client-Adresse. Weitergeleitete Header (Cloudflare/X-Forwarded-For) zaehlen NUR, wenn die direkte Verbindung von einer
+// privaten Zwischenstation kommt (Nginx Proxy Manager). Wer den Server direkt anspricht, kann seine Adresse so nicht faelschen.
 export function clientIp(req) {
+  const peer = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '') || 'unknown';
+  if (!isPrivateIp(peer)) return peer;
   if (config.trustCloudflare) {
     const cf = req.headers['cf-connecting-ip'];
-    if (cf) return String(cf);
+    if (cf) return String(cf).trim().slice(0, 64);
   }
-  return req.ip || req.socket?.remoteAddress || 'unknown';
+  // X-Forwarded-For von rechts lesen: die erste nicht-private Adresse ist der Client
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  for (let i = xff.length - 1; i >= 0; i--) if (!isPrivateIp(xff[i])) return xff[i].slice(0, 64);
+  return xff[0] || peer;
 }
 
 export function isSecure(req) {

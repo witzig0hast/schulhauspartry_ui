@@ -8,17 +8,22 @@ import { RateLimitError } from '../adapters/spotify-governor.js';
 import { isOn } from '../features.js';
 import { isBlocked, noteWish } from '../devices.js';
 import { castVote, votePoll, publicData } from '../extras.js';
+import { shield } from '../shield.js';
 import { getDb } from '../db.js';
 
 const limited = (res, e) => res.status(503).set('Retry-After', String(Math.ceil(e.retryAfterMs / 1000))).json({ error: 'Spotify macht gerade eine kurze Pause. Gleich geht’s weiter …', retryAfterSec: Math.max(1, Math.ceil(e.retryAfterMs / 1000)) });
 
-const ipLimiter = new RateLimiter(900, 60000);
 const searchLimiter = new RateLimiter(25, 20000);
 
 export function deviceMiddleware(req, res, next) {
   const raw = readCookie(parseCookies(req.headers.cookie || ''), 'dev');
   let id = unsign(raw || '');
   if (!id) {
+    // Cookie wegwerfen und neu anfangen bringt nichts: neue Geraete pro Adresse sind begrenzt
+    if (!shield.newDeviceOk(clientIp(req))) {
+      if (req.path.includes('/api/')) return res.status(429).json({ error: 'Zu viele neue Geräte von dieser Adresse. Bitte kurz warten.' });
+      return next();
+    }
     id = randomToken(18);
     // Lax: der erste Aufruf kommt per QR-Code aus einer anderen App
     res.append('Set-Cookie', cookieString(cookieName('dev', isSecure(req)), sign(id), { maxAgeSec: 60 * 60 * 24 * 365, secure: isSecure(req), sameSite: 'Lax' }));
@@ -33,7 +38,8 @@ export function guestRouter(env, engine, hub) {
 
   r.use(deviceMiddleware);
   r.use((req, res, next) => {
-    if (!ipLimiter.check(clientIp(req)).ok) return res.status(429).json({ error: 'Zu viele Anfragen.' });
+    if (!req.deviceId) return res.status(429).json({ error: 'Bitte die Seite neu laden.' });
+    if (!shield.deviceOk(req.deviceId)) return res.status(429).json({ error: 'Zu viele Anfragen von diesem Gerät. Bitte kurz warten.' });
     next();
   });
 
@@ -91,6 +97,9 @@ export function guestRouter(env, engine, hub) {
     const br = blockReason(env, track);
     if (br) { logAttempt(env, br.kind, track.id); return res.status(403).json({ error: br.text }); }
 
+    if (!shield.wishOk(clientIp(req))) return res.status(429).json({ error: 'Von dieser Adresse kommen gerade sehr viele Wünsche. Bitte etwas später.' });
+    const open = rq.counts(env);
+    if (shield.pendingFull(open.pending + open.later)) return res.status(503).json({ error: 'Gerade sind sehr viele Wünsche offen. Bitte gleich nochmal versuchen.' });
     const out = rq.submitWish(env, track, req.deviceId);
     if (out.result === 'created') noteWish(env);
     if (out.result === 'limit') {

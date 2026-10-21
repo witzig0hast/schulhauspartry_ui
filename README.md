@@ -227,6 +227,7 @@ Neue Funktionen: Wunsch-Voting, Live-Umfragen, Gast-Geräte sperren, Pausen-Modu
 
 * **Passkeys** (Fingerabdruck/Gesicht/Geräte-PIN) für Admin und alle Codes: 🔑 in der Kopfzeile, Verwaltung unter Admin → Sicherheit. Bei Aussperrung: Server mit `ADMIN_RECOVERY=1` starten (Passwort-Login wieder erlaubt).
 * Optional: Admin-Login nur per Passkey, Admin nur von bestimmten IP-Adressen/Netzen, Sitzungs-Timeouts, Abmelden einzelner Geräte, Passwort ändern, Sicherheitsprotokoll, Flut-Alarm per ntfy.
+* Schutz vor Überlastung (Grenzen pro Adresse/Gerät, Sperre bei Dauerfeuer) und Cloudflare-Einrichtung: siehe docs/SECURITY.md.
 * `__Host-`-Cookies unter HTTPS, CSRF-Prüfung (Origin + Sec-Fetch-Site), Rate-Limits pro IP, gehashte Codes/Sitzungen.
 
 ## Single Sign-On (SSO, z. B. Authentik)

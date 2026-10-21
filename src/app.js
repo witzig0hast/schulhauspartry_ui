@@ -19,6 +19,7 @@ import { extrasRouter } from './routes/extras.js';
 import { vpnRouter } from './routes/vpn.js';
 import { ssoRouter } from './routes/sso.js';
 import { djRouter } from './routes/dj.js';
+import { shield } from './shield.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -83,18 +84,23 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
 
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', config.trustCloudflare ? true : 'loopback, linklocal, uniquelocal');
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');   // nur private Zwischenstationen (NPM) duerfen Weiterleitungs-Header setzen
   const server = http.createServer(app);
+  // Verbindungen nicht ewig offen halten (Slowloris & Co.)
+  server.headersTimeout = 15000; server.requestTimeout = 30000; server.keepAliveTimeout = 5000; server.maxHeadersCount = 60; server.maxConnections = 5000;
 
   const allowedOrigin = (origin, req) => {
     try { return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host); } catch { return false; }
   };
-  const hub = createHub(server, engines, { testPrefix: () => settings().test.prefix, testEnabled: () => settings().test.enabled, allowedOrigin });
+  const hub = createHub(server, engines, { shield, testPrefix: () => settings().test.prefix, testEnabled: () => settings().test.enabled, allowedOrigin });
 
+  app.use(shield.middleware);
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     if (req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
@@ -208,12 +214,19 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   });
   app.use(liveRouter);
   app.use((req, res) => res.status(404).type('text').send('Not found'));
+  // Fehler (z. B. kaputtes JSON, zu grosse Anfrage) ohne interne Details beantworten
+  app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+    const code = err.status === 413 || err.type === 'entity.too.large' ? 413 : err.status >= 400 && err.status < 500 ? err.status : 500;
+    if (code === 500) console.error('[app]', err.message);
+    res.status(code).json({ error: code === 413 ? 'Anfrage zu groß.' : code === 500 ? 'Interner Fehler.' : 'Ungültige Anfrage.' });
+  });
 
   const timers = [];
   const monitor = createMonitor(engines);
   let stopBackup = () => {};
   if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); }
   timers.push(setInterval(sweepSessions, 10 * 60000));
+  timers.push(setInterval(() => shield.sweep(), 60000));
   timers.push(setInterval(() => { for (const l of limiters.values()) l.sweep(); }, 60000));
   timers.forEach((t) => t.unref?.());
 

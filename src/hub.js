@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { sessionFromToken, can } from './auth.js';
-import { parseCookies, unsign, readCookie } from './security.js';
+import { parseCookies, unsign, readCookie, clientIp } from './security.js';
 import * as rq from './requests.js';
 import { settings, guestSettings } from './settings.js';
 import { getDb } from './db.js';
@@ -91,7 +91,7 @@ export function guestState(engine, deviceId) {
 const sortedPending = (env) => { const p = rq.pending(env); return settings().voting.sortByVotes && isOn('voting') ? p.sort((a, b) => b.votes - a.votes || a.createdAt - b.createdAt) : p; };
 export const staffExtra = (env) => ({ pending: sortedPending(env), later: rq.later(env), recent: rq.recentDecisions(env, 40), history: rq.history(env, 40), blacklist: listBlacklist(), chat: recentMessages(env) });
 
-export function createHub(server, engines, { testPrefix, testEnabled, allowedOrigin }) {
+export function createHub(server, engines, { shield, testPrefix, testEnabled, allowedOrigin }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const clients = new Set();
   // Weiche Sperren: wer gerade an einem Wunsch arbeitet (8 s), und wer online ist
@@ -115,13 +115,22 @@ export function createHub(server, engines, { testPrefix, testEnabled, allowedOri
       const cookies = parseCookies(req.headers.cookie || '');
       const session = sessionFromToken(readCookie(cookies, 'sid'));
       const deviceId = unsign(readCookie(cookies, 'dev') || '');
+      if (!session && !deviceId) return socket.destroy();            // ohne Geraete-Cookie oder Anmeldung kein Live-Kanal (Schutz vor Verbindungsflut)
+      const ip = clientIp(req);
+      const releaseSlot = shield ? shield.wsOpen(ip, session ? `s:${session.tokenHash}` : `d:${deviceId}`) : () => {};
+      if (!releaseSlot) { socket.write('HTTP/1.1 429 Too Many Requests\r\nRetry-After: 20\r\nConnection: close\r\n\r\n'); return socket.destroy(); }
       wss.handleUpgrade(req, socket, head, (ws) => {
         const c = { ws, env, session, token: readCookie(cookies, 'sid'), deviceId, alive: true, lastGuestSend: 0 };
         clients.add(c);
         ws.on('pong', () => { c.alive = true; });
-        ws.on('close', () => clients.delete(c));
-        ws.on('error', () => clients.delete(c));
+        ws.on('close', () => { clients.delete(c); releaseSlot(); });
+        ws.on('error', () => { clients.delete(c); releaseSlot(); });
+        let burst = 0, burstStart = Date.now();
         ws.on('message', (raw) => {
+          // Nachrichtenflut: hoechstens 30 Nachrichten in 10 Sekunden (normal ist ein Ping alle paar Sekunden)
+          const now = Date.now();
+          if (now - burstStart > 10000) { burst = 0; burstStart = now; }
+          if (++burst > 30) { shield?.wsMessageFlood(ip); return ws.close(1008, 'zu viele Nachrichten'); }
           try {
             const m = JSON.parse(raw.toString());
             if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong', ts: m.ts }));

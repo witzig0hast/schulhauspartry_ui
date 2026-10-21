@@ -7,7 +7,9 @@ export const DEFAULTS = {
   operation: { mode: 'full' },   // full = Spotify-Player/Crossfade/X32 | wishlist = nur Wuensche annehmen/ablehnen (ein DJ spielt selbst)
   // Single Sign-On (OpenID Connect, z. B. Authentik). roleMap: Gruppe im Anbieter -> Rolle in der App
   sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, autoCreate: true, autoLinkEmail: false, buttonLabel: 'Mit SSO anmelden' },
-  security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true },
+  security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true,
+    // Schutz vor Ueberlastung (pro Absender-Adresse und Minute; Gaeste hinter einem Schul-WLAN teilen sich oft eine Adresse -> grosszuegig)
+    shield: { enabled: true, attackMode: false, pagePerMin: 1500, assetPerMin: 4000, guestPerMin: 2500, writePerMin: 600, devicePerMin: 240, wishesPerIp: 150, newDevicesPerMin: 300, wsPerIp: 400, wsTotal: 3000, maxInflight: 600, maxPending: 400, banStrikes: 150, banMin: 10 } },
   voting: { votesPerWindow: 8, windowMin: 15, sortByVotes: true },
   handover: { text: '', by: '', ts: 0 },
   limits: { maxGain: 1, maxSongSec: 0 },
@@ -106,6 +108,13 @@ export function applyPatch(patch, { allow }) {
     if ('maxHours' in q) o.maxHours = Math.round(clamp(q.maxHours, 1, 72, o.maxHours));
     if ('apiPerMin' in q) o.apiPerMin = Math.round(clamp(q.apiPerMin, 60, 5000, o.apiPerMin));
     if ('floodPerMin' in q) o.floodPerMin = Math.round(clamp(q.floodPerMin, 5, 500, o.floodPerMin));
+    if (q.shield && typeof q.shield === 'object') {
+      const sh = o.shield, v = q.shield;
+      if ('enabled' in v) sh.enabled = !!v.enabled;
+      if ('attackMode' in v) sh.attackMode = !!v.attackMode;
+      const lim = { pagePerMin: [30, 100000], assetPerMin: [30, 200000], guestPerMin: [30, 100000], writePerMin: [10, 50000], devicePerMin: [20, 20000], wishesPerIp: [5, 5000], newDevicesPerMin: [5, 20000], wsPerIp: [5, 5000], wsTotal: [50, 50000], maxInflight: [50, 20000], maxPending: [20, 5000], banStrikes: [20, 5000], banMin: [1, 1440] };
+      for (const [k, [lo, hi]] of Object.entries(lim)) if (k in v) sh[k] = Math.round(clamp(v[k], lo, hi, sh[k]));
+    }
     if ('adminPasskeyOnly' in q) o.adminPasskeyOnly = !!q.adminPasskeyOnly;
     if (Array.isArray(q.adminIpAllow)) o.adminIpAllow = q.adminIpAllow.map((x) => str(x, 60).trim()).filter((x) => /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(x)).slice(0, 20);
   }

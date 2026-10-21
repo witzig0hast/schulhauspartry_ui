@@ -8,6 +8,7 @@ import { audit, recentAudit } from '../audit.js';
 import { settings } from '../settings.js';
 import { RateLimiter } from '../security.js';
 import * as pk from '../passkeys.js';
+import { shield } from '../shield.js';
 import { listDevices, blockDevice, unblockDevice, deviceOfRequest } from '../devices.js';
 
 const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } };
@@ -76,6 +77,13 @@ export function securityRouter(env, engine, hub) {
     audit('session.revoke-all', req.session.label, clientIp(req), `${n} Sitzungen`);
     hub.kickAll?.();
     res.json({ ok: true, count: n });
+  }));
+  r.get('/admin/shield', ...adm, (req, res) => res.json(shield.status()));
+  r.post('/admin/shield/unban', ...adm, wrap((req, res) => {
+    const ip = String(req.body?.ip || '').slice(0, 64);
+    const ok = shield.unban(ip);
+    if (ok) audit('shield.unban', req.session.label, clientIp(req), ip);
+    res.json({ ok });
   }));
   r.post('/admin/security/password', ...adm, wrap((req, res) => {
     if (req.session.accountId != null) throw new Error('Nur der Head-Admin.');

@@ -520,6 +520,40 @@ function ssoCard() {
       h('li', {}, 'In Authentik Gruppen anlegen (z. B. party-technik) und der Anwendung zuordnen; hier unter „Gruppen → Rollen" verknüpfen.'))));
 }
 
+// ---------- Schutz vor Ueberlastung ----------
+function shieldCard() {
+  const box = h('div', { class: 'card stack' });
+  async function paint() {
+    let d;
+    try { d = await api('/admin/shield'); } catch (e) { clear(box).append(h('p', { class: 'small muted' }, e.message)); return; }
+    const c = d.cfg;
+    const field2 = (k, label, min, max) => h('label', { class: 'field' }, label, num(c[k], { min, max, 'data-k': k }));
+    const fields = [field2('pagePerMin', 'Seiten & Team pro Adresse/Min.', 30, 100000), field2('assetPerMin', 'Dateien pro Adresse/Min.', 30, 200000), field2('guestPerMin', 'Gäste-Anfragen pro Adresse/Min.', 30, 100000),
+      field2('writePerMin', 'Schreibende Anfragen pro Adresse/Min.', 10, 50000), field2('devicePerMin', 'Anfragen pro Gäste-Gerät/Min.', 20, 20000), field2('wishesPerIp', 'Wünsche pro Adresse/15 Min.', 5, 5000),
+      field2('newDevicesPerMin', 'Neue Geräte pro Adresse/Min.', 5, 20000), field2('wsPerIp', 'Live-Verbindungen pro Adresse', 5, 5000), field2('wsTotal', 'Live-Verbindungen insgesamt', 50, 50000),
+      field2('maxInflight', 'Gleichzeitige Anfragen (Gäste)', 50, 20000), field2('maxPending', 'Max. offene Wünsche', 20, 5000), field2('banStrikes', 'Sperre nach … Abweisungen/Min.', 20, 5000), field2('banMin', 'Sperrdauer (Minuten)', 1, 1440)];
+    const on = chk(c.enabled), attack = chk(c.attackMode);
+    const bars = d.blocked.last60, mx = Math.max(1, ...bars);
+    clear(box).append(
+      h('div', { class: 'row between' }, h('h2', {}, '🛡️ Schutz vor Überlastung'), h('span', { class: `badge ${c.attackMode ? 'bad' : c.enabled ? 'ok' : ''}` }, c.attackMode ? 'ANGRIFFSMODUS' : c.enabled ? 'aktiv' : 'aus')),
+      h('p', { class: 'small muted' }, 'Begrenzt Anfragen pro Absender-Adresse, Gäste-Gerät, neue Geräte, Wünsche und Live-Verbindungen und sperrt Dauerfeuer automatisch. Wichtig: Gäste im selben WLAN teilen sich oft eine Adresse – die Standardwerte sind deshalb großzügig. Gegen echte Datenfluten schützt Cloudflare (siehe docs/SECURITY.md).'),
+      h('div', { class: 'small' }, `Live-Verbindungen: ${d.ws.total} von ${c.wsTotal} · gleichzeitige Anfragen: ${d.inflight} · abgewiesen seit Start: ${d.blocked.total}`),
+      h('div', { class: 'spark', title: 'Abgewiesene Anfragen pro Minute (letzte 60 Min.)', style: 'display:flex;align-items:flex-end;gap:2px;height:36px' }, ...bars.map((n) => h('i', { style: `flex:1;background:var(--ink);opacity:.7;border-radius:2px;height:${Math.max(2, Math.round(36 * n / mx))}px` }))),
+      d.bans.length ? h('div', { class: 'list' }, ...d.bans.map((b) => h('div', { class: 'item row between' }, h('div', {}, h('b', { class: 'mono' }, b.ip), h('div', { class: 'tiny muted' }, `${b.reason} · noch ${Math.ceil(b.untilSec / 60)} Min.`)), h('button', { class: 'small', onclick: safe(async () => { await api('/admin/shield/unban', { method: 'POST', body: { ip: b.ip } }); paint(); }) }, 'Entsperren')))) : h('div', { class: 'small muted' }, 'Keine Sperren.'),
+      d.offenders.length ? h('details', { class: 'more' }, h('summary', {}, 'Auffälligste Absender'), h('div', { class: 'stack', style: 'margin-top:8px;gap:4px' }, ...d.offenders.map((o) => h('div', { class: 'row between small' }, h('span', { class: 'mono' }, o.ip), h('span', {}, `${o.n} Abweisungen${o.banned ? ' · gesperrt' : ''}`))))) : h('span'),
+      h('label', { class: 'check' }, on, 'Schutz aktiv'),
+      h('label', { class: 'check' }, attack, '🚨 Angriffsmodus: alle Grenzen auf 20 % (bei laufendem Angriff einschalten, danach wieder aus)'),
+      h('details', { class: 'more' }, h('summary', {}, 'Grenzen einstellen'), h('div', { class: 'grid three', style: 'margin-top:10px' }, ...fields)),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => {
+        const v = { enabled: on.checked, attackMode: attack.checked };
+        for (const i of box.querySelectorAll('input[data-k]')) v[i.dataset.k] = Number(i.value);
+        save({ security: { shield: v } }, 'Gespeichert');
+      } }, 'Speichern'), h('button', { onclick: paint }, 'Aktualisieren')));
+  }
+  paint();
+  return box;
+}
+
 // ---------- Sicherheit ----------
 function viewSecurity() {
   const sec = data.settings.security;
@@ -542,6 +576,7 @@ function viewSecurity() {
         pkList,
         h('label', { class: 'check' }, only, 'Admin-Login NUR mit Passkey (Passwort wird für Admin gesperrt)'),
         h('p', { class: 'small muted' }, `Admin-Passkeys: ${d.adminPasskeys}. Erst einschalten, wenn mindestens ein Passkey funktioniert. Notfall: Server mit Umgebungsvariable ADMIN_RECOVERY=1 starten – dann geht das Passwort wieder.`)),
+      shieldCard(),
       ssoCard(),
       h('div', { class: 'grid two' },
         h('div', { class: 'card stack' }, h('h2', {}, 'Sitzungen & Limits'),
