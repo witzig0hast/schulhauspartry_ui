@@ -22,8 +22,8 @@ export function h(tag, attrs, ...children) {
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
 
-export async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${BASE}/api${path}`, {
+export async function api(path, { method = 'GET', body, base = BASE } = {}) {
+  const res = await fetch(`${base}/api${path}`, {
     method, headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined, credentials: 'same-origin',
   });
@@ -46,8 +46,8 @@ export function toast(msg, bad = false) {
 }
 export const safe = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 
-export function modal(content) {
-  const back = h('div', { class: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } }, h('div', { class: 'modal' }, content));
+export function modal(content, { wide = false, sticky = false } = {}) {
+  const back = h('div', { class: 'modal-back', onclick: (e) => { if (e.target === back && !sticky) back.remove(); } }, h('div', { class: wide ? 'modal wide' : 'modal' }, content));
   document.body.append(back);
   return () => back.remove();
 }
@@ -177,7 +177,7 @@ addEventListener('DOMContentLoaded', () => {
 });
 
 // ---- WebSocket mit Reconnect; optionaler Ping (nur Spezialansichten) ----
-export function connect({ onState, onGuest, onStatus, ping = false }) {
+export function connect({ onState, onGuest, onStatus, ping = false, view = '' }) {
   let ws, retry = 0, closed = false, pingTimer, pingEl;
   if (ping) { pingEl = buildTag(); pingEl.textContent = `Ping – ms · v${BUILD}`; }
   const open = () => {
@@ -185,6 +185,7 @@ export function connect({ onState, onGuest, onStatus, ping = false }) {
     ws = new WebSocket(`${proto}://${location.host}${BASE}/ws`);
     ws.onopen = () => {
       retry = 0; onStatus?.(true);
+      if (view) ws.send(JSON.stringify({ type: 'hello', view }));
       if (ping) {
         clearInterval(pingTimer);
         const send = () => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping', ts: performance.now() })); };

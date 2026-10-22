@@ -35,7 +35,7 @@ test('Freischaltung: Wuensche bleiben zu bis Knopf oder Uhrzeit; Start-Playlist 
     assert.equal((await tech.post('/api/control/open-wishes')).status, 200);
     gs = (await g1.get('/api/guest/state')).json;
     assert.equal(gs.wishMode, 'open'); assert.equal(gs.opensAt, null);
-    assert.equal((await wish(g1, 'blinding')).status, 200);
+    assert.equal((await wish(g1, 'uptown')).status, 200);   // nicht in der (simulierten) Start-Playlist, sonst waere es ein Duplikat
 
     // Angenommener Wunsch kommt VOR die Fuelltitel
     const pend = (await mod.get('/api/state')).json.pending[0];

@@ -1,5 +1,6 @@
 import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat } from '/assets/app.js';
 import { pendingList, upcomingList, ampel, bar, playerName, chatPanel, isPressing, onRelease } from '/assets/staff-ui.js';
+import { openLevels } from '/assets/levels.js';
 
 const app = $('#app');
 let state = null;
@@ -260,14 +261,25 @@ function render() {
 
 refs.modeBanner = h('div', { class: 'card hidden', style: 'background:var(--warn-bg);border-color:transparent' }, h('b', {}, 'Wunschlisten-Modus: '), 'Die App spielt keine Musik ab und steuert das Pult nicht – der DJ spielt selbst. Fader, Crossfade und Player sind gesperrt. Umschalten: Admin → Start.');
 refs.badges = h('span', { class: 'row' });
+const showLevels = (opts) => openLevels(opts).catch((e) => toast(e.message, true));
+refs.levelsBtn = h('button', { class: 'small', title: 'Fader und Lautstärken einstellen', onclick: () => showLevels() }, '🎚 Pegel');
+// Einmal pro Abend (bzw. alle 10 Stunden) beim Oeffnen der Technik nach den Grundpegeln fragen
+let levelsAsked = false;
+function maybeAskLevels() {
+  if (levelsAsked || !state?.levels || state.mode === 'wishlist') return;
+  levelsAsked = true;
+  try { if (sessionStorage.getItem('levelsAsked')) return; sessionStorage.setItem('levelsAsked', '1'); } catch { /* ohne Speicher: trotzdem fragen */ }
+  if (state.levels.confirmedAt && Date.now() - state.levels.confirmedAt < 10 * 3600e3) return;
+  showLevels({ later: true, intro: 'Bevor es losgeht: einmal Fader und Lautstärken einstellen. Jede Änderung gilt sofort – starte Testmusik und hör direkt, wie es klingt. Später findest du das Fenster oben unter „🎚 Pegel“.' });
+}
 refs.ampel = h('div'); refs.errors = h('div');
 refs.chatBox = h('div', { style: 'margin-top:12px' }); refs.chatSum = h('summary', {}, 'Team-Chat');
 const chatCard = h('details', { class: 'card more' }, refs.chatSum, refs.chatBox);
 const mainCards = [refs.modeBanner, h('div', { class: 'grid two' }, playerCard(1), playerCard(2)), h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()), wishesCard(), chatCard, advancedCard()];
 app.append(
-  (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges] })),
+  (refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges, refs.levelsBtn] })),
   h('div', { class: 'wrap stack' }, ...mainCards),
 );
 onRelease(() => { if (state) render(); });
-connect({ ping: true, onStatus: (ok) => refs.top.setLive(ok), onState: (s) => { state = s; render(); } });
+connect({ ping: true, onStatus: (ok) => refs.top.setLive(ok), onState: (s) => { state = s; render(); maybeAskLevels(); } });
 api('/state').then((s) => { if (!state) { state = s; render(); } }).catch(() => {});

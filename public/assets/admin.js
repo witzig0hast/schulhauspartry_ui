@@ -1,6 +1,7 @@
 import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock, passkeysSupported, passkeyRegister } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
 import { autoHelp } from '/assets/help.js';
+import { openLevels } from '/assets/levels.js';
 
 const app = $('#app');
 let data = null;
@@ -8,11 +9,11 @@ let data = null;
 const TAB_GROUPS = [
   ['Party', ['start', 'einstellungen', 'automatik', 'design', 'poster']],
   ['Zugang', ['codes', 'sicherheit', 'funktionen']],
-  ['Technik', ['verbindungen', 'vpn', 'probe']],
+  ['Technik', ['verbindungen', 'vpn', 'livetest', 'probe']],
   ['Auswertung', ['bericht']],
 ];
 const tabs = TAB_GROUPS.flatMap(([, t]) => t);
-const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Wünsche & Regeln', codes: 'Codes', verbindungen: 'Verbindungen', probe: 'Generalprobe', bericht: 'Bericht & Export' };
+const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Wünsche & Regeln', codes: 'Codes', verbindungen: 'Verbindungen', livetest: 'Live-Test', probe: 'Generalprobe', bericht: 'Bericht & Export' };
 const TAB_INTRO = {
   start: 'Betriebsart, Abend-Start, alle Links und das Zurücksetzen.',
   einstellungen: 'Wie viele Wünsche Gäste haben, welche Songs erlaubt sind und welche Texte sie sehen.',
@@ -24,6 +25,7 @@ const TAB_INTRO = {
   funktionen: 'Jede Funktion und Ansicht einzeln an- oder ausschalten.',
   verbindungen: 'Spotify-Konten und die Anbindung an Pi und X32.',
   vpn: 'Geräte für den WireGuard-Server (Pi, PC, Handy).',
+  livetest: 'Vor der Party jede Funktion mit dem echten Setup durchspielen: Player, Pult, Mics, Handy, Beamer, Not-Aus.',
   probe: 'Simulierte Party im Testmodus: Hält das System viele Gäste aus?',
   bericht: 'Zahlen zur Party, Setlist als PDF und CSV.',
 };
@@ -123,14 +125,17 @@ function viewConnections() {
   const s = data.settings;
   const apiInfo = data.connections.live.api || data.connections.test.api;
   const budget = num(s.spotify.apiBudget, { min: 20, max: 300, class: 'num' });
-  const cid = h('input', { value: s.spotify.clientId, placeholder: 'Client ID', autocomplete: 'off' });
-  const csec = h('input', { type: 'password', placeholder: s.spotify.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password' });
+  const apps = s.spotify.apps || [];
+  const appName = (id) => apps.find((a) => a.id === id)?.name || (id === 'env' ? 'App aus .env' : apps[0]?.name || '');
   const playerBox = (n) => {
     const p = s.spotify.players[n];
+    const appSel = h('select', { 'aria-label': `Spotify-App für Player ${n}` }, ...apps.filter((a) => a.clientId && a.clientSecret).map((a) => h('option', { value: a.id, selected: a.id === p.appId }, a.name)));
     const devSel = h('select', {}, h('option', { value: p.deviceId }, p.deviceName || (p.deviceId ? p.deviceId : 'Aktives Gerät (automatisch)')));
     return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, `Player ${n}`), h('span', { class: `badge ${p.connected ? 'ok' : ''}` }, p.connected ? `verbunden: ${p.user || ''}` : 'nicht verbunden')),
+      p.connected ? h('div', { class: 'small muted' }, `über App: ${appName(p.appId)}`) : null,
+      apps.length > 1 ? field('Verbinden über App', appSel) : null,
       h('div', { class: 'row' },
-        h('button', { class: 'primary', onclick: safe(async () => { const { url } = await api('/admin/spotify/connect', { method: 'POST', body: { player: n } }); location.href = url; }) }, p.connected ? 'Neu verbinden' : 'Mit Spotify verbinden'),
+        h('button', { class: 'primary', onclick: safe(async () => { const { url } = await api('/admin/spotify/connect', { method: 'POST', body: { player: n, appId: appSel.value } }); location.href = url; }) }, p.connected ? 'Neu verbinden' : 'Mit Spotify verbinden'),
         p.connected ? h('button', { onclick: safe(async () => { if (confirm('Verbindung trennen?')) save({ spotify: { players: { [n]: { disconnect: true } } } }, 'Getrennt'); }) }, 'Trennen') : null),
       p.connected ? h('div', { class: 'stack' }, h('div', { class: 'small muted' }, 'Wiedergabegerät (Spotify Connect, z. B. der Rechner/Streamer am X32)'), devSel,
         h('div', { class: 'row' }, h('button', { class: 'small', onclick: safe(async () => {
@@ -148,18 +153,18 @@ function viewConnections() {
   return h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Status'),
       ...Object.entries(data.connections).map(([env, c]) => h('div', { class: 'stack' }, h('strong', {}, env === 'live' ? 'Live' : 'Testmodus'), ampel(c)))),
-    h('div', { class: 'card stack' }, h('h2', {}, 'Spotify-App (Developer Dashboard)'),
-      h('p', { class: 'small muted' }, 'Redirect-URI im Spotify-Dashboard eintragen: ', h('code', {}, data.redirectUri)),
-      field('Client ID', cid), field('Client Secret', csec),
-      h('button', { class: 'primary', onclick: () => save({ spotify: { clientId: cid.value, clientSecret: csec.value } }) }, 'Speichern')),
+    spotifyAppsCard(apps),
     h('div', { class: 'card stack' }, h('h2', {}, 'Spotify-API-Auslastung'),
       h('p', { class: 'small muted' }, 'Spotify begrenzt Anfragen pro App (gleitendes 30-Sekunden-Fenster) und lässt sich nicht abschalten. Die App bleibt deshalb weit darunter: Suchergebnisse werden gemerkt, gleiche Anfragen zusammengefasst, der Player-Status nur bei Bedarf abgefragt. Steuerbefehle haben Vorrang. Meldet Spotify doch ein Limit, pausiert die App automatisch und der Cache übernimmt.'),
       apiInfo ? h('div', { class: 'stack', style: 'gap:8px' },
         h('div', { class: 'row between small' }, h('span', {}, `${apiInfo.used} von ${apiInfo.budget} Anfragen in den letzten ${apiInfo.windowSec} s`), apiInfo.pausedSec ? h('span', { class: 'badge warn' }, `Limit – Pause ${apiInfo.pausedSec} s`) : h('span', { class: 'badge ok' }, 'in Ordnung')),
         h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * apiInfo.used / apiInfo.budget))}%` })),
-        h('div', { class: 'small muted' }, `Seit Start: ${apiInfo.total} Anfragen · ${apiInfo.cacheHits} aus dem Cache · ${apiInfo.coalesced} zusammengefasst · ${apiInfo.rate429} × Limit von Spotify`))
+        h('div', { class: 'small muted' }, `Seit Start: ${apiInfo.total} Anfragen · ${apiInfo.cacheHits} aus dem Cache · ${apiInfo.coalesced} zusammengefasst · ${apiInfo.rate429} × Limit von Spotify`),
+        ...(apiInfo.apps?.length > 1 ? apiInfo.apps.map((a) => h('div', { class: 'stack', style: 'gap:4px' },
+          h('div', { class: 'row between small' }, h('span', {}, `${a.name}${a.search ? '' : ' (nur Player)'}`), h('span', { class: a.pausedSec ? 'badge warn' : 'muted' }, a.pausedSec ? `Pause ${a.pausedSec} s` : `${a.used}/${a.budget}`)),
+          h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * a.used / a.budget))}%` })))) : []))
         : h('div', { class: 'small muted' }, 'Sobald echte Spotify-Verbindungen aktiv sind, erscheint hier die Auslastung.'),
-      h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Eigenes Budget'), budget, h('span', { class: 'small muted' }, 'Anfragen pro 30 s (Standard 60)'),
+      h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Eigenes Budget'), budget, h('span', { class: 'small muted' }, 'Anfragen pro 30 s und App (Standard 60)'),
         h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
@@ -170,6 +175,31 @@ function viewConnections() {
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
       h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
+}
+
+// Mehrere Spotify-Apps: jede hat ein eigenes Anfrage-Limit. Die Suche der Gaeste verteilt sich auf alle Apps mit „Suche";
+// jeder Player bleibt bei der App, ueber die er verbunden wurde.
+function spotifyAppsCard(apps) {
+  const row = (a) => ({ id: a.id || '', name: h('input', { value: a.name, maxlength: 40, 'aria-label': 'Name der App' }), cid: h('input', { value: a.clientId || '', placeholder: 'Client ID', autocomplete: 'off', 'aria-label': 'Client ID' }),
+    sec: h('input', { type: 'password', placeholder: a.clientSecret ? '(gesetzt – leer lassen zum Behalten)' : 'Client Secret', autocomplete: 'new-password', 'aria-label': 'Client Secret' }),
+    search: h('input', { type: 'checkbox', checked: a.search !== false }), used: [1, 2].filter((n) => a.id && data.settings.spotify.players[n].connected && data.settings.spotify.players[n].appId === a.id) });
+  const rows = apps.map(row);
+  const list = h('div', { class: 'stack' });
+  const draw = () => clear(list).append(...rows.map((r, i) => h('div', { class: 'card stack', style: 'background:var(--bg-2, transparent)' },
+    h('div', { class: 'row between' }, h('strong', {}, `App ${i + 1}`), h('span', { class: 'row' }, r.used.length ? h('span', { class: 'badge' }, `Player ${r.used.join(' & ')}`) : h('span'),
+      h('button', { class: 'small outline-bad', onclick: () => { if (r.used.length && !confirm(`Player ${r.used.join(' & ')} ${r.used.length > 1 ? 'sind' : 'ist'} über diese App verbunden und ${r.used.length > 1 ? 'werden' : 'wird'} getrennt. Trotzdem entfernen?`)) return; rows.splice(i, 1); draw(); } }, 'Entfernen'))),
+    h('div', { class: 'grid two' }, field('Name', r.name), field('Client ID', r.cid)), field('Client Secret', r.sec),
+    h('label', { class: 'check' }, r.search, 'Für die Gäste-Suche mitnutzen'))));
+  draw();
+  const add = () => { rows.push(row({ name: `App ${rows.length + 1}` })); draw(); };
+  if (!rows.length) add();
+  return h('div', { class: 'card stack' }, h('h2', { class: 'help-host' }, 'Spotify-Apps (Developer Dashboard)'),
+    h('p', { class: 'small muted' }, 'Du kannst mehrere Spotify-Apps eintragen. Jede App hat ihr eigenes Anfrage-Limit: Die Gäste-Suche verteilt sich auf alle Apps mit Häkchen, und springt bei einem Limit automatisch auf die nächste. Player 1 und 2 können über verschiedene Apps verbunden werden (hilfreich, weil eine App im Entwicklungsmodus nur wenige Spotify-Konten erlaubt).'),
+    h('p', { class: 'small muted' }, 'In jeder App im Spotify-Dashboard diese Redirect-URI eintragen: ', h('code', {}, data.redirectUri)),
+    data.spotifyEnvApp ? h('p', { class: 'small muted' }, 'Zurzeit wird die App aus der .env-Datei genutzt. Sobald du hier eine App speicherst, gilt die Liste.') : null,
+    list,
+    h('div', { class: 'row' }, h('button', { onclick: () => (rows.length >= 8 ? toast('Höchstens 8 Apps', true) : add()) }, '+ Weitere App'),
+      h('button', { class: 'primary', onclick: () => save({ spotify: { apps: rows.map((r) => ({ id: r.id, name: r.name.value, clientId: r.cid.value, clientSecret: r.sec.value, search: r.search.checked })).filter((a) => a.clientId || a.id) } }) }, 'Apps speichern')));
 }
 
 // ---------- Start: Links, Testmodus, Zuruecksetzen ----------
@@ -654,7 +684,7 @@ function viewSecurity() {
 
 function render() {
   drawTabs();
-  clear(body).append(h('p', { class: 'tab-intro' }, TAB_INTRO[tab] || ''), { probe: viewProbe, start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append(h('p', { class: 'tab-intro' }, TAB_INTRO[tab] || ''), { livetest: viewLiveTest, probe: viewProbe, start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));
@@ -721,6 +751,102 @@ function viewProbe() {
   return box;
 }
 
+// ---------- Live-Test: jede Funktion mit dem echten Setup ----------
+let ltTimer = null;
+const LT_IC = { ok: ['ok', '✓'], warn: ['warn', '!'], fail: ['fail', '✕'], skipped: ['', '–'], cancelled: ['', '×'], running: ['warn', '●'], pending: ['', '○'] };
+function viewLiveTest() {
+  clearInterval(ltTimer);
+  const s = data.settings, testOn = s.test.enabled;
+  const box = h('div', { class: 'stack', style: 'gap:16px' });
+  const runBox = h('div', { class: 'stack', style: 'gap:16px' });
+  const memo = { cur: '', list: '', head: '' };
+  const qrCache = new Map();
+  const ans = (step, value) => safe(async () => paint(await api('/admin/livetest/answer', { method: 'POST', body: { step, value } })))();
+  const ic = (st) => h('div', { class: `prep-ic ${LT_IC[st]?.[0] || ''}` }, LT_IC[st]?.[1] || '?');
+  const checkList = (checks) => h('div', { class: 'stack', style: 'gap:4px' }, ...checks.map((c) => h('div', { class: 'row nowrap small' },
+    h('span', { class: `badge ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}` }, c.ok === true ? '✓' : c.ok === false ? '✕' : 'i'), h('span', {}, h('b', {}, c.label), c.detail ? ` – ${c.detail}` : ''))));
+
+  // Was ist echt, was simuliert?
+  const pl = (n) => s.spotify.players[n].connected;
+  const setupInfo = h('div', { class: 'grid three' },
+    ...[['Spotify-App', data.spotifyConfigured], ['Player 1', pl(1)], ['Player 2', pl(2)], ['Pi / X32', s.x32.adapter === 'http'], ['Mikrofone', (s.x32.channels.mics || []).length > 0], ['Alarm (ntfy)', s.notify.enabled && !!s.notify.topic]]
+      .map(([k, ok]) => h('div', { class: 'row nowrap small' }, h('span', { class: `badge ${ok ? 'ok' : 'warn'}` }, ok ? 'echt' : 'fehlt'), k)));
+  const chks = {};
+  const resetBefore = chk(true), resetAfter = chk(false);
+  const stepsBox = h('div', { class: 'grid three' });
+  const form = h('div', { class: 'card stack' }, h('h2', {}, 'Live-Test starten'),
+    h('p', { class: 'small muted' }, 'Spielt vor der Party jede Funktion einmal mit den echten Geräten durch. Die App löst jeden Schritt aus, prüft automatisch (Spotify-Status, Pegel am Pult, Mikrofone …) und fragt dich nur, wo ein Mensch hinhören oder hinsehen muss. Für Wunsch, Moderation und Beamer nimmst du am besten ein Handy und ein zweites Gerät dazu.'),
+    h('p', { class: 'small muted' }, 'Während des Tests bekommt der Testmodus die echten Verbindungen, die Live-Umgebung läuft so lange simuliert. Danach wird automatisch zurückgestellt. Die Live-Daten bleiben unberührt.'),
+    !testOn ? h('div', { class: 'banner-pause' }, 'Der Testmodus ist aus. ', h('button', { class: 'small', onclick: () => save({ test: { enabled: true } }, 'Testmodus an') }, 'Testmodus einschalten')) : null,
+    h('div', { class: 'eyebrow' }, 'Dein Setup'), setupInfo,
+    h('p', { class: 'small muted' }, 'Was fehlt, wird simuliert – der Test läuft trotzdem durch, sagt dir dann aber, dass er nicht echt war.'),
+    h('div', { class: 'eyebrow' }, 'Schritte'), stepsBox,
+    h('div', { class: 'grid two' }, h('label', { class: 'check' }, resetBefore, 'Testdaten vorher leeren'), h('label', { class: 'check' }, resetAfter, 'Testdaten danach leeren')),
+    h('div', { class: 'row' }, h('button', { class: 'primary', disabled: !testOn, onclick: safe(async () => {
+      const skip = Object.entries(chks).filter(([, c]) => !c.checked).map(([id]) => id);
+      paint(await api('/admin/livetest/start', { method: 'POST', body: { skip, resetBefore: resetBefore.checked, resetAfter: resetAfter.checked } }));
+    }) }, '▶ Live-Test starten')));
+
+  const linkRow = (l) => {
+    const url = `${origin()}${l.path}`;
+    if (l.qr && !qrCache.has(url)) qrCache.set(url, qrElement(url, { size: 180 }).catch(() => null));
+    const qrHost = h('div');
+    if (l.qr) qrCache.get(url).then((q) => { if (q) qrHost.append(q.cloneNode(true)); });
+    return h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'linkrow' }, h('div', { class: 'lbl' }, l.label), h('div', { class: 'url' }, url),
+      h('button', { class: 'small', onclick: safe(async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert'); } catch { toast(url); } }) }, 'Kopieren'),
+      h('a', { class: 'btn small', href: url, target: '_blank', rel: 'noopener', style: 'height:32px;padding:0 12px;font-size:.82rem;border-radius:9px' }, 'Öffnen')), qrHost);
+  };
+  const currentCard = (r, step) => h('div', { class: 'card stack', style: 'border:2px solid var(--ink)' },
+    h('div', { class: 'row between' }, h('div', {}, h('div', { class: 'eyebrow' }, step.group), h('h2', {}, step.title)), ic(step.status)),
+    h('p', { class: 'small muted' }, step.help),
+    step.waiting ? h('div', { class: 'banner-pause' }, step.waiting) : null,
+    ...(step.links || []).map((l) => linkRow(l)),
+    step.question ? h('div', { class: 'stack' }, h('div', { class: 'big', style: 'font-size:1.25rem;font-weight:700' }, step.question.text),
+      h('div', { class: 'row' }, h('button', { class: 'primary', style: 'min-width:120px;height:48px', onclick: () => ans(step.id, 'yes') }, `✓ ${step.question.yes}`), h('button', { class: 'outline-bad', style: 'min-width:120px;height:48px', onclick: () => ans(step.id, 'no') }, `✕ ${step.question.no}`))) : null,
+    (step.actions || []).length ? h('div', { class: 'row' }, ...step.actions.map((a) => h('button', { class: a.id === 'open-levels' || a.id === 'retry' ? 'primary' : '', onclick: () => {
+      if (a.id === 'open-levels') return openLevels({ base: `/${r.prefix}`, intro: 'Live-Test, Schritt 1: Stell Fader und Lautstärken ein. Starte Testmusik und hör über die Anlage, wie es klingt. Mit „Übernehmen“ geht der Test weiter.' }).then((how) => { if (how === 'confirmed') ans(step.id, 'done'); }).catch((e) => toast(e.message, true));
+      ans(step.id, a.id);
+    } }, a.label))) : null,
+    step.checks?.length ? checkList(step.checks) : null,
+    h('div', { class: 'row' }, h('button', { class: 'small', onclick: () => ans(step.id, 'skip') }, 'Schritt überspringen')));
+  const stepList = (steps) => h('div', { class: 'card' }, h('h2', {}, 'Alle Schritte'), h('div', { class: 'prep-grp' }, ...steps.map((st) => h('div', { class: 'prep-row' }, ic(st.status),
+    h('div', {}, h('div', { style: 'font-weight:620' }, `${st.title}`, h('span', { class: 'tiny muted' }, ` · ${st.group}`)), st.detail ? h('div', { class: 'small muted' }, st.detail) : null,
+      st.checks?.length && st.status !== 'running' ? h('details', { class: 'small' }, h('summary', {}, `${st.checks.length} Prüfung${st.checks.length > 1 ? 'en' : ''}`), checkList(st.checks)) : null),
+    h('span')))));
+
+  function paint(stt) {
+    const r = stt.run;
+    form.classList.toggle('hidden', stt.running);
+    if (!stepsBox.childNodes.length) {
+      for (const d of stt.steps) chks[d.id] = chk(true);
+      stepsBox.append(...stt.steps.map((d) => h('label', { class: 'check', title: d.help }, chks[d.id], d.title)));
+    }
+    clearInterval(ltTimer);
+    if (stt.running) ltTimer = setInterval(() => { if (tab !== 'livetest') return clearInterval(ltTimer); api('/admin/livetest').then(paint).catch(() => {}); }, 1000);
+    const show = r || stt.last;
+    if (!show) { memo.head = memo.cur = memo.list = ''; clear(runBox); return; }
+    const done = show.steps.filter((x) => !['pending', 'running'].includes(x.status)).length;
+    const cnt = (k) => show.steps.filter((x) => x.status === k).length;
+    const headKey = JSON.stringify([stt.running, done, show.verdict, show.simulated]);
+    const cur = r && r.steps.find((x) => x.id === r.current);
+    const curKey = JSON.stringify(cur ? [cur.id, cur.status, cur.waiting, cur.question, cur.actions, cur.checks, cur.links] : null);
+    const listKey = JSON.stringify(show.steps.map((x) => [x.status, x.detail, x.checks.length]));
+    if (headKey === memo.head && curKey === memo.cur && listKey === memo.list) return;   // nichts Neues: Knoepfe nicht unter dem Finger austauschen
+    memo.head = headKey; memo.cur = curKey; memo.list = listKey;
+    const fail = cnt('fail'), warn = cnt('warn');
+    const head = stt.running
+      ? h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Live-Test läuft …'), h('div', { class: 'row' }, show.simulated ? h('span', { class: 'badge warn' }, 'teilweise simuliert') : h('span', { class: 'badge ok' }, 'echtes Setup'),
+        h('button', { class: 'bad', onclick: safe(async () => { if (confirm('Live-Test abbrechen? Die Musik wird ausgeblendet.')) paint(await api('/admin/livetest/stop', { method: 'POST', body: {} })); }) }, '■ Abbrechen'))),
+        h('div', { class: 'bar' }, h('i', { style: `width:${Math.round(100 * done / show.steps.length)}%` })), h('div', { class: 'small muted' }, `${done} von ${show.steps.length} Schritten · gestartet ${fmtClock(show.startedAt)} von ${show.by || 'Admin'}`))
+      : h('div', { class: `ready ${fail ? 'fail' : warn || show.simulated || show.verdict === 'abgebrochen' ? 'warn' : 'ok'}` }, h('div', { style: 'font-size:2.2rem' }, fail ? '🛑' : warn || show.simulated ? '⚠️' : '✅'),
+        h('div', {}, h('div', { class: 'big' }, `Letzter Live-Test: ${show.verdict}`), h('div', { class: 'small muted' }, `${fmtClock(show.endedAt || show.startedAt)} · ${cnt('ok')} ok · ${warn} Hinweise · ${fail} Fehler · ${cnt('skipped') + cnt('cancelled')} übersprungen${show.simulated ? ' · nur teilweise mit echten Geräten' : ''}`)));
+    clear(runBox).append(head, cur ? currentCard(r, cur) : h('span'), stepList(show.steps));
+  }
+  box.append(form, runBox);
+  api('/admin/livetest').then(paint).catch((e) => clear(runBox).append(h('p', { class: 'small muted' }, e.message)));
+  return box;
+}
+
 // ---------- Erklaerungen (ⓘ) ----------
 const HELP = {
   // Wuensche & Regeln
@@ -781,6 +907,13 @@ const HELP = {
   // Verbindungen
   'Client ID': 'Aus dem Spotify-Developer-Dashboard deiner App.',
   'Client Secret': 'Aus dem Spotify-Developer-Dashboard. Wird verschlüsselt gespeichert.',
+  'Spotify-Apps (Developer Dashboard)': 'Jede App aus developer.spotify.com hat ein eigenes Anfrage-Limit (ca. 30-Sekunden-Fenster). Mit mehreren Apps verteilt sich die Gäste-Suche, und fällt eine App ins Limit, springt die nächste ein. Im Entwicklungsmodus erlaubt eine App nur wenige Spotify-Konten – dann Player 1 und 2 über verschiedene Apps verbinden.',
+  'Für die Gäste-Suche mitnutzen': 'An: Suche, Song-Infos und Genres dürfen über diese App laufen. Aus: die App ist nur für den Player da, der über sie verbunden ist (so bleibt ihr Limit ganz für Play/Pause/Crossfade).',
+  'Verbinden über App': 'Über welche Spotify-App sich dieser Player anmeldet. Der Player bleibt bei dieser App, bis du ihn neu verbindest.',
+  // Live-Test
+  'Live-Test starten': 'Spielt jede Funktion einmal mit den echten Geräten durch. Dauert mit Handy und zweitem Gerät etwa 10–15 Minuten.',
+  'Testdaten vorher leeren': 'Löscht vor dem Test Wünsche und Warteschlange des Testmodus, damit der Test sauber startet. Live-Daten bleiben unberührt.',
+  'Testdaten danach leeren': 'Löscht nach dem Test die Test-Wünsche wieder. Aus lassen, wenn du dir danach noch alles ansehen willst.',
   'Anbindung': '„Simuliert": kein Pult nötig (zum Testen). „Pi 5 / X32": die App steuert das echte Pult über das Relay auf dem Pi.',
   'Pi-URL(s) des Relays': 'Adresse des Relays auf dem Pi. Mehrere durch Komma: zuerst die im LAN (z. B. http://192.168.178.177:8080), dann die per VPN (http://10.8.0.2:8080). Die App nimmt automatisch die, die antwortet.',
   'Token': 'Das geheime Token aus der .env des Pi (RELAY_TOKEN).',

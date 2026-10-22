@@ -71,6 +71,23 @@ Ein-/Ausschalten, URL erneuern und alle Test-Links (Gäste, Technik, Moderation,
 Alle Seiten zeigen im Test ein rotes „TESTMODUS“-Banner. *Simulations-Tempo* lässt Songs im Test schneller laufen.
 Echte Verbindungen (Spotify/Pi) nutzt immer nur **eine** Umgebung (Admin → Start & Links → Testmodus-Optionen), die andere bleibt simuliert.
 
+### Live-Test (Admin → Technik → Live-Test)
+
+Spielt vor der Party **jede Funktion mit dem echten Setup** durch – Schritt für Schritt, die App löst aus, misst und fragt nur, wo ein Mensch hinhören muss:
+Pegel einstellen → Verbindungen (Spotify-Suche, Player mit Gerät, Pi, X32) → Player 1 und 2 (Spotify-Status + Pegel am Pult) → Fader am Pult →
+Wunsch vom Handy (QR-Code der Test-Gäste-Seite) → Annehmen in der Moderation → Beamer → Crossfade zum Wunsch → automatischer Übergang (springt kurz vor Songende) →
+Mikrofone & Ducking → Not-Aus → Notfall-Playlist → Alarm aufs Handy → Backup. Fehlgeschlagene Schritte lassen sich nach dem Beheben wiederholen, jeder Schritt
+kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbindungen (die Live-Daten bleiben unberührt), danach wird automatisch zurückgestellt –
+auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
+Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
+
+### Pegel-Fenster (Technik → 🎚 Pegel)
+
+Zuerst Fader und Lautstärken einstellen: Grundpegel der Player-Fader am X32 (Stellung bei voller Lautstärke, in dB), Spotify-Lautstärke je Player,
+optional die Mic-Fader, Fader-Obergrenze, Ducking-Absenkung und Crossfade-Dauer. Jede Änderung gilt sofort; „▶ Testmusik“ spielt einen Song in voller
+Grundlautstärke zum Einpegeln, „Abbrechen“ stellt die vorherigen Werte wieder her. Das Fenster öffnet sich beim ersten Aufruf der Technik-Ansicht
+(wenn die Pegel seit 10 Stunden nicht bestätigt wurden), ist der erste Schritt des Live-Tests, und die Werte werden beim Start der Start-Playlist erneut gesetzt.
+
 ## Nach dem Abend (nur Head-Admin)
 
 Admin → *Bericht & Export*: Abschlussbericht (Wünsche, Quote, meistgewünschte Songs, Stoßzeiten, Entscheidungen pro Code,
@@ -106,9 +123,16 @@ docker compose -f docker-compose.yml -f docker-compose.npm.yml up -d
 ## Spotify einrichten (Admin → Verbindungen)
 
 1. Im [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) eine App anlegen; Redirect-URI: `<PUBLIC_URL>/api/admin/spotify/callback`.
-2. Client ID/Secret im Admin eintragen (oder per `.env`).
+2. Client ID/Secret im Admin unter **Spotify-Apps** eintragen (oder per `.env`).
 3. Player 1 und Player 2 mit je einem **Premium**-Account verbinden, jeweils ein Wiedergabegerät (Spotify Connect) wählen,
    dessen Audio in den X32 geht.
+
+**Mehrere Spotify-Apps:** Unter *Spotify-Apps* lassen sich bis zu 8 Apps eintragen (jede mit derselben Redirect-URI im Dashboard).
+Jede App hat ihr **eigenes** Anfrage-Limit. Die Gäste-Suche verteilt sich auf alle Apps mit Haken „Für die Gäste-Suche mitnutzen“
+(die mit dem meisten Spielraum zuerst, bei `429` springt automatisch die nächste ein). Jeder Player wird **über eine bestimmte App** verbunden
+und bleibt bei ihr – so können Player 1 und 2 verschiedene Apps nutzen (praktisch, weil eine App im Entwicklungsmodus nur wenige Konten erlaubt),
+und eine App ohne Such-Haken gehört ganz dem Player. Wird eine App entfernt oder ihre Client-ID geändert, wird der zugehörige Player getrennt.
+Eine bisher eingetragene einzelne App wird beim Update automatisch zur ersten App der Liste.
 
 Hinweis: Die Wiedergabe wird per „Play URI“ auf dem jeweiligen Gerät gestartet (deterministisch, kein Umsortieren der Spotify-Queue nötig).
 Die echte Spotify-Anbindung konnte hier mangels Zugangsdaten nicht live getestet werden; getestet ist die Logik mit dem Simulator.
@@ -185,7 +209,8 @@ abschalten – die App ist deshalb so gebaut, dass sie es praktisch nie erreicht
   den Song-Cache (der Wunsch danach braucht keinen weiteren Aufruf), Interpreten-Genres werden gebündelt geholt und gemerkt.
 - **Player-Status sparsam:** mitten im Song alle ~6 s (die Position wird zwischendurch selbst hochgerechnet), kurz vor Songende und nach Befehlen ~1 s,
   bei Pause/leer ~8 s.
-- **Gemeinsames Budget** (Admin → Verbindungen, Standard 60 Anfragen/30 s) mit Vorrang: Steuerbefehle (Play/Pause/Queue) > Player-Status > Suche.
+- **Budget pro App** (Admin → Verbindungen, Standard 60 Anfragen/30 s) mit Vorrang: Steuerbefehle (Play/Pause/Queue) > Player-Status > Suche.
+  Mit mehreren Apps hat jede ihr eigenes Budget (siehe „Mehrere Spotify-Apps“).
 - **Bei `429`:** alle unkritischen Anfragen ruhen bis `Retry-After` vorbei ist, Gäste bekommen „Spotify macht kurz Pause“ (und die Suche wiederholt sich
   von selbst), Steuerbefehle warten und werden automatisch wiederholt, der Player-Status bleibt auf dem letzten Stand (kein „getrennt“).
 - Anzeige der Auslastung im Admin und in der Verbindungsampel (gelb bei Pause).

@@ -37,6 +37,10 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   if (can(role, 'viewTech') || can(role, 'viewFoh')) {
     out.auto = snap.auto; out.panic = snap.panic; out.emergency = snap.emergency;
     out.ducking = snap.ducking;
+    // Pegel-Fenster
+    const c = settings();
+    out.levels = c.levels; out.levelTest = snap.levelTest; out.maxGain = c.limits.maxGain;
+    out.channels = { p1: c.x32.channels.p1, p2: c.x32.channels.p2, mics: c.x32.channels.mics, names: c.x32.micNames };
   }
   if (can(role, 'connections')) { out.mics = snap.mics; out.connections = snap.connections; out.errors = snap.errors; }
   if (can(role, 'viewMod') || can(role, 'viewFoh') || can(role, 'viewTicker')) {
@@ -139,6 +143,7 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
           try {
             const m = JSON.parse(raw.toString());
             if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong', ts: m.ts }));
+            else if (m.type === 'hello' && /^[a-z]{2,12}$/.test(String(m.view))) c.view = m.view;   // welche Ansicht (Beamer, Gaeste-Seite ...) – fuer den Live-Test
           } catch { /* ignorieren */ }
         });
         sendTo(c);
@@ -201,6 +206,7 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
   return {
     pushEnv, claim, release, extraFor,
     clientCount: () => clients.size,
+    viewCount: (env, view) => [...clients].filter((c) => c.env === env && c.view === view).length,
     kickAll: () => { for (const c of clients) if (c.session && !sessionFromToken(c.token)) c.ws.close(4001, 'revoked'); },
     kickSession: (accountId) => { for (const c of clients) if (c.session?.accountId === accountId) c.ws.close(4001, 'revoked'); },
     closeEnv: (env) => { for (const c of clients) if (c.env === env) c.ws.close(4004, 'disabled'); },

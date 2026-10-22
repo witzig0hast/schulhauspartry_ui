@@ -19,6 +19,7 @@ export class MockX32 {
     this.mics = [0, 1, 2].map((i) => ({ id: i + 1, name: settings().x32.micNames?.[i] || `Mic ${i + 1}`, open: false, level: 0 }));
   }
   async setPlayerLevel(player, amp) { this.levels[player] = amp; }
+  async setChannelFader(ch, fader) { (this.faders ||= {})[ch] = fader; }
   simulateMic(i, open) { if (this.mics[i]) this.mics[i].open = !!open; }
   async readState(playing) {
     this.mics.forEach((m, i) => { m.name = settings().x32.micNames?.[i] || `Mic ${i + 1}`; });
@@ -64,6 +65,11 @@ export class HttpX32 {
       this.ok = true; this.error = null; this.lastOk = Date.now();
     } catch (e) { this.ok = false; this.error = e.message; throw e; }
   }
+  // Einzelner Kanal (Mic-Fader aus dem Pegel-Fenster); das Relay kennt das schon ueber /x32/level ohne Player-Angabe
+  async setChannelFader(ch, fader) {
+    const res = await this._fetch('/x32/level', { method: 'POST', headers: this._headers(), body: JSON.stringify({ channels: [ch], fader: Math.max(0, Math.min(1, fader)) }) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
   // Kanalzuordnung kommt aus dem Admin und wird dem Relay mitgeteilt (Relay-.env ist nur der Startwert)
   async _pushConfig() {
     const c = settings().x32.channels;
@@ -79,6 +85,7 @@ export class HttpX32 {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const s = await res.json();
       this.ok = true; this.error = null; this.lastOk = Date.now();
+      this.desk = s.x32 || null;   // antwortet das Pult selbst? (vom Relay gemeldet)
       return {
         mics: (s.mics || []).slice(0, 3).map((m, i) => ({ id: i + 1, name: settings().x32.micNames?.[i] || `Mic ${i + 1}`, open: !!m.open, level: Number(m.level) || 0 })),
         meters: { 1: Number(s.meters?.[1]) || 0, 2: Number(s.meters?.[2]) || 0 },

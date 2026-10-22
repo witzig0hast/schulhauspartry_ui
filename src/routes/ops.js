@@ -1,8 +1,8 @@
 import express from 'express';
 import fs from 'node:fs';
 import { requirePerm, requireAnyPerm, createAccount } from '../auth.js';
-import { getDb } from '../db.js';
-import { settings } from '../settings.js';
+import { getDb, getSetting } from '../db.js';
+import { settings, spotifyApps } from '../settings.js';
 import { config } from '../config.js';
 import * as rq from '../requests.js';
 import { sendNotify } from '../notify.js';
@@ -20,7 +20,8 @@ export async function prepChecks(env, engine, engines) {
   const checks = [];
   const add = (id, group, label, status, detail, action = null) => checks.push({ id, group, label, status, detail, action });
   const real = engine.spotify.kind === 'real';
-  const hasSpotify = !!(s.spotify.clientId || config.spotifyClientId);
+  const apps = spotifyApps(config);
+  const hasSpotify = apps.length > 0;
 
   add('url', 'Grundlagen', 'Öffentliche Adresse (PUBLIC_URL)', config.publicUrl ? 'ok' : 'warn', config.publicUrl || 'Nicht gesetzt – nötig für den Spotify-Login und QR-Codes.');
   add('codes', 'Grundlagen', 'Zugangscodes angelegt', (() => { const n = db.prepare("SELECT role, COUNT(*) c FROM accounts WHERE revoked = 0 GROUP BY role").all(); const m = Object.fromEntries(n.map((x) => [x.role, x.c])); return m.tech && m.mod ? 'ok' : 'fail'; })(),
@@ -28,7 +29,7 @@ export async function prepChecks(env, engine, engines) {
   add('backup', 'Grundlagen', 'Automatische Backups', s.backup.enabled ? (listBackups().length ? 'ok' : 'warn') : 'warn', s.backup.enabled ? `alle ${s.backup.everyMin} Min., ${listBackups().length} vorhanden` : 'Ausgeschaltet', { id: 'backup-now', label: 'Backup jetzt' });
   add('notify', 'Grundlagen', 'Alarm aufs Handy (ntfy)', s.notify.enabled && s.notify.topic ? 'ok' : 'warn', s.notify.enabled && s.notify.topic ? `Topic „${s.notify.topic}“` : 'Nicht eingerichtet (Admin → Automatik).', s.notify.topic ? { id: 'notify-test', label: 'Test senden' } : null);
 
-  add('spotifyapp', 'Spotify', 'Spotify-App eingerichtet', hasSpotify ? 'ok' : 'fail', hasSpotify ? 'Client-ID vorhanden' : 'Client-ID/Secret fehlen (Admin → Verbindungen).');
+  add('spotifyapp', 'Spotify', 'Spotify-App eingerichtet', hasSpotify ? 'ok' : 'fail', hasSpotify ? `${apps.length} App${apps.length > 1 ? 's' : ''}: ${apps.map((a) => a.name).join(', ')}` : 'Client-ID/Secret fehlen (Admin → Verbindungen).');
   for (const n of [1, 2]) {
     const p = s.spotify.players[n];
     const st = engine.players[n].status();
@@ -48,6 +49,10 @@ export async function prepChecks(env, engine, engines) {
   const testPlays = db.prepare("SELECT COUNT(*) c FROM plays WHERE env = 'test'").get().c;
   const testReq = db.prepare("SELECT COUNT(*) c FROM requests WHERE env = 'test' AND status IN ('approved','played','playing','denied')").get().c;
   add('testrun', 'Ablauf', 'Testlauf gemacht', testPlays > 0 && testReq > 0 ? 'ok' : 'warn', testPlays > 0 && testReq > 0 ? `${testReq} Test-Wünsche entschieden, ${testPlays} Songs abgespielt` : 'Einmal im Testmodus durchspielen: Wunsch → Annehmen → Crossfade.');
+  const lt = getSetting('livetest:last', null);
+  const ltAge = lt?.endedAt ? Date.now() - lt.endedAt : Infinity;
+  add('livetest', 'Ablauf', 'Live-Test mit echtem Setup', !lt ? 'warn' : lt.counts?.fail ? 'fail' : lt.simulated || ltAge > 3 * 86400000 || lt.verdict === 'abgebrochen' ? 'warn' : 'ok',
+    !lt ? 'Noch nicht gemacht (Admin → Technik → Live-Test).' : `${lt.verdict} · ${new Date(lt.endedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: s.timezone })}${lt.simulated ? ' · nur simuliert' : ''} · ${lt.counts?.ok ?? 0} ok, ${lt.counts?.warn ?? 0} Hinweise, ${lt.counts?.fail ?? 0} Fehler`);
   add('testoff', 'Ablauf', 'Testmodus ausgeschaltet', s.test.enabled ? 'warn' : 'ok', s.test.enabled ? 'Testmodus ist noch an (Admin → Start & Links).' : 'aus');
   const liveCounts = rq.counts('live');
   add('livedata', 'Ablauf', 'Live-Daten leer', liveCounts.pending + liveCounts.approved + liveCounts.played + liveCounts.denied + liveCounts.later === 0 ? 'ok' : 'warn',

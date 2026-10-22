@@ -1,6 +1,7 @@
 import { getSetting, setSetting } from './db.js';
 import { randomToken, encrypt, decrypt } from './security.js';
 import { isFeature } from './features.js';
+import { config } from './config.js';
 
 export const DEFAULTS = {
   timezone: 'Europe/Berlin',
@@ -53,8 +54,14 @@ export const DEFAULTS = {
     micNames: ['Mic 1', 'Mic 2', 'Mic 3'],
   },
   test: { enabled: false, prefix: null, realEnv: 'live', mockSpeed: 1 },
-  spotify: { clientId: '', clientSecret: '', apiBudget: 60, players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '' } } },
+  // Mehrere Spotify-Apps (Developer Dashboard): jede App hat ihr eigenes Anfrage-Limit. search = fuer die Gaeste-Suche mitnutzen.
+  // Ein Player gehoert immer zu der App, ueber die er verbunden wurde (appId).
+  spotify: { clientId: '', clientSecret: '', apiBudget: 60, apps: [], players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' } } },
+  // Grundpegel (Pegel-Fenster): Player-Fader am X32 bei 100 %, Spotify-Lautstaerke, optional Mic-Fader
+  levels: { playerDb: { 1: 0, 2: 0 }, spotifyVol: { 1: 100, 2: 100 }, micControl: false, micDb: [0, 0, 0], confirmedAt: 0, confirmedBy: '' },
 };
+const EMPTY_PLAYER = () => ({ refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' });
+const newAppId = () => 'app-' + randomToken(6).toLowerCase().replace(/[^a-z0-9]/g, 'x');
 
 const listeners = new Set();
 export const onSettingsChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -73,6 +80,14 @@ export function loadSettings() {
   cache = merge(structuredClone(DEFAULTS), stored);
   if (!cache.test.prefix) {
     cache.test.prefix = 't-' + randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x');
+    saveSettings();
+  }
+  // Alte Einzel-App (clientId/clientSecret) wird zur ersten App der Liste; verbundene Player gehoeren zu ihr
+  const sp = cache.spotify;
+  if (!sp.apps.length && sp.clientId) {
+    sp.apps = [{ id: 'main', name: 'Haupt-App', clientId: sp.clientId, clientSecret: sp.clientSecret, search: true }];
+    for (const p of [1, 2]) if (sp.players[p].refreshToken && !sp.players[p].appId) sp.players[p].appId = 'main';
+    sp.clientId = ''; sp.clientSecret = '';
     saveSettings();
   }
   return cache;
@@ -274,37 +289,88 @@ export function applyPatch(patch, { allow }) {
     if (t.regeneratePrefix) s.test.prefix = 't-' + randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x');
   }
   if (has('spotify')) {
-    const sp = patch.spotify;
-    if ('clientId' in sp) s.spotify.clientId = str(sp.clientId, 100).trim();
-    if (sp.clientSecret) s.spotify.clientSecret = encrypt(str(sp.clientSecret, 100).trim());
-    if ('apiBudget' in sp) s.spotify.apiBudget = Math.round(clamp(sp.apiBudget, 20, 300, 60));
+    const sp = patch.spotify, o = s.spotify;
+    // Bindung Player -> App loesen, wenn die App wegfaellt oder eine andere Client-ID bekommt (der Token gehoert zur alten App)
+    const dropPlayersOf = (keep) => { for (const p of [1, 2]) { const id = o.players[p].appId; if (o.players[p].refreshToken && id && !keep(id)) o.players[p] = EMPTY_PLAYER(); } };
+    const appFields = (a, prev, i) => ({
+      name: str(a?.name, 40).trim() || prev?.name || `App ${i + 1}`,
+      clientId: 'clientId' in (a || {}) ? str(a.clientId, 100).trim().replace(/[^A-Za-z0-9]/g, '') : prev?.clientId || '',
+      clientSecret: a?.clientSecret ? encrypt(str(a.clientSecret, 100).trim()) : prev?.clientSecret || '',
+      search: 'search' in (a || {}) ? !!a.search : prev?.search ?? true,
+    });
+    if (Array.isArray(sp.apps)) {
+      const old = new Map(o.apps.map((a) => [a.id, a]));
+      const next = [];
+      for (const a of sp.apps.slice(0, 8)) {
+        const prev = old.get(String(a?.id));
+        const id = prev ? prev.id : newAppId();
+        if (next.some((x) => x.id === id)) continue;
+        next.push({ id, ...appFields(a, prev, next.length) });
+      }
+      // Player, die ueber die App aus der .env verbunden sind: zur gleichen Client-ID in der Liste umziehen, sonst trennen
+      for (const p of [1, 2]) {
+        const pl = o.players[p];
+        if (!pl.refreshToken || (pl.appId && pl.appId !== 'env')) continue;
+        const same = config.spotifyClientId && next.find((x) => x.clientId === config.spotifyClientId);
+        if (same) pl.appId = same.id; else o.players[p] = EMPTY_PLAYER();
+      }
+      dropPlayersOf((id) => { const n = next.find((x) => x.id === id); return n && n.clientId === (old.get(id)?.clientId ?? n.clientId); });
+      o.apps = next;
+    }
+    // Aeltere Form (eine App): landet in der ersten App der Liste
+    if ('clientId' in sp || sp.clientSecret) {
+      const first = o.apps[0];
+      const f = appFields({ clientId: 'clientId' in sp ? sp.clientId : first?.clientId, clientSecret: sp.clientSecret }, first, 0);
+      if (first) { if (f.clientId !== first.clientId) dropPlayersOf((id) => id !== first.id); Object.assign(first, f); }
+      else if (f.clientId) o.apps.push({ id: 'main', ...f, name: 'Haupt-App' });
+    }
+    if ('apiBudget' in sp) o.apiBudget = Math.round(clamp(sp.apiBudget, 20, 300, 60));
     if (sp.players) for (const p of [1, 2]) {
       const pp = sp.players[p];
       if (!pp) continue;
-      if ('deviceId' in pp) s.spotify.players[p].deviceId = str(pp.deviceId, 100);
-      if ('deviceName' in pp) s.spotify.players[p].deviceName = str(pp.deviceName, 100);
-      if (pp.disconnect) s.spotify.players[p] = { refreshToken: '', deviceId: '', deviceName: '', user: '' };
+      if ('deviceId' in pp) o.players[p].deviceId = str(pp.deviceId, 100);
+      if ('deviceName' in pp) o.players[p].deviceName = str(pp.deviceName, 100);
+      if (pp.disconnect) o.players[p] = EMPTY_PLAYER();
     }
+  }
+  if (has('levels')) {
+    const l = patch.levels, o = s.levels;
+    for (const p of [1, 2]) {
+      if (l.playerDb && p in l.playerDb) o.playerDb[p] = Math.round(clamp(l.playerDb[p], -40, 6, o.playerDb[p]) * 2) / 2;
+      if (l.spotifyVol && p in l.spotifyVol) o.spotifyVol[p] = Math.round(clamp(l.spotifyVol[p], 0, 100, o.spotifyVol[p]));
+    }
+    if ('micControl' in l) o.micControl = !!l.micControl;
+    if (Array.isArray(l.micDb)) o.micDb = [0, 1, 2].map((i) => Math.round(clamp(l.micDb[i], -60, 10, o.micDb[i] ?? 0) * 2) / 2);
+    if (l.confirm) { o.confirmedAt = Date.now(); o.confirmedBy = str(l.by, 40); }
   }
   saveSettings();
   for (const fn of listeners) fn(s);
   return s;
 }
 
-export function setPlayerToken(player, refreshToken, user) {
+export function setPlayerToken(player, refreshToken, user, appId = '') {
   const s = settings();
   s.spotify.players[player].refreshToken = encrypt(refreshToken);
   s.spotify.players[player].user = user || '';
+  s.spotify.players[player].appId = appId || '';
   saveSettings();
   for (const fn of listeners) fn(s);
 }
 
+// Alle eingerichteten Spotify-Apps mit Zugangsdaten. Ohne eigene App gilt die aus der .env (id 'env').
+export function spotifyApps(envCfg = {}) {
+  const list = settings().spotify.apps.filter((a) => a.clientId && a.clientSecret).map((a) => ({ id: a.id, name: a.name, clientId: a.clientId, clientSecret: decrypt(a.clientSecret), search: a.search !== false }));
+  if (!list.length && envCfg.spotifyClientId && envCfg.spotifyClientSecret) list.push({ id: 'env', name: 'App aus .env', clientId: envCfg.spotifyClientId, clientSecret: envCfg.spotifyClientSecret, search: true });
+  return list;
+}
+// App eines Players (aeltere Verbindungen ohne appId: die erste App)
+export function spotifyApp(appId, envCfg = {}) {
+  const list = spotifyApps(envCfg);
+  return list.find((a) => a.id === appId) || (appId && settings().spotify.apps.some((a) => a.id === appId) ? null : list[0]) || null;
+}
 export function spotifyCredentials(envCfg) {
-  const s = settings();
-  return {
-    clientId: s.spotify.clientId || envCfg.spotifyClientId,
-    clientSecret: s.spotify.clientSecret ? decrypt(s.spotify.clientSecret) : envCfg.spotifyClientSecret,
-  };
+  const a = spotifyApps(envCfg)[0];
+  return { clientId: a?.clientId || '', clientSecret: a?.clientSecret || '' };
 }
 
 export const playerRefreshToken = (p) => {
@@ -318,6 +384,7 @@ export const piToken = () => (settings().x32.piToken ? decrypt(settings().x32.pi
 export function publicSettings() {
   const s = structuredClone(settings());
   s.spotify.clientSecret = s.spotify.clientSecret ? '***' : '';
+  s.spotify.apps = s.spotify.apps.map((a) => ({ ...a, clientSecret: a.clientSecret ? '***' : '' }));
   for (const p of [1, 2]) {
     s.spotify.players[p].connected = !!s.spotify.players[p].refreshToken;
     delete s.spotify.players[p].refreshToken;

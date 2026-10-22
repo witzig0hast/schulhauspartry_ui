@@ -45,7 +45,7 @@ app.append(h('div', { class: 'beamer' },
   h('div', { class: 'bm-left' }, nowBox, extraBox, msgBox),
   h('div', { class: 'bm-right' }, h('div', { class: 'bm-cta' }, h('div', { class: 'eyebrow' }, 'Mach mit'), h('h1', { class: 'bm-h' }, BRAND.tagline || 'Wünsch dir was!'), h('p', { class: 'bm-sub' }, `${BRAND.name} · QR-Code scannen, Song suchen, wünschen.`)), qrBox)));
 const loadPub = () => api('/guest/public').then((d) => { pub = d; render(); }).catch(() => {});
-connect({ onGuest: (g) => { state = g; render(); loadPub(); } });
+connect({ view: 'beamer', onGuest: (g) => { state = g; render(); loadPub(); } });
 setInterval(loadPub, 20000);
 if (feat('beamerFx')) document.body.classList.add('fx-aurora');
 api('/guest/state').then((g) => { state = g; render(); loadPub(); }).catch(() => {});

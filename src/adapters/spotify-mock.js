@@ -72,6 +72,8 @@ export class MockPlayer {
   async resume() { this._advance(); if (this.track) this.playing = true; }
   async poll() { this._advance(); }
   seekTo(ms) { this._advance(); this.posMs = ms; }
+  async seek(ms) { this.seekTo(ms); }
+  async setVolume(v) { this.volume = v; }
   status() {
     this._advance();
     const ended = !!this.track && this.posMs >= this.track.durationMs;

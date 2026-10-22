@@ -178,7 +178,7 @@ app.append(
 
 // Erst den State holen (setzt das Geraete-Cookie), dann den WebSocket oeffnen
 api('/guest/state').then((s) => { state = s; lastPlaying = s.requests.find((r) => r.status === 'playing')?.id ? String(s.requests.find((r) => r.status === 'playing').id) : ''; render(); maybeShowNotice(); }).catch(() => {}).finally(() => {
-  connect({ onStatus: (ok) => bar.setLive(ok), onGuest: (g) => { state = g; render(); } });
+  connect({ view: 'guest', onStatus: (ok) => bar.setLive(ok), onGuest: (g) => { state = g; render(); } });
 });
 
 // Countdown bis zur Freischaltung

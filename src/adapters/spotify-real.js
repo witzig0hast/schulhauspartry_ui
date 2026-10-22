@@ -1,36 +1,39 @@
 import { config } from '../config.js';
-import { spotifyCredentials, playerRefreshToken } from '../settings.js';
-import { governor, RateLimitError } from './spotify-governor.js';
+import { settings, spotifyApps, spotifyApp, playerRefreshToken } from '../settings.js';
+import { governor, governorFor, RateLimitError } from './spotify-governor.js';
 
 const API = 'https://api.spotify.com/v1';
 const ACCOUNTS = 'https://accounts.spotify.com';
 export const SCOPES = ['user-read-playback-state', 'user-modify-playback-state', 'user-read-currently-playing', 'user-read-private'];
 
-const basic = () => {
-  const { clientId, clientSecret } = spotifyCredentials(config);
-  return 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+const basic = (app) => 'Basic ' + Buffer.from(`${app.clientId}:${app.clientSecret}`).toString('base64');
+const needApp = (appId) => {
+  const app = spotifyApp(appId, config);
+  if (!app) throw new Error('Keine Spotify-App eingerichtet (Admin → Verbindungen).');
+  return app;
 };
 
-async function tokenRequest(params) {
+async function tokenRequest(params, app) {
   const res = await fetch(`${ACCOUNTS}/api/token`, {
     method: 'POST',
-    headers: { Authorization: basic(), 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { Authorization: basic(app), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(params),
   });
   if (!res.ok) throw new Error(`Spotify-Token fehlgeschlagen (${res.status})`);
   return res.json();
 }
 
-export function authorizeUrl(state, redirectUri) {
-  const { clientId } = spotifyCredentials(config);
-  const q = new URLSearchParams({ client_id: clientId, response_type: 'code', redirect_uri: redirectUri, scope: SCOPES.join(' '), state, show_dialog: 'true' });
-  return `${ACCOUNTS}/authorize?${q}`;
+export function authorizeUrl(state, redirectUri, appId) {
+  const app = needApp(appId);
+  const q = new URLSearchParams({ client_id: app.clientId, response_type: 'code', redirect_uri: redirectUri, scope: SCOPES.join(' '), state, show_dialog: 'true' });
+  return { url: `${ACCOUNTS}/authorize?${q}`, appId: app.id };
 }
 
-export async function exchangeCode(code, redirectUri) {
-  const t = await tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri });
+export async function exchangeCode(code, redirectUri, appId) {
+  const app = needApp(appId);
+  const t = await tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }, app);
   const me = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${t.access_token}` } }).then((r) => r.json());
-  return { refreshToken: t.refresh_token, user: me.display_name || me.id, product: me.product };
+  return { refreshToken: t.refresh_token, user: me.display_name || me.id, product: me.product, appId: app.id };
 }
 
 class TokenSource {
@@ -45,8 +48,9 @@ class TokenSource {
 }
 
 // Klassen: 'critical' = Steuerbefehle (Play/Pause/Queue), 'poll' = Player-Status, 'search' = Suche/Metadaten.
-// Jede Anfrage laeuft durch den gemeinsamen Regler (Budget, Vorrang, Pause nach 429).
-async function call(tokens, method, path, { body, query, cls = 'search' } = {}) {
+// Jede Anfrage laeuft durch den Regler ihrer App (Budget, Vorrang, Pause nach 429). ctx = { tokens, gov }
+async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
+  const { tokens, gov: governor } = ctx;
   const url = `${API}${path}${query ? '?' + new URLSearchParams(query) : ''}`;
   const maxAttempts = cls === 'critical' ? 4 : 2;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -93,13 +97,49 @@ const TRACK_TTL = 6 * 3600 * 1000;
 const CACHE_MAX = 600;
 const remember = (map, key, value) => { map.set(key, value); if (map.size > CACHE_MAX) map.delete(map.keys().next().value); };
 
+// Mehrere Apps fuer die Suche: jede hat ihr eigenes Limit. Genommen wird die App mit dem meisten Spielraum;
+// ist sie am Limit (oder meldet Spotify 429), springt die naechste ein.
+class SearchPool {
+  constructor() { this.sources = new Map(); }
+  list() {
+    const apps = spotifyApps(config);
+    const use = apps.filter((a) => a.search).length ? apps.filter((a) => a.search) : apps;
+    return use.map((a) => {
+      const key = `${a.clientId}:${a.clientSecret}`;
+      let src = this.sources.get(a.id);
+      if (!src || src.key !== key) {
+        src = { id: a.id, name: a.name, key, gov: governorFor(a.id), tokens: new TokenSource(() => tokenRequest({ grant_type: 'client_credentials' }, a)) };
+        this.sources.set(a.id, src);
+      }
+      return src;
+    });
+  }
+  ordered() {
+    const load = (s) => (s.gov.pausedMs() > 0 ? 2 + s.gov.pausedMs() / 1e6 : s.gov.used() / s.gov.budget);
+    return this.list().sort((a, b) => load(a) - load(b));
+  }
+  async call(method, path, opts) {
+    const list = this.ordered();
+    if (!list.length) throw new Error('Keine Spotify-App eingerichtet (Admin → Verbindungen).');
+    let limitErr = null;
+    for (const src of list) {
+      try { return await call(src, method, path, opts); } catch (e) {
+        if (!(e instanceof RateLimitError)) throw e;
+        if (!limitErr || e.retryAfterMs < limitErr.retryAfterMs) limitErr = e;
+      }
+    }
+    throw limitErr;
+  }
+  pausedMs() { const l = this.list(); return l.length ? Math.min(...l.map((x) => x.gov.pausedMs())) : 0; }
+}
+
 // Suche und Track-Lookup laufen ueber die App-Credentials (Client Credentials), ohne Gast-Login.
 // Wenige API-Aufrufe: Ergebnisse werden gemerkt, gleiche Anfragen zusammengefasst, Suchtreffer fuettern den Track-Cache
 // (der anschliessende Wunsch braucht dann keinen weiteren Aufruf), und bei Spotify-Limit antwortet der Cache.
 export class RealSpotify {
   constructor() {
     this.kind = 'real';
-    this.tokens = new TokenSource(() => tokenRequest({ grant_type: 'client_credentials' }));
+    this.pool = new SearchPool();
     this.lastOk = null; this.lastError = null;
     this.searchCache = new Map(); this.trackCache = new Map(); this.genreCache = new Map(); this.inflight = new Map();
   }
@@ -115,7 +155,7 @@ export class RealSpotify {
     if (hit && Date.now() - hit.ts < SEARCH_TTL) { governor.stats.cacheHits++; return hit.list; }
     return this._once(key, async () => {
       try {
-        const r = await call(this.tokens, 'GET', '/search', { query: { q, type: 'track', limit: String(limit), market: 'DE' }, cls: 'search' });
+        const r = await this.pool.call('GET', '/search', { query: { q, type: 'track', limit: String(limit), market: 'DE' }, cls: 'search' });
         const list = r.tracks.items.map(mapTrack);
         remember(this.searchCache, key, { ts: Date.now(), list });
         for (const t of list) remember(this.trackCache, t.id, { ts: Date.now(), track: t });
@@ -133,7 +173,7 @@ export class RealSpotify {
     if (hit && Date.now() - hit.ts < TRACK_TTL) { governor.stats.cacheHits++; return hit.track; }
     return this._once(`t:${id}`, async () => {
       try {
-        const track = mapTrack(await call(this.tokens, 'GET', `/tracks/${id}`, { query: { market: 'DE' }, cls: 'search' }));
+        const track = mapTrack(await this.pool.call('GET', `/tracks/${id}`, { query: { market: 'DE' }, cls: 'search' }));
         remember(this.trackCache, id, { ts: Date.now(), track });
         return track;
       } catch (e) {
@@ -150,7 +190,7 @@ export class RealSpotify {
     const missing = ids.filter((id) => !this.genreCache.has(id));
     if (missing.length) {
       try {
-        const r = await call(this.tokens, 'GET', '/artists', { query: { ids: missing.join(',') }, cls: 'search' });
+        const r = await this.pool.call('GET', '/artists', { query: { ids: missing.join(',') }, cls: 'search' });
         for (const a of r.artists || []) if (a) remember(this.genreCache, a.id, a.genres || []);
         this.genresOk = true;
       } catch (e) { if (!(e instanceof RateLimitError)) { this.genresOk = false; this.genreError = e.message; } }
@@ -168,7 +208,7 @@ export class RealSpotify {
         const list = [];
         let path = `/playlists/${id}/tracks`, query = { limit: '100', market: 'DE', fields: 'items(track(id,uri,name,explicit,duration_ms,popularity,artists(id,name),album(name,release_date))),next' };
         for (let page = 0; page < 3 && path; page++) {
-          const r = await call(this.tokens, 'GET', path, { query, cls: 'search' });
+          const r = await this.pool.call('GET', path, { query, cls: 'search' });
           for (const it of r.items || []) if (it?.track?.id && it.track.uri?.startsWith('spotify:track:')) list.push(mapTrack(it.track));
           path = r.next ? r.next.replace(API, '') .split('?')[0] : null; query = r.next ? Object.fromEntries(new URL(r.next).searchParams) : undefined;
         }
@@ -180,28 +220,35 @@ export class RealSpotify {
   // Intro/Outro aus der Audioanalyse; fuer neuere Spotify-Apps ist diese API oft gesperrt -> dann null (feste Vorlaufzeit gilt)
   async getTrackMeta(track) {
     try {
-      const a = await call(this.tokens, 'GET', `/audio-analysis/${track.id}`, { cls: 'search' });
+      const a = await this.pool.call('GET', `/audio-analysis/${track.id}`, { cls: 'search' });
       const fadeOut = a?.track?.start_of_fade_out, sections = a?.sections || [];
       const intro = sections.length > 1 ? sections[1].start : a?.track?.end_of_fade_in;
       return { introMs: Number.isFinite(intro) ? Math.round(intro * 1000) : null, outroMs: Number.isFinite(fadeOut) ? Math.round(fadeOut * 1000) : null, src: 'spotify' };
     } catch (e) { if (e instanceof RateLimitError) throw e; return null; }
   }
   health() {
-    const paused = governor.pausedMs();
+    const paused = this.pool.pausedMs();
     if (paused > 0) return { ok: null, detail: `Spotify-Limit erreicht – Pause ${Math.ceil(paused / 1000)} s (Cache übernimmt)` };
     if (this.lastError) return { ok: false, detail: this.lastError };
-    return { ok: true, detail: this.genresOk === false ? 'Spotify-Suche (Genres nicht verfügbar)' : `Spotify-Suche · ${governor.used()}/${governor.budget} Anfragen/30 s` };
+    const l = this.pool.list();
+    const used = l.reduce((a, x) => a + x.gov.used(), 0), budget = l.reduce((a, x) => a + x.gov.budget, 0);
+    return { ok: true, detail: this.genresOk === false ? 'Spotify-Suche (Genres nicht verfügbar)' : `Spotify-Suche · ${used}/${budget} Anfragen/30 s${l.length > 1 ? ` · ${l.length} Apps` : ''}` };
   }
 }
 
 export class RealPlayer {
   constructor(n) {
     this.kind = 'real'; this.n = n;
+    // Der Player spricht immer ueber die App, mit der er verbunden wurde (Token gehoert zu ihr)
+    this.app = spotifyApp(settings().spotify.players[n].appId, config);
     this.tokens = new TokenSource(async () => {
       const rt = playerRefreshToken(n);
       if (!rt) throw new Error(`Player ${n} nicht verbunden`);
-      return tokenRequest({ grant_type: 'refresh_token', refresh_token: rt });
+      if (!this.app) throw new Error(`Player ${n}: die zugehörige Spotify-App fehlt – neu verbinden`);
+      return tokenRequest({ grant_type: 'refresh_token', refresh_token: rt }, this.app);
     });
+    this.ctx = { tokens: this.tokens, gov: governorFor(this.app?.id) };
+    this.volume = null;
     this.cache = { connected: false, playing: false, ended: false, uri: null, title: null, artist: null, positionMs: 0, durationMs: 0 };
     this.cacheTs = 0; this.error = null; this.deviceId = '';
     this.expectedUri = null;
@@ -213,19 +260,27 @@ export class RealPlayer {
   boost(ms = 6000) { this.fastUntil = Date.now() + ms; this.nextPollAt = Math.min(this.nextPollAt || Infinity, Date.now() + 800); }
   async play(track) {
     this.expectedUri = track.uri;
-    await call(this.tokens, 'PUT', '/me/player/play', { body: { uris: [track.uri] }, query: this._q(), cls: 'critical' });
+    await call(this.ctx, 'PUT', '/me/player/play', { body: { uris: [track.uri] }, query: this._q(), cls: 'critical' });
     this.boost();
   }
   // Playlist/Album/Kontext starten (Notfall-Playlist), optional gemischt
   async playContext(contextUri, { shuffle = false } = {}) {
-    if (shuffle) await call(this.tokens, 'PUT', '/me/player/shuffle', { query: { state: 'true', ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }).catch(() => {});
-    await call(this.tokens, 'PUT', '/me/player/play', { body: { context_uri: contextUri }, query: this._q(), cls: 'critical' });
+    if (shuffle) await call(this.ctx, 'PUT', '/me/player/shuffle', { query: { state: 'true', ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }).catch(() => {});
+    await call(this.ctx, 'PUT', '/me/player/play', { body: { context_uri: contextUri }, query: this._q(), cls: 'critical' });
     this.boost();
   }
-  async pause() { await call(this.tokens, 'PUT', '/me/player/pause', { query: this._q(), cls: 'critical' }); this.boost(); }
-  async resume() { await call(this.tokens, 'PUT', '/me/player/play', { query: this._q(), cls: 'critical' }); this.boost(); }
-  async addToQueue(track) { await call(this.tokens, 'POST', '/me/player/queue', { query: { uri: track.uri, ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }); }
-  async devices() { return (await call(this.tokens, 'GET', '/me/player/devices', { cls: 'poll' })).devices; }
+  async pause() { await call(this.ctx, 'PUT', '/me/player/pause', { query: this._q(), cls: 'critical' }); this.boost(); }
+  async resume() { await call(this.ctx, 'PUT', '/me/player/play', { query: this._q(), cls: 'critical' }); this.boost(); }
+  async addToQueue(track) { await call(this.ctx, 'POST', '/me/player/queue', { query: { uri: track.uri, ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }); }
+  // Lautstaerke am Spotify-Geraet (0-100). Manche Geraete erlauben das nicht (403) -> Fehler mit klarer Meldung
+  async setVolume(pct) {
+    const v = Math.max(0, Math.min(100, Math.round(pct)));
+    try { await call(this.ctx, 'PUT', '/me/player/volume', { query: { volume_percent: String(v), ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }); }
+    catch (e) { if (e.status === 403) throw new Error(`Player ${this.n}: Dieses Gerät erlaubt keine Lautstärke-Steuerung über Spotify`); throw e; }
+    this.volume = v;
+  }
+  async seek(ms) { await call(this.ctx, 'PUT', '/me/player/seek', { query: { position_ms: String(Math.max(0, Math.round(ms))), ...(this.deviceId ? { device_id: this.deviceId } : {}) }, cls: 'critical' }); this.boost(); }
+  async devices() { return (await call(this.ctx, 'GET', '/me/player/devices', { cls: 'poll' })).devices; }
 
   // Wie oft muss der Status wirklich abgefragt werden? Die Position rechnen wir zwischendurch selbst hoch.
   _interval() {
@@ -240,7 +295,7 @@ export class RealPlayer {
     const now = Date.now();
     if (now < this.nextPollAt) return;
     try {
-      const s = await call(this.tokens, 'GET', '/me/player', { cls: 'poll' });
+      const s = await call(this.ctx, 'GET', '/me/player', { cls: 'poll' });
       this.error = null; this.limited = false;
       if (!s || !s.item) {
         this.cache = { ...this.cache, connected: true, playing: false, ended: !!this.cache.uri && this.cache.positionMs > 0 };

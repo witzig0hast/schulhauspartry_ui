@@ -10,6 +10,7 @@ import { addBlock, removeBlock, listBlacklist, isBlacklisted } from '../blocklis
 import { buildAnalytics } from '../analytics.js';
 import { isOn, requireFeature } from '../features.js';
 import { logEvent } from '../db.js';
+import { audit } from '../audit.js';
 
 const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 
@@ -142,6 +143,25 @@ export function staffRouter(env, engine, hub) {
     engine.setWishMode(String(req.body.mode));
     logEvent(env, 'wishmode', { mode: req.body.mode });
     res.json({ ok: true });
+  }));
+
+  // Pegel-Fenster: Grundpegel, Spotify-Lautstaerke, Mic-Fader, Obergrenze, Ducking und Crossfade-Dauer (gilt sofort)
+  r.post('/control/levels', ctl, wrap((req, res) => {
+    const b = req.body || {};
+    const patch = {};
+    if (b.levels && typeof b.levels === 'object') patch.levels = { ...b.levels, by: req.session.label };
+    if (b.maxGain != null) patch.limits = { maxGain: b.maxGain };
+    if (b.duckDb != null) patch.ducking = { db: b.duckDb };
+    if (b.crossfadeSec != null) patch.auto = { crossfadeSec: b.crossfadeSec };
+    applyPatch(patch, { allow: ['levels', 'limits', 'ducking', 'auto'] });
+    if (b.levels?.confirm) { audit('levels.confirm', req.session.label, clientIp(req), JSON.stringify(settings().levels.playerDb)); logEvent(env, 'levels', { by: req.session.label }); }
+    hub.pushEnv(env);
+    res.json({ ok: true, levels: settings().levels });
+  }));
+  r.post('/control/level-test', ctl, wrap(async (req, res) => {
+    if (req.body?.stop) { await engine.levelTestStop(); return res.json({ ok: true }); }
+    const t = await engine.levelTest(player(req.body.player));
+    res.json({ ok: true, title: t.title, artist: t.artist });
   }));
 
   // Auto-Crossfade, Ducking und Orga-Hinweis darf auch die Technik aendern

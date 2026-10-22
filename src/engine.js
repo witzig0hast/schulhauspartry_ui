@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { config } from './config.js';
-import { settings, onSettingsChange, spotifyCredentials, playerRefreshToken } from './settings.js';
+import { settings, onSettingsChange, spotifyApps, playerRefreshToken } from './settings.js';
 import { getSetting, setSetting, logEvent } from './db.js';
 import * as rq from './requests.js';
 import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
 import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
-import { MockX32, HttpX32 } from './adapters/x32.js';
-import { governor } from './adapters/spotify-governor.js';
+import { MockX32, HttpX32, ampToFader } from './adapters/x32.js';
+import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
 import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
@@ -18,6 +18,7 @@ const localDay = (tz = settings().timezone) => new Intl.DateTimeFormat('sv-SE', 
 const BROADCAST_MS = 250;
 const other = (p) => (p === 1 ? 2 : 1);
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const dbToAmp = (db) => Math.pow(10, (Number(db) || 0) / 20);
 
 function curveLevels(curve, p) {
   // p in [0,1]: liefert [fadeOutFaktor, fadeInFaktor]
@@ -30,6 +31,14 @@ export function leadFor(cfg, player, durationMs, meta) {
   let lead = (cfg.auto.startBeforeEndSec[player] ?? 20) * 1000;
   if (cfg.auto.smartOutro && isOn('smartOutro') && meta?.outro_ms && durationMs > meta.outro_ms) lead = Math.min(90000, Math.max(cfg.auto.crossfadeSec * 1000 + 1000, durationMs - meta.outro_ms + 1000));
   return lead;
+}
+
+// Auslastung aller Spotify-Apps (Summe oben, einzeln in apps)
+function apiSnapshot() {
+  const apps = spotifyApps(config).map((a) => ({ id: a.id, name: a.name, search: a.search, ...governorFor(a.id).snapshot() }));
+  if (!apps.length) return governorFor('main').snapshot();
+  const sum = (k) => apps.reduce((t, a) => t + (Number(a[k]) || 0), 0);
+  return { used: sum('used'), budget: sum('budget'), windowSec: apps[0].windowSec, pausedSec: Math.max(...apps.map((a) => a.pausedSec)), total: sum('total'), rejected: sum('rejected'), rate429: sum('rate429'), cacheHits: sum('cacheHits'), coalesced: sum('coalesced'), last429: Math.max(0, ...apps.map((a) => a.last429 || 0)) || null, apps };
 }
 
 export class Engine extends EventEmitter {
@@ -62,8 +71,7 @@ export class Engine extends EventEmitter {
   buildAdapters() {
     const speed = () => (this.env === 'test' ? settings().test.mockSpeed : 1);
     const real = this.realConnections;
-    const creds = spotifyCredentials(config);
-    const hasCreds = !!(creds.clientId && creds.clientSecret);
+    const hasCreds = spotifyApps(config).length > 0;
     this.spotify = real && hasCreds ? new RealSpotify() : new MockSpotify();
     this.players = {};
     for (const p of [1, 2]) this.players[p] = real && playerRefreshToken(p) ? new RealPlayer(p) : new MockPlayer(speed);
@@ -79,12 +87,39 @@ export class Engine extends EventEmitter {
   }
 
   syncSettings() {
-    governor.setBudget(settings().spotify.apiBudget);
+    setBudgetAll(settings().spotify.apiBudget);
     for (const p of [1, 2]) this.players[p].setDevice?.(settings().spotify.players[p].deviceId);
     if (this.realConnections) {
       const wantHttp = settings().x32.adapter === 'http';
       if (wantHttp !== (this.x32.kind === 'http')) this.x32 = wantHttp ? new HttpX32() : new MockX32();
     }
+    this.syncLevels();
+  }
+
+  // ----- Grundpegel (Pegel-Fenster) -----
+  // Geaenderte Werte gehen sofort raus: Player-Fader ueber applyLevels, Spotify-Lautstaerke und Mic-Fader direkt.
+  syncLevels() {
+    const l = settings().levels;
+    const prev = this.levelsSeen;
+    this.levelsSeen = structuredClone(l);
+    if (!prev) return;   // beim Start nichts verschicken
+    if (prev.playerDb[1] !== l.playerDb[1] || prev.playerDb[2] !== l.playerDb[2]) this.lastSent = { 1: -1, 2: -1 };
+    if (this.wishlist) return;
+    for (const p of [1, 2]) if (prev.spotifyVol[p] !== l.spotifyVol[p]) this.applySpotifyVolume(p).catch((e) => this.fail('lautstaerke', e));
+    if (l.micControl && (!prev.micControl || JSON.stringify(prev.micDb) !== JSON.stringify(l.micDb))) this.applyMicFaders().catch((e) => this.fail('mic-fader', e));
+  }
+  async applySpotifyVolume(p) { if (this.players[p].setVolume) await this.players[p].setVolume(settings().levels.spotifyVol[p]); }
+  async applyMicFaders() {
+    const l = settings().levels, chans = settings().x32.channels.mics;
+    await Promise.all(chans.map((ch, i) => this.x32.setChannelFader(ch, ampToFader(dbToAmp(l.micDb[i] ?? 0)))));
+  }
+  // Alles einmal setzen (Abend-Start, Live-Test)
+  async applyAllLevels() {
+    this.lastSent = { 1: -1, 2: -1 };
+    const errs = [];
+    for (const p of [1, 2]) await this.applySpotifyVolume(p).catch((e) => errs.push(e.message));
+    if (settings().levels.micControl) await this.applyMicFaders().catch((e) => errs.push(e.message));
+    return errs;
   }
 
   start() {
@@ -125,7 +160,7 @@ export class Engine extends EventEmitter {
     this.runDucking(now, cfg);
     this.maybeAutoCrossfade(now, cfg);
     this.applyLevels();
-    if (now - this.lastFillCheck >= 5000) { this.lastFillCheck = now; maybeFill(this, now).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
+    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
 
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;
@@ -144,7 +179,7 @@ export class Engine extends EventEmitter {
     if (this.state.awaitOpen && this.state.openAtTs && now >= this.state.openAtTs) { this.openWishes(); logEvent(this.env, 'wishmode', { auto: 'open' }); }
     // Start-Playlist automatisch starten (einmal pro Abend, in den 6 Stunden nach der Startzeit)
     const st = cfg.start;
-    if (st.autoStart && isOn('startPlaylist') && this.realConnections && !this.wishlist && !this.state.started && now >= (this.nextStartTry || 0)) {
+    if (st.autoStart && isOn('startPlaylist') && this.realConnections && !this.liveTest && !this.wishlist && !this.state.started && now >= (this.nextStartTry || 0)) {
       const [h, m] = st.startAt.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
       const since = (nh * 60 + nm) - (h * 60 + m);
       const day = localDay();
@@ -182,6 +217,7 @@ export class Engine extends EventEmitter {
     const sp = settings().start;
     if (!sp.playlist && this.spotify.kind === 'real') throw new Error('Keine Start-Playlist eingetragen (Admin → Automatik → Abend-Start).');
     this.state.started = true; this.persist();
+    await this.applyAllLevels().catch(() => {});
     try {
       const n = await fillStart(this, Math.max(2, sp.minQueue));
       if (!n) throw new Error('Die Start-Playlist liefert keine passenden Songs.');
@@ -255,7 +291,7 @@ export class Engine extends EventEmitter {
   applyLevels() {
     for (const p of [1, 2]) {
       const cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
-      const amp = this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul;
+      const amp = this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul * dbToAmp(settings().levels.playerDb[p]);
       if (Math.abs(amp - this.lastSent[p]) < 0.002 && !(amp === 0 && this.lastSent[p] !== 0)) continue;
       this.lastSent[p] = amp;
       this.x32.setPlayerLevel(p, amp).catch((e) => this.fail('x32', e));
@@ -263,7 +299,7 @@ export class Engine extends EventEmitter {
   }
 
   maybeAutoCrossfade(now, cfg) {
-    if (!cfg.auto.enabled || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
+    if (!cfg.auto.enabled || this.liveTest?.noAuto || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
@@ -283,6 +319,7 @@ export class Engine extends EventEmitter {
     if (this.crossfade || this.starting || this.pendingStart.length) throw new Error('Es läuft bereits ein Crossfade.');
     const next = rq.upcoming(this.env)[0];
     if (!next) throw new Error('Die Warteschlange ist leer.');
+    this.endLevelTest();
     this.starting = true;   // bis der Uebergang wirklich laeuft, kein zweiter Start (Tick laeuft alle 100 ms weiter)
     try {
 
@@ -336,6 +373,7 @@ export class Engine extends EventEmitter {
   }
 
   async play(player, { startGain = 1 } = {}) {
+    this.endLevelTest();
     const st = this.players[player].status();
     const np = rq.nowPlayingRequest(this.env);
     const ours = st.uri && !st.ended && this.trackIdOf[player] && np && np.trackId === this.trackIdOf[player] && np.player === player;
@@ -437,6 +475,49 @@ export class Engine extends EventEmitter {
   }
   emergencyClear() { this.state.emergency = false; this.persist(); logEvent(this.env, 'emergency-clear', {}); this.emit('change'); }
 
+  // Testsong fuer Pegel und Live-Test: etwas Bekanntes, das laenger als eine Minute laeuft
+  async pickTestTrack() {
+    for (const q of ['party hits', 'dance', 'a']) {
+      const list = await this.spotify.search(q, 8).catch(() => []);
+      const t = list.find((x) => x.durationMs > 90000 && !x.explicit) || list.find((x) => x.durationMs > 60000) || list[0];
+      if (t) return t;
+    }
+    throw new Error('Kein Testsong gefunden (Spotify-Suche).');
+  }
+  // Einen Song direkt auf einem Player abspielen (ohne Warteschlange), z. B. fuer Pegel und Live-Test
+  async playDirect(n, track, gain = 1) {
+    if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
+    delete this.ramps[n]; this.gain[n] = gain; this.trackMul[n] = 1;
+    this.expectedUri[n] = track.uri; this.trackIdOf[n] = null;
+    await this.players[n].play(track);
+    this.current = n;
+    this.emit('change');
+  }
+  // Pegel-Fenster: Testmusik in voller Grundlautstaerke, bis sie gestoppt wird (hoechstens 3 Minuten)
+  async levelTest(n) {
+    if (this.wishlist) throw new Error('Im Wunschlisten-Modus spielt die App keine Musik.');
+    if (!this.levelTestOn && [1, 2].some((x) => this.players[x].status().playing)) throw new Error('Es läuft gerade Musik – Testmusik geht nur bei Stille. Die Pegel kannst du trotzdem live anpassen.');
+    await this.levelTestStop();
+    const t = await this.pickTestTrack();
+    await this.playDirect(n, t, 1);
+    this.levelTestOn = n; this.levelTestUri = t.uri;
+    this.levelTestTimer = setTimeout(() => this.levelTestStop().catch(() => {}), 180000);
+    this.levelTestTimer.unref?.();
+    return t;
+  }
+  // Normale Wiedergabe uebernimmt: Testmusik-Timer vergessen (der laufende Song bleibt)
+  endLevelTest() { clearTimeout(this.levelTestTimer); this.levelTestOn = null; }
+  async levelTestStop() {
+    clearTimeout(this.levelTestTimer);
+    const n = this.levelTestOn;
+    if (!n) return;
+    this.levelTestOn = null;
+    if (this.players[n].status().uri && this.players[n].status().uri !== this.levelTestUri) return;   // laeuft schon etwas anderes: nicht anhalten
+    await this.players[n].pause().catch(() => {});
+    if (this.current === n) this.current = null;
+    this.emit('change');
+  }
+
   // Kurzer, leiser Test eines Players (Vorbereitungs-Seite): 8 s abspielen, dann stoppen
   async testPlayer(n) {
     if ([1, 2].some((x) => this.players[x].status().playing)) throw new Error('Es läuft gerade Musik – Test nur bei Stille.');
@@ -505,7 +586,7 @@ export class Engine extends EventEmitter {
       player1: pl(1),
       player2: pl(2),
       mode: this.realConnections ? 'echte Verbindungen' : 'simuliert',
-      api: this.realConnections ? governor.snapshot() : null,
+      api: this.realConnections ? apiSnapshot() : null,
     };
   }
 
@@ -558,6 +639,7 @@ export class Engine extends EventEmitter {
       emergency: !!this.state.emergency,
       pauseMode: !!this.state.pauseMode && isOn('pauseMode'),
       opening: { awaiting: !!this.state.awaitOpen, opensAt: this.state.openAtTs || null, started: !!this.state.started },
+      levelTest: this.levelTestOn || null,
       counts: rq.counts(this.env),
       upcoming: up.slice(0, 50).map((u, i) => ({ ...u, etaMs: etas[i] ?? null })),
       crossfadeIn,

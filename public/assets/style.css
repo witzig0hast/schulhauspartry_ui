@@ -610,3 +610,11 @@ html.no-confetti .confetti-cv { display: none !important; }
 .tab-intro { margin: 0 0 4px; color: var(--muted); font-size: .9rem; }
 .help-l { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tabs { flex-wrap: wrap; row-gap: 4px; }
+
+/* Pegel-Fenster */
+.modal.wide { max-width: 640px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.lv-row { display: grid; grid-template-columns: minmax(120px, 1.1fr) minmax(120px, 2fr) minmax(92px, auto) auto; gap: 10px; align-items: center; }
+.lv-row .lv-l { font-size: .86rem; font-weight: 600; }
+.lv-row .lv-val { font-size: .8rem; font-variant-numeric: tabular-nums; color: var(--text-2); text-align: right; white-space: nowrap; }
+.lv-row input[type="range"]:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 560px) { .lv-row { grid-template-columns: 1fr auto; } .lv-row input[type="range"] { grid-column: 1 / -1; grid-row: 2; } }

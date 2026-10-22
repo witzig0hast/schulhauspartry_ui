@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { requirePerm, adminIpGuard, clientIp, createAccount, revokeAccount, deleteAccount, ROLES, ROLE_LABELS } from '../auth.js';
 import { getDb } from '../db.js';
-import { applyPatch, publicSettings, settings, setPlayerToken } from '../settings.js';
+import { applyPatch, publicSettings, settings, setPlayerToken, spotifyApps } from '../settings.js';
 import * as rq from '../requests.js';
 import { config } from '../config.js';
 import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
@@ -12,7 +12,7 @@ import { testConnection, unlinkFor } from '../sso.js';
 import { backupNow } from '../backup.js';
 import { FEATURES, GROUPS, allFlags } from '../features.js';
 
-const oauthStates = new Map(); // state -> {player, exp}
+const oauthStates = new Map(); // state -> {player, appId, exp}
 
 const wrap = (fn) => async (req, res) => {
   try { await fn(req, res); } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
@@ -77,7 +77,8 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
       evening: Object.fromEntries(Object.entries(engines).map(([k, v]) => [k, v.snapshot().opening])),
       ssoRedirectUri: `${config.publicUrl || ''}/api/sso/callback`,
-      spotifyConfigured: !!(s.spotify.clientId && s.spotify.clientSecret) || !!config.spotifyClientId,
+      spotifyConfigured: spotifyApps(config).length > 0,
+      spotifyEnvApp: !s.spotify.apps.length && !!config.spotifyClientId,
       env,
       counts: Object.fromEntries(Object.keys(engines).map((e) => [e, rq.counts(e)])),
       connections: Object.fromEntries(Object.entries(engines).map(([k, v]) => [k, v.connections()])),
@@ -85,10 +86,11 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['start', 'opening', 'operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify'];
+    const allow = ['start', 'opening', 'operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify', 'levels'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     const modeBefore = settings().operation.mode;
+    const appsBefore = JSON.stringify([settings().spotify.apps, [1, 2].map((p) => settings().spotify.players[p].appId)]);
     const gateBefore = settings().opening.enabled, atBefore = settings().opening.at, autoBefore = settings().opening.auto;
     applyPatch(req.body || {}, { allow });
     const gate = settings().opening;
@@ -102,6 +104,8 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     }
     audit('settings.change', req.session.label, clientIp(req), Object.keys(req.body || {}).filter((k) => allow.includes(k)).join(', ').slice(0, 200));
     if (settings().test.realEnv !== before) setRealEnv();
+    // andere Apps / Zugangsdaten: Spotify-Adapter neu aufbauen (Player sprechen dann ueber ihre neue App)
+    else if (JSON.stringify([settings().spotify.apps, [1, 2].map((p) => settings().spotify.players[p].appId)]) !== appsBefore) for (const e of Object.values(engines)) e.setReal(e.realConnections, true);
     if (!settings().test.enabled && beforeEnabled) hub.closeEnv('test');
     for (const e of Object.keys(engines)) engines[e].syncSettings();
     res.json({ ok: true });
@@ -154,8 +158,9 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     if (p !== 1 && p !== 2) throw new Error('Ungültiger Player');
     if (!config.publicUrl) throw new Error('PUBLIC_URL ist nicht gesetzt (nötig für den Spotify-Redirect).');
     const state = crypto.randomBytes(24).toString('base64url');
-    oauthStates.set(state, { player: p, exp: Date.now() + 10 * 60000 });
-    res.json({ url: authorizeUrl(state, `${config.publicUrl}/api/admin/spotify/callback`) });
+    const out = authorizeUrl(state, `${config.publicUrl}/api/admin/spotify/callback`, String(req.body?.appId || ''));
+    oauthStates.set(state, { player: p, appId: out.appId, exp: Date.now() + 10 * 60000 });
+    res.json({ url: out.url });
   }));
   r.get('/admin/spotify/devices/:player', wrap(async (req, res) => {
     const p = Number(req.params.player);
@@ -196,8 +201,8 @@ export function spotifyCallbackRouter(onConnected) {
     oauthStates.delete(String(req.query.state || ''));
     if (!st || st.exp < Date.now() || !req.query.code) return res.status(400).send('Ungültige oder abgelaufene Anfrage.');
     try {
-      const out = await exchangeCode(String(req.query.code), `${config.publicUrl}/api/admin/spotify/callback`);
-      setPlayerToken(st.player, out.refreshToken, `${out.user}${out.product ? ` (${out.product})` : ''}`);
+      const out = await exchangeCode(String(req.query.code), `${config.publicUrl}/api/admin/spotify/callback`, st.appId);
+      setPlayerToken(st.player, out.refreshToken, `${out.user}${out.product ? ` (${out.product})` : ''}`, out.appId);
       onConnected?.(st.player);
       res.redirect('/admin#verbindungen');
     } catch (e) { res.status(502).send('Spotify-Verbindung fehlgeschlagen.'); }

@@ -60,5 +60,13 @@ export class Governor {
   }
 }
 
-// Ein Regler pro Prozess: das Limit gilt pro Spotify-App, nicht pro Umgebung.
+// Ein Regler pro Spotify-App (das Limit gilt pro App, nicht pro Umgebung). Die erste/alte App ('main' bzw. 'env') nutzt `governor`.
 export const governor = new Governor();
+const governors = new Map([['main', governor], ['env', governor]]);
+export function governorFor(appId) {
+  const id = appId || 'main';
+  let g = governors.get(id);
+  if (!g) { g = new Governor({ budget: governor.budget }); governors.set(id, g); }
+  return g;
+}
+export function setBudgetAll(n) { for (const g of new Set(governors.values())) g.setBudget(n); }
