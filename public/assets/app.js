@@ -121,25 +121,25 @@ export function brandLogo(size = '') {
 // Welche Ansichten darf welche Rolle oeffnen (nur zur Navigation, der Server prueft separat)
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
-  { label: 'DJ', path: '/dj', roles: ['admin', 'tech', 'mod', 'dj'], hint: 'Angenommene Wünsche, „Läuft jetzt“ / „Gespielt“ markieren', f: 'viewDj' },
-  { label: 'Ton', path: '/ton', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Dashboard Ton: Player, Pegel, Übergang, Mics, nächste Songs', f: 'viewTon' },
-  { label: 'Orga', path: '/orga', roles: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'], hint: 'Dashboard Orga/Einlass: Uhr, Zeitplan, Zahlen, Gäste online', f: 'viewOrga' },
-  { label: 'Licht', path: '/light', roles: ['admin', 'tech', 'orga', 'display', 'light'], hint: 'Für die Lichttechnik: jetzt, nächste Songs, Übergang', f: 'viewLight', main: false },
-  { label: 'Bühne', path: '/stage', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
-  { label: 'Zeitplan', path: '/schedule', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },
-  { label: 'Verlauf', path: '/activity', roles: ['admin', 'tech', 'mod', 'orga'], hint: 'Was ist heute passiert?', f: 'viewActivity' },
-  { label: 'Charts', path: '/charts', roles: STAFF, hint: 'Wunsch-Rangliste (öffentlich)', f: 'viewCharts' },
-  { label: 'Playlist des Abends', path: '/wall', roles: STAFF, hint: 'Was bisher lief (öffentlich)', f: 'viewWall' },
+  { label: 'DJ', path: '/dj', g: 'Arbeiten', roles: ['admin', 'tech', 'mod', 'dj'], hint: 'Angenommene Wünsche, „Läuft jetzt“ / „Gespielt“ markieren', f: 'viewDj' },
+  { label: 'Ton', path: '/ton', g: 'Dashboards', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Dashboard Ton: Player, Pegel, Übergang, Mics, nächste Songs', f: 'viewTon' },
+  { label: 'Orga', path: '/orga', g: 'Dashboards', roles: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'], hint: 'Dashboard Orga/Einlass: Uhr, Zeitplan, Zahlen, Gäste online', f: 'viewOrga' },
+  { label: 'Licht', path: '/light', g: 'Dashboards', roles: ['admin', 'tech', 'orga', 'display', 'light'], hint: 'Für die Lichttechnik: jetzt, nächste Songs, Übergang', f: 'viewLight', main: false },
+  { label: 'Bühne', path: '/stage', g: 'Dashboards', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
+  { label: 'Zeitplan', path: '/schedule', g: 'Arbeiten', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },
+  { label: 'Verlauf', path: '/activity', g: 'Auswertung', roles: ['admin', 'tech', 'mod', 'orga'], hint: 'Was ist heute passiert?', f: 'viewActivity' },
+  { label: 'Charts', path: '/charts', g: 'Bildschirme für Gäste', roles: STAFF, hint: 'Wunsch-Rangliste (öffentlich)', f: 'viewCharts' },
+  { label: 'Playlist des Abends', path: '/wall', g: 'Bildschirme für Gäste', roles: STAFF, hint: 'Was bisher lief (öffentlich)', f: 'viewWall' },
   { label: 'Technik', path: '/tech', roles: ['admin', 'tech'], main: true },
   { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
   { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
-  { label: 'Vorbereitung', path: '/prep', roles: ['admin', 'tech'], f: 'viewPrep', hint: 'Alles vor der Party prüfen & testen' },
-  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod', 'dj'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
-  { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewTicker', hint: 'Neue Wünsche & Entscheidungen live' },
-  { label: 'Analytics', path: '/analytics', roles: STAFF, f: 'viewAnalytics', hint: 'Genres, Interpreten, Zeitverlauf …' },
-  { label: 'Board', path: '/board', roles: STAFF, f: 'viewBoard', hint: 'Eigene Ansicht aus Bausteinen' },
-  { label: 'Anzeige', path: '/foh', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewFoh', hint: 'FOH-Status zum Ansehen' },
-  { label: 'Beamer', path: '/beamer', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewBeamer', hint: 'Großer Bildschirm für Gäste' },
+  { label: 'Vorbereitung', path: '/prep', g: 'Arbeiten', roles: ['admin', 'tech'], f: 'viewPrep', hint: 'Alles vor der Party prüfen & testen' },
+  { label: 'Fokus-Modus', path: '/focus', g: 'Arbeiten', roles: ['admin', 'tech', 'mod', 'dj'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
+  { label: 'Live-Wünsche', path: '/ticker', g: 'Bildschirme für Gäste', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewTicker', hint: 'Neue Wünsche & Entscheidungen live' },
+  { label: 'Analytics', path: '/analytics', g: 'Auswertung', roles: STAFF, f: 'viewAnalytics', hint: 'Genres, Interpreten, Zeitverlauf …' },
+  { label: 'Board', path: '/board', g: 'Dashboards', roles: STAFF, f: 'viewBoard', hint: 'Eigene Ansicht aus Bausteinen' },
+  { label: 'Anzeige', path: '/foh', g: 'Dashboards', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewFoh', hint: 'FOH-Status zum Ansehen' },
+  { label: 'Beamer', path: '/beamer', g: 'Bildschirme für Gäste', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewBeamer', hint: 'Großer Bildschirm für Gäste' },
 ];
 
 // Kopfzeile mit Marke, Navigation, Live-Status und Abmelden
@@ -163,7 +163,10 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
       if (more.length) {
         const active = more.find((x) => here === BASE + x.path);
         const menu = h('details', { class: 'menu' }, h('summary', { class: `navlink ${active ? 'on' : ''}` }, active ? active.label : 'Ansichten', ' ▾'),
-          h('div', { class: 'menu-list' }, ...more.map((n) => h('a', { href: BASE + n.path, class: here === BASE + n.path ? 'on' : '' }, h('b', {}, n.label), h('span', {}, n.hint || '')))));
+          h('div', { class: 'menu-list' }, ...['Dashboards', 'Arbeiten', 'Bildschirme für Gäste', 'Auswertung', undefined].flatMap((g) => {
+            const items = more.filter((n) => n.g === g);
+            return items.length ? [h('div', { class: 'menu-g' }, g || 'Weitere'), ...items.map((n) => h('a', { href: BASE + n.path, class: here === BASE + n.path ? 'on' : '' }, h('b', {}, n.label), h('span', {}, n.hint || '')))] : [];
+          })));
         document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.removeAttribute('open'); });
         navBox.append(menu);
       }

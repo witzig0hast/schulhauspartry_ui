@@ -26,6 +26,8 @@ import { createRehearsal } from './rehearsal.js';
 import { rehearsalRouter } from './routes/rehearsal.js';
 import { createLiveTest } from './livetest.js';
 import { liveTestRouter } from './routes/livetest.js';
+import { aiRouter } from './routes/ai.js';
+import { startLightWorker } from './ai.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -211,6 +213,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', securityRouter(env, engines[env], hub));
     router.use('/api', extrasRouter(env, engines[env], hub));
     router.use('/api', djRouter(env, engines[env], hub));
+    router.use('/api', aiRouter(env, engines[env], hub, { engines }));
     router.use('/api', vpnRouter());
     if (env === 'live') router.use('/api', ssoRouter());
     if (env === 'live') router.use('/api', rehearsalRouter(rehearsal));
@@ -268,7 +271,8 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   const timers = [];
   const monitor = createMonitor(engines);
   let stopBackup = () => {};
-  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); }
+  let stopLight = () => {};
+  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); stopLight = startLightWorker(engines, (env) => hub.pushEnv(env)); }
   timers.push(setInterval(sweepSessions, 10 * 60000));
   timers.push(setInterval(() => shield.sweep(), 60000));
   timers.push(setInterval(() => { for (const l of limiters.values()) l.sweep(); }, 60000));
@@ -278,6 +282,6 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     app, server, engines, hub,
     monitor,
     rehearsal, liveTest,
-    async close() { if (rehearsal.isRunning()) rehearsal.stop('Server beendet'); if (liveTest.isRunning()) liveTest.stop(); timers.forEach(clearInterval); monitor.stop(); stopBackup(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
+    async close() { if (rehearsal.isRunning()) rehearsal.stop('Server beendet'); if (liveTest.isRunning()) liveTest.stop(); timers.forEach(clearInterval); monitor.stop(); stopBackup(); stopLight(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
   };
 }

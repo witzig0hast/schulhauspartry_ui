@@ -8,6 +8,7 @@ import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
 import { trackIdOfUri } from './engine.js';
+import { lightCue } from './ai.js';
 import { familiesOf } from './genres.js';
 import { isBlocked } from './devices.js';
 import { isOn } from './features.js';
@@ -17,6 +18,7 @@ const labelOf = (id) => (id ? getDb().prepare('SELECT label FROM accounts WHERE 
 const publicReq = (r) => ({
   id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, votes: r.votes, player: r.player, status: r.status,
   auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, outroMs: getMeta(r.trackId)?.outro_ms ?? null, durationMs: r.durationMs, families: familiesOf(r.genres), popularity: r.popularity, etaMs: r.etaMs ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
+  light: isOn('aiLight') ? lightCue(r.trackId) : null,
 });
 
 // Baut den Zustand, den eine Rolle sehen darf.

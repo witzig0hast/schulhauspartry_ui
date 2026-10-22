@@ -1,5 +1,6 @@
 import { h, api, connect, topbar, clear, safe, toast, BASE, $ } from '/assets/app.js';
 import { bar } from '/assets/staff-ui.js';
+import { aiStatus, helpPanel } from '/assets/ai-ui.js';
 
 // Vorbereitung: alles auf einen Blick pruefen, verbinden und durchtesten -- vor der Party.
 const app = $('#app');
@@ -47,7 +48,9 @@ function renderLive() {
 
 const load = safe(async () => { data = await api('/prep/status'); renderChecks(); });
 
-app.append(top, h('div', { class: 'wrap' }, banner, h('div', { class: 'grid main' }, groupsBox, liveBox)));
+const aiBox = h('div');
+app.append(top, h('div', { class: 'wrap' }, banner, aiBox, h('div', { class: 'grid main' }, groupsBox, liveBox)));
+aiStatus().then((s) => { if (s?.ready && s.features.help) aiBox.replaceWith(h('div', { class: 'card stack' }, h('h2', {}, '🩺 KI: Was ist los?'), h('p', { class: 'small muted' }, 'Wertet diese Prüfliste, Verbindungen, Fehler und den letzten Live-Test aus und nennt die nächsten Schritte.'), helpPanel())); });
 connect({ ping: true, onStatus: (ok) => top.setLive(ok), onState: (s) => { live = s; renderLive(); } });
 load();
 setInterval(load, 6000);

@@ -57,6 +57,8 @@ export const DEFAULTS = {
   // Mehrere Spotify-Apps (Developer Dashboard): jede App hat ihr eigenes Anfrage-Limit. search = fuer die Gaeste-Suche mitnutzen.
   // Ein Player gehoert immer zu der App, ueber die er verbunden wurde (appId).
   spotify: { clientId: '', clientSecret: '', apiBudget: 60, apps: [], players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' } } },
+  // KI ueber einen eigenen Ollama-Server: ein Modell fuer alles. token = optional (z. B. hinter einem Reverse-Proxy)
+  ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false },
   // Grundpegel (Pegel-Fenster): Player-Fader am X32 bei 100 %, Spotify-Lautstaerke, optional Mic-Fader
   levels: { playerDb: { 1: 0, 2: 0 }, spotifyVol: { 1: 100, 2: 100 }, micControl: false, micDb: [0, 0, 0], confirmedAt: 0, confirmedBy: '' },
 };
@@ -333,6 +335,17 @@ export function applyPatch(patch, { allow }) {
       if (pp.disconnect) o.players[p] = EMPTY_PLAYER();
     }
   }
+  if (has('ai')) {
+    const q = patch.ai, o = s.ai;
+    if ('enabled' in q) o.enabled = !!q.enabled;
+    if ('url' in q) { const u = str(q.url, 300).trim().replace(/\/+$/, ''); if (u === '' || /^https?:\/\/[^\s/@]+(:\d+)?(\/[^\s@]*)?$/i.test(u)) o.url = u; }
+    if ('model' in q) o.model = str(q.model, 120).trim().replace(/[^\w.:/-]/g, '');
+    if (q.token) o.token = encrypt(str(q.token, 300));
+    if (q.clearToken) o.token = '';
+    if ('timeoutSec' in q) o.timeoutSec = Math.round(clamp(q.timeoutSec, 10, 600, o.timeoutSec));
+    if ('autoLight' in q) o.autoLight = !!q.autoLight;
+    if ('autoFiller' in q) o.autoFiller = !!q.autoFiller;
+  }
   if (has('levels')) {
     const l = patch.levels, o = s.levels;
     for (const p of [1, 2]) {
@@ -378,6 +391,7 @@ export const playerRefreshToken = (p) => {
   return t ? decrypt(t) : null;
 };
 export const notifyToken = () => (settings().notify.token ? decrypt(settings().notify.token) : '');
+export const aiToken = () => (settings().ai.token ? decrypt(settings().ai.token) : '');
 export const piToken = () => (settings().x32.piToken ? decrypt(settings().x32.piToken) : '');
 
 // Geheimnisse maskiert fuer die Admin-UI
@@ -391,6 +405,7 @@ export function publicSettings() {
   }
   s.x32.piToken = s.x32.piToken ? '***' : '';
   s.notify.token = s.notify.token ? '***' : '';
+  s.ai.token = s.ai.token ? '***' : '';
   s.sso.clientSecret = s.sso.clientSecret || process.env.SSO_CLIENT_SECRET ? '***' : '';
   return s;
 }

@@ -8,6 +8,7 @@ export const GROUPS = {
   team: 'Team & Moderation',
   music: 'Musik & Automatik',
   safety: 'Betrieb & Sicherheit',
+  ai: 'KI (Ollama)',
   visual: 'Animationen & Effekte',
 };
 
@@ -65,6 +66,12 @@ export const FEATURES = [
   { id: 'rehearsal', group: 'safety', label: 'Generalprobe (Lasttest)', desc: 'Simuliert im Testmodus eine komplette Party mit vielen Gästen und misst, ob alles hält.', def: true },
   { id: 'liveTest', group: 'safety', label: 'Live-Test (echtes Setup)', desc: 'Prüft vor der Party Schritt für Schritt jede Funktion mit den echten Geräten: Player, Pult, Mics, Handy, Beamer, Not-Aus, Alarm.', def: true },
   { id: 'testMode', group: 'safety', label: 'Testmodus', desc: 'Geheime Test-Umgebung.', def: true },
+  // --- KI ---
+  { id: 'aiEnergy', group: 'ai', label: 'KI: Energie-Kurve', desc: 'Schlägt eine Reihenfolge der Warteschlange vor, damit sich die Stimmung sinnvoll aufbaut. Die Technik übernimmt per Knopf.', def: true },
+  { id: 'aiFiller', group: 'ai', label: 'KI: Lückenfüller-Vorschläge', desc: 'Schlägt Songs passend zu den letzten Wünschen vor (und füllt auf Wunsch automatisch auf).', def: true },
+  { id: 'aiLight', group: 'ai', label: 'KI: Licht-Vorschläge', desc: 'Farben, Tempo, Intensität und Strobo-Empfehlung pro Song im Licht-Dashboard.', def: true },
+  { id: 'aiHelp', group: 'ai', label: 'KI: Fehler-Assistent', desc: '„Was ist los?“ – wertet Verbindungen, Fehler und Live-Test aus und nennt die nächsten Schritte.', def: true },
+  { id: 'aiRecap', group: 'ai', label: 'KI: Rückblick', desc: 'Schreibt nach der Party einen Rückblick für Gäste und eine Auswertung fürs Team.', def: true },
   // --- Effekte ---
   { id: 'animations', group: 'visual', label: 'Animationen', desc: 'Übergänge, Einblendungen und Bewegung. Aus = alles ruhig.', def: true },
   { id: 'confetti', group: 'visual', label: 'Konfetti', desc: 'Wenn der Wunsch eines Gastes läuft.', def: true },

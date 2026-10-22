@@ -200,6 +200,33 @@ blockierte Versuche. Zeitraum wählbar (Gesamt / 15 Min / 1–6 Std), jede Grafi
 Genres kommen von Spotify (über den Interpreten) und werden zu Familien zusammengefasst (Pop, Hip-Hop & Rap, Electronic & Dance, …).
 Liefert Spotify für eure App keine Genres, erscheinen die Wünsche unter „Unbekannt“ – alles andere funktioniert weiter.
 
+## KI über Ollama (Admin → Technik → KI)
+
+Die App nutzt einen **eigenen Ollama-Server** mit **einem** Modell. Einrichten: Ollama-Adresse (z. B. `http://192.168.178.50:11434`), optional ein
+Token (falls Ollama hinter einem geschützten Reverse-Proxy steht), „Modelle laden“, Modell wählen, „KI einschalten“, „Verbindung testen“.
+Es gehen nur Songdaten (Titel, Interpret, Jahr, Genres) und der Technikzustand an die KI – keine Gästedaten, keine Passwörter oder Tokens.
+Antworten kommen als JSON nach festem Schema und werden geprüft, bevor die App sie verwendet; die KI schlägt vor, übernommen wird per Knopf.
+
+- **Energie-Kurve** (Technik → KI-Assistent → „Reihenfolge vorschlagen“): Stimmung und Energie (1–10), Empfehlung und eine neue Reihenfolge der
+  Warteschlange (Steigerung, keine doppelten Interpreten, sanfte Genrewechsel, Wünsche vor Füllsongs); priorisierte Songs bleiben vorne. „Übernehmen“ ordnet um.
+- **Lückenfüller** („Songs vorschlagen“): passende Songs zu den letzten Wünschen; jeder Vorschlag wird bei Spotify nachgeschlagen (nur echte Songs,
+  nichts Gesperrtes oder schon Gespieltes) und per Knopf eingereiht. Optional füllt die KI eine leere Warteschlange selbst auf (höchstens alle 2 Minuten).
+- **Licht-Vorschläge**: für den laufenden und die nächsten fünf Songs im Hintergrund – Farben, Tempo/BPM, Intensität, Strobo-Empfehlung, Effekte und ein
+  Tipp; erscheinen im Licht-Dashboard und werden pro Song gespeichert.
+- **Fehler-Assistent** („🩺 Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard): wertet Verbindungen, Fehlerliste, Prüfliste und den letzten
+  Live-Test aus und nennt Ursachen mit konkreten Schritten; optional mit eigener Frage.
+- **Rückblick** (Bericht & Export → „Rückblick schreiben“): ein Text für die Gäste (Homepage/Instagram) und eine Auswertung fürs Team.
+
+Alles einzeln unter Funktionen (Gruppe „KI“). Anfragen laufen nacheinander (ein lokales Modell schafft meist nur eine gleichzeitig), höchstens 12 pro Person
+und Minute. Modell-Tipp: für deutsche Texte und sauberes JSON z. B. Qwen 2.5/3 oder Llama 3.1 ab 7–8 B Parametern.
+
+## Technik-Ansicht
+
+Aufgebaut nach dem, was man am Pult zuerst braucht: oben eine Statusleiste (Spotify, Player, X32, Wünsche, Mics, Auto-Crossfade und Ducking zum Antippen),
+darunter beide Player mit Cover, ON-AIR-Markierung, Pegel am Pult und Fader (immer sichtbar), dann Übergang mit Countdown bis zum nächsten Auto-Crossfade
+und der Betrieb. **Crossfade und Not-Aus sind unten immer sichtbar**, auch beim Scrollen durch die Wünsche. Dunkel als Standard (am Pult ist es dunkel);
+umschaltbar oben rechts. Das Menü „Ansichten“ ist nach Dashboards, Arbeiten, Bildschirmen für Gäste und Auswertung gruppiert.
+
 ## Abteilungs-Dashboards (Ton, Licht, Bühne, Orga)
 
 Fertige Ansichten zum Ansehen, oben mit einer Leiste zum Wechseln zwischen den Abteilungen:

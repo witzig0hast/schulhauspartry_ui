@@ -8,6 +8,7 @@ import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
 import { MockX32, HttpX32, ampToFader } from './adapters/x32.js';
 import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
+import { autoFill } from './ai.js';
 import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
 import { isOn } from './features.js';
@@ -161,7 +162,7 @@ export class Engine extends EventEmitter {
     this.runDucking(now, cfg);
     this.maybeAutoCrossfade(now, cfg);
     this.applyLevels();
-    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
+    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now).then((r) => r || autoFill(this, now)).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
 
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;

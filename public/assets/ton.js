@@ -1,6 +1,7 @@
 import { h, connect, clear, coverOnce, BRAND, $ } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
 import { deptBar } from '/assets/dept.js';
+import { aiStatus, openHelpModal } from '/assets/ai-ui.js';
 
 // Dashboard Ton (nur lesen): beide Player mit Pegel und Fader, Uebergang-Countdown, Mikrofone & Ducking,
 // die naechsten Songs mit Hinweisen (leises Intro, Explicit), Verbindungen und Fehler.
@@ -113,6 +114,7 @@ function render() {
 }
 
 const duck = h('div', { class: 'small muted' });
+const helpSlot = h('span');
 app.append(h('div', { class: 'dash' },
   h('div', { class: 'row between' }, h('div', { class: 'row' }, h('span', { class: 'eyebrow' }, `${BRAND.name} · Ton`), deptSlot), h('div', { class: 'row' }, live, clock)),
   alerts,
@@ -120,7 +122,7 @@ app.append(h('div', { class: 'dash' },
   h('div', { class: 'dgrid three' },
     h('section', { class: 'dcard' }, h('h2', {}, 'Übergang'), cfBox),
     h('section', { class: 'dcard' }, h('h2', {}, 'Mikrofone'), micBox, duck),
-    h('section', { class: 'dcard' }, h('h2', {}, 'Verbindungen'), statusBox)),
+    h('section', { class: 'dcard' }, h('div', { class: 'row between' }, h('h2', {}, 'Verbindungen'), helpSlot), statusBox)),
   h('section', { class: 'dcard' }, h('h2', {}, 'Als Nächstes'), nextBox)));
 connect({
   ping: true,
@@ -128,3 +130,5 @@ connect({
   onState: (s) => { state = s; got = Date.now(); render(); },
 });
 setInterval(render, 500);   // Countdowns laufen zwischen den Server-Staenden weiter
+// Fehler-Assistent fuer Technik/Admin (der Server prueft die Rolle)
+aiStatus().then((s) => { if (s?.ready && s.features.help) helpSlot.replaceWith(h('button', { class: 'small', onclick: openHelpModal }, '🩺 Was ist los?')); });

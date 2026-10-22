@@ -9,11 +9,11 @@ let data = null;
 const TAB_GROUPS = [
   ['Party', ['start', 'einstellungen', 'automatik', 'design', 'poster']],
   ['Zugang', ['codes', 'sicherheit', 'funktionen']],
-  ['Technik', ['verbindungen', 'vpn', 'livetest', 'probe']],
+  ['Technik', ['verbindungen', 'ki', 'vpn', 'livetest', 'probe']],
   ['Auswertung', ['bericht']],
 ];
 const tabs = TAB_GROUPS.flatMap(([, t]) => t);
-const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Wünsche & Regeln', codes: 'Codes', verbindungen: 'Verbindungen', livetest: 'Live-Test', probe: 'Generalprobe', bericht: 'Bericht & Export' };
+const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Wünsche & Regeln', codes: 'Codes', verbindungen: 'Verbindungen', ki: 'KI', livetest: 'Live-Test', probe: 'Generalprobe', bericht: 'Bericht & Export' };
 const TAB_INTRO = {
   start: 'Betriebsart, Abend-Start, alle Links und das Zurücksetzen.',
   einstellungen: 'Wie viele Wünsche Gäste haben, welche Songs erlaubt sind und welche Texte sie sehen.',
@@ -25,6 +25,7 @@ const TAB_INTRO = {
   funktionen: 'Jede Funktion und Ansicht einzeln an- oder ausschalten.',
   verbindungen: 'Spotify-Konten und die Anbindung an Pi und X32.',
   vpn: 'Geräte für den WireGuard-Server (Pi, PC, Handy).',
+  ki: 'Eigener Ollama-Server mit einem Modell: Energie-Kurve, Songvorschläge, Licht-Vorschläge, Fehler-Assistent und Rückblick.',
   livetest: 'Vor der Party jede Funktion mit dem echten Setup durchspielen: Player, Pult, Mics, Handy, Beamer, Not-Aus.',
   probe: 'Simulierte Party im Testmodus: Hält das System viele Gäste aus?',
   bericht: 'Zahlen zur Party, Setlist als PDF und CSV.',
@@ -494,7 +495,68 @@ function viewReport() {
   }
   envSel.addEventListener('change', safe(run));
   run().catch((e) => toast(e.message, true));
-  return h('div', { class: 'stack' }, h('div', { class: 'row' }, envSel, pdf, csv), out);
+  return h('div', { class: 'stack' }, h('div', { class: 'row' }, envSel, pdf, csv), recapCard(envSel), out);
+}
+
+// KI-Rueckblick: Text fuer die Gaeste (Homepage/Instagram) und Auswertung fuers Team
+function recapCard(envSel) {
+  if (!data.features.flags.aiRecap) return h('span');
+  const box = h('div', { class: 'stack' });
+  const copy = (t) => safe(async () => { try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch { toast('Kopieren nicht möglich', true); } });
+  const show = (r) => clear(box).append(!r ? h('p', { class: 'small muted' }, 'Noch kein Rückblick geschrieben.') : h('div', { class: 'grid two' },
+    h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h3', {}, `Für die Gäste: ${r.title}`), h('button', { class: 'small', onclick: copy(`${r.title}\n\n${r.guests}`) }, 'Kopieren')), h('div', { class: 'recap-text' }, r.guests)),
+    h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h3', {}, 'Für das Team'), h('button', { class: 'small', onclick: copy(r.team) }, 'Kopieren')), h('div', { class: 'recap-text' }, r.team)),
+    h('div', { class: 'tiny muted' }, `Geschrieben ${new Date(r.ts).toLocaleString('de-DE')} von ${r.model} – vor dem Veröffentlichen bitte lesen.`)));
+  const load = () => api(`/admin/ai/recap?env=${envSel.value}`).then((x) => show(x.recap)).catch(() => {});
+  envSel.addEventListener('change', load); load();
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🤖 Rückblick'),
+    h('button', { class: 'primary', onclick: async (e) => {
+      e.target.disabled = true; clear(box).append(h('div', { class: 'small muted' }, 'Die KI schreibt … (kann bei großen Modellen eine Minute dauern)'));
+      try { show((await api('/admin/ai/recap', { method: 'POST', body: { env: envSel.value } })).recap); } catch (er) { toast(er.message, true); load(); } finally { e.target.disabled = false; }
+    } }, 'Rückblick schreiben')), box);
+}
+
+// ---------- KI (Ollama) ----------
+function viewAi() {
+  const a = data.settings.ai;
+  const url = h('input', { value: a.url, placeholder: 'http://192.168.178.50:11434', autocomplete: 'off' });
+  const token = h('input', { type: 'password', placeholder: a.token ? '(gesetzt – leer lassen zum Behalten)' : 'nur nötig hinter einem geschützten Proxy', autocomplete: 'new-password' });
+  const model = h('select', {}, h('option', { value: a.model }, a.model || '– erst Modelle laden –'));
+  const enabled = chk(a.enabled), autoLight = chk(a.autoLight), autoFiller = chk(a.autoFiller);
+  const timeout = num(a.timeoutSec, { min: 10, max: 600, class: 'num' });
+  const info = h('div', { class: 'small muted' });
+  const loadModels = safe(async () => {
+    info.textContent = 'Lade Modelle …';
+    const { models } = await api('/admin/ai/models', { method: 'POST', body: { url: url.value, token: token.value || undefined } });
+    clear(model).append(...(models.length ? models.map((m) => h('option', { value: m.name, selected: m.name === a.model }, `${m.name}${m.params ? ` · ${m.params}` : ''}${m.size ? ` · ${(m.size / 1e9).toFixed(1)} GB` : ''}`)) : [h('option', { value: '' }, 'Keine Modelle installiert (ollama pull …)')]));
+    info.textContent = `${models.length} Modell${models.length === 1 ? '' : 'e'} gefunden.`;
+  });
+  const status = h('div', { class: 'small muted' });
+  api('/ai/status').then((s) => { status.textContent = s.ready ? `Bereit · ${s.calls} Anfragen seit Start${s.lastMs ? ` · letzte Antwort ${(s.lastMs / 1000).toFixed(1)} s` : ''}${s.lastError ? ` · letzter Fehler: ${s.lastError}` : ''}` : 'Noch nicht eingerichtet.'; }).catch(() => {});
+  const flags = data.features.flags;
+  const feat = (id, label) => h('div', { class: 'row nowrap small' }, h('span', { class: `badge ${flags[id] ? 'ok' : ''}` }, flags[id] ? 'an' : 'aus'), label);
+  return h('div', { class: 'stack' },
+    h('div', { class: 'card stack' }, h('h2', {}, 'Ollama-Server'),
+      h('p', { class: 'small muted' }, 'Die App nutzt deinen eigenen Ollama-Server mit einem Modell. Es gehen nur Songdaten und Technikzustand dorthin – keine Gästedaten, keine Passwörter oder Tokens. Die KI schlägt nur vor; übernommen wird per Knopf (Ausnahme: Licht-Vorschläge und – falls eingeschaltet – der automatische Lückenfüller).'),
+      field('Ollama-Adresse', url), field('Zugangs-Token', token),
+      h('div', { class: 'row' }, h('button', { onclick: loadModels }, '↻ Modelle laden'), info),
+      field('Modell', model),
+      h('label', { class: 'check' }, enabled, 'KI einschalten'),
+      h('label', { class: 'check' }, autoLight, 'Licht-Vorschläge automatisch erzeugen'),
+      h('label', { class: 'check' }, autoFiller, 'Leere Warteschlange automatisch per KI auffüllen'),
+      field('Maximale Wartezeit (Sekunden)', timeout),
+      h('div', { class: 'row' },
+        h('button', { class: 'primary', onclick: () => save({ ai: { url: url.value, token: token.value || undefined, model: model.value, enabled: enabled.checked, autoLight: autoLight.checked, autoFiller: autoFiller.checked, timeoutSec: Number(timeout.value) } }) }, 'Speichern'),
+        h('button', { onclick: safe(async () => { const r = await api('/admin/ai/test', { method: 'POST', body: {} }); toast(`✓ Antwort nach ${(r.ms / 1000).toFixed(1)} s: „${r.reply}“`); }) }, 'Verbindung testen'),
+        a.token ? h('button', { class: 'ghost small', onclick: () => save({ ai: { clearToken: true } }, 'Token entfernt') }, 'Token entfernen') : null),
+      status),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Was die KI macht'),
+      feat('aiEnergy', 'Energie-Kurve: Technik → KI-Assistent → „Reihenfolge vorschlagen“'),
+      feat('aiFiller', 'Lückenfüller: Technik → „Songs vorschlagen“ (bei Spotify geprüft, Einreihen per Knopf)'),
+      feat('aiLight', 'Licht-Vorschläge: Farben, Tempo, Intensität, Strobo im Licht-Dashboard'),
+      feat('aiHelp', 'Fehler-Assistent: „Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard'),
+      feat('aiRecap', 'Rückblick: Bericht & Export → „Rückblick schreiben“'),
+      h('p', { class: 'small muted' }, 'Einzeln an- und ausschalten unter Zugang → Funktionen (Gruppe „KI“). Modell-Tipp: Für deutsche Texte und sauberes JSON eignen sich z. B. Qwen 2.5/3 oder Llama 3.1 ab 7–8 B Parametern; kleinere Modelle sind schneller, liefern aber öfter unbrauchbare Vorschläge.')));
 }
 
 // ---------- Funktionen: alles einzeln an-/ausschaltbar ----------
@@ -707,7 +769,7 @@ function viewSecurity() {
 
 function render() {
   drawTabs();
-  clear(body).append(h('p', { class: 'tab-intro' }, TAB_INTRO[tab] || ''), { livetest: viewLiveTest, probe: viewProbe, start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append(h('p', { class: 'tab-intro' }, TAB_INTRO[tab] || ''), { ki: viewAi, livetest: viewLiveTest, probe: viewProbe, start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));
@@ -931,6 +993,12 @@ const HELP = {
   'Client ID': 'Aus dem Spotify-Developer-Dashboard deiner App.',
   'Client Secret': 'Aus dem Spotify-Developer-Dashboard. Wird verschlüsselt gespeichert.',
   'Spotify-Apps (Developer Dashboard)': 'Jede App aus developer.spotify.com hat ein eigenes Anfrage-Limit (ca. 30-Sekunden-Fenster). Mit mehreren Apps verteilt sich die Gäste-Suche, und fällt eine App ins Limit, springt die nächste ein. Im Entwicklungsmodus erlaubt eine App nur wenige Spotify-Konten – dann Player 1 und 2 über verschiedene Apps verbinden.',
+  'Ollama-Adresse': 'Adresse deines Ollama-Servers inkl. Port, z. B. http://192.168.178.50:11434 oder https://ollama.example.de. Der Server muss vom Party-Server aus erreichbar sein (gleiches Netz oder VPN).',
+  'Zugangs-Token': 'Nur nötig, wenn Ollama hinter einem Reverse-Proxy mit Anmeldung steht (wird als Bearer-Token gesendet und verschlüsselt gespeichert).',
+  'Modell': 'Ein Modell für alle KI-Funktionen. „Modelle laden“ fragt den Server, welche installiert sind.',
+  'Licht-Vorschläge automatisch erzeugen': 'Im Hintergrund bekommt der laufende und die nächsten fünf Songs je einen Lichtvorschlag (einmal pro Song, wird gespeichert).',
+  'Leere Warteschlange automatisch per KI auffüllen': 'Läuft Musik und ist die Warteschlange leer (und die Lückenfüller-Playlist liefert nichts), reiht die App selbst einen KI-Vorschlag ein – höchstens alle 2 Minuten.',
+  'Maximale Wartezeit (Sekunden)': 'So lange wartet die App auf eine Antwort. Große Modelle auf schwacher Hardware brauchen länger.',
   'Gespeicherte Spotify-Daten': 'Songs, Genres, Suchtreffer, Playlists und Album-Cover, die schon einmal von Spotify geholt wurden, liegen dauerhaft im Speicher (eigene Datei cache.db, nicht in den Backups). Die App fragt sie nicht erneut an – auch nicht nach einem Neustart. Songs/Genres bleiben 30 Tage, Suchen 12 Stunden, Playlists 1 Stunde.',
   'Für die Gäste-Suche mitnutzen': 'An: Suche, Song-Infos und Genres dürfen über diese App laufen. Aus: die App ist nur für den Player da, der über sie verbunden ist (so bleibt ihr Limit ganz für Play/Pause/Crossfade).',
   'Verbinden über App': 'Über welche Spotify-App sich dieser Player anmeldet. Der Player bleibt bei dieser App, bis du ihn neu verbindest.',

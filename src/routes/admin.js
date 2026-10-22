@@ -89,7 +89,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   });
 
   r.post('/admin/settings', wrap((req, res) => {
-    const allow = ['start', 'opening', 'operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify', 'levels'];
+    const allow = ['start', 'opening', 'operation', 'sso', 'limit', 'explicitMode', 'rejectReasons', 'notice', 'wishMessages', 'priorityWithin', 'replay', 'features', 'security', 'voting', 'handover', 'limits', 'pause', 'roleHome', 'roleBoards', 'timezone', 'autoOrder', 'filler', 'emergency', 'notify', 'backup', 'brand', 'fadePresets', 'auto', 'ducking', 'x32', 'test', 'spotify', 'levels', 'ai'];
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     const modeBefore = settings().operation.mode;

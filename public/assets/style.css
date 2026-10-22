@@ -645,3 +645,39 @@ html.no-confetti .confetti-cv { display: none !important; }
 .lt-hero-main { display: flex; gap: 2.4vw; align-items: center; min-width: 0; }
 .lt-row.with-cover { grid-template-columns: 12ch auto 1fr auto; }
 @media (max-width: 640px) { .lt-hero-main { flex-direction: column; align-items: flex-start; } .lt-row.with-cover { grid-template-columns: auto 1fr auto; } .lt-row.with-cover .lt-time { grid-column: 1 / -1; } }
+
+/* Technik: Statusleiste, Countdown, feste Leiste unten */
+.tech { padding-bottom: 110px; }
+.tstrip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); position: sticky; top: 64px; z-index: 5; }
+.pill.small { height: 26px; padding: 0 10px; }
+.tog { height: 30px; padding: 0 12px; border-radius: 999px; font-size: .8rem; font-weight: 650; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text-2); }
+.tog.on { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.tog.hot { background: var(--warn-bg); color: var(--warn); }
+.player.onair { border: 2px solid var(--ink); box-shadow: var(--shadow-2); }
+.tcount { font-variant-numeric: tabular-nums; font-weight: 750; font-size: .95rem; padding: 4px 12px; border-radius: 999px; background: var(--bg-2); color: var(--text-2); }
+.tcount.hot { background: var(--warn-bg); color: var(--warn); animation: ltpulse 1s ease-in-out infinite; }
+.tcount.cf { background: var(--ok-bg); color: var(--ok); }
+.tdock { position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 20; width: min(1180px, calc(100vw - 24px)); display: flex; gap: 10px; align-items: center; padding: 10px 12px 10px 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--line-2); box-shadow: var(--shadow-2); }
+.tdock button { height: 48px; padding: 0 22px; font-size: 1rem; white-space: nowrap; }
+.tdock.alarm { border-color: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg), var(--shadow-2); }
+@media (max-width: 640px) { .tdock { padding: 8px; } .tdock > div { display: none; } .tdock button { flex: 1; padding: 0 10px; } }
+/* KI */
+.ai-busy { display: flex; gap: 10px; align-items: center; color: var(--muted); padding: 10px 0; }
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--ink); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-energy { display: flex; gap: 3px; } .ai-energy i { width: 8px; height: 22px; border-radius: 3px; background: var(--bg-2); } .ai-energy i.on { background: linear-gradient(#f59e0b, #ef4444); }
+.ai-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.lt-cue { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.lt-sw { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); display: inline-block; vertical-align: middle; }
+.lt-int { display: inline-flex; gap: 2px; } .lt-int i { width: 5px; height: 14px; border-radius: 2px; background: var(--bg-2); } .lt-int i.on { background: var(--ink); }
+.lt-hint { color: var(--text-2); font-size: .95rem; margin-top: 4px; }
+
+.menu-list { grid-template-columns: repeat(2, minmax(220px, 1fr)); max-height: 75vh; overflow-y: auto; }
+.menu-g { grid-column: 1 / -1; font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 10px 12px 2px; }
+@media (max-width: 640px) { .menu-list { grid-template-columns: 1fr; min-width: 240px; left: auto; right: -80px; } }
+
+.recap-text { white-space: pre-wrap; line-height: 1.55; }
+/* Kopfzeile: Name kuerzen statt unter die Navigation zu rutschen; auf dem Handy nur das Logo */
+.brand > div:last-child { min-width: 0; overflow: hidden; }
+.brand .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { .topbar { flex-wrap: wrap; height: auto; min-height: 56px; padding: 8px 14px; row-gap: 4px; } .topbar .brand { flex: none; max-width: 55vw; } .topbar .nav { order: 5; flex-basis: 100%; margin-left: -6px; } .tstrip { position: static; } }
