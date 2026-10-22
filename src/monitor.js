@@ -2,6 +2,7 @@ import { settings } from './settings.js';
 import { sendNotify } from './notify.js';
 import * as rq from './requests.js';
 import { isOn } from './features.js';
+import * as L from './log.js';
 
 // Ueberwacht Verbindungen und Betrieb und meldet Probleme per ntfy -- erst nach `downSec` Sekunden Stoerung
 // (kein Alarm bei kurzem Ruckeln) und mit "wieder ok" nach der Entwarnung.
@@ -13,8 +14,10 @@ export function createMonitor(engines) {
 
   async function check(key, ev, env, isDown, downText, upText, { priority = 4 } = {}) {
     const k = `${env}:${key}`;
-    const s = state.get(k) || { since: null, alerted: false };
+    const s = state.get(k) || { since: null, alerted: false, down: false };
     const now = Date.now();
+    // Jeder Wechsel sofort ins Protokoll (der Alarm aufs Handy kommt erst nach downSec)
+    if (isDown !== s.down) { s.down = isDown; L.log(isDown ? 'warn' : 'info', key === 'queue' ? 'wiedergabe' : 'verbindung', key === 'queue' ? `queue.${isDown ? 'empty' : 'filled'}` : `connection.${isDown ? 'down' : 'up'}`, isDown ? downText : upText, { env, data: { check: key } }); }
     if (isDown) {
       s.since ??= now;
       if (!s.alerted && now - s.since >= settings().notify.downSec * 1000 && enabled(ev)) {

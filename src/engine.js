@@ -9,6 +9,7 @@ import { MockX32, HttpX32, ampToFader } from './adapters/x32.js';
 import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
 import { autoFill } from './ai.js';
+import * as L from './log.js';
 import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
 import { isOn } from './features.js';
@@ -98,6 +99,16 @@ export class Engine extends EventEmitter {
     this.syncLevels();
   }
 
+  // Mikrofone: oeffnen als Eintrag, schliessen nur im Debug (sonst flattert das Protokoll beim Sprechen)
+  logMics(mics = []) {
+    const prev = this.micOpen || {};
+    this.micOpen = {};
+    for (const m of mics) {
+      this.micOpen[m.id] = m.open;
+      if (prev[m.id] !== undefined && prev[m.id] !== m.open) L.log(m.open ? 'info' : 'debug', 'pult', m.open ? 'mic.open' : 'mic.closed', `🎤 ${m.name} ${m.open ? 'offen' : 'wieder stumm'}`, { env: this.env, data: { mic: m.id, name: m.name, level: Math.round((m.level || 0) * 100) / 100 } });
+    }
+  }
+
   // ----- Grundpegel (Pegel-Fenster) -----
   // Geaenderte Werte gehen sofort raus: Player-Fader ueber applyLevels, Spotify-Lautstaerke und Mic-Fader direkt.
   syncLevels() {
@@ -162,12 +173,15 @@ export class Engine extends EventEmitter {
     this.runDucking(now, cfg);
     this.maybeAutoCrossfade(now, cfg);
     this.applyLevels();
-    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now).then((r) => r || autoFill(this, now)).then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
+    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now)
+      .then((r) => { if (r) { L.info('wiedergabe', 'queue.filler', `Lückenfüller eingereiht: ${r.title} – ${r.artist}`, { env: this.env, actor: { kind: 'system' }, data: { id: r.id, trackId: r.trackId } }); return r; }
+        return autoFill(this, now).then((a) => { if (a) L.info('ki', 'queue.ai_filler', `KI hat eingereiht: ${a.title} – ${a.artist}`, { env: this.env, actor: { kind: 'ai' }, data: { id: a.id, trackId: a.trackId } }); return a; }); })
+      .then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
 
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;
       const playing = { 1: this.players[1].status().playing, 2: this.players[2].status().playing };
-      this.x32.readState(playing).then((s) => { this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
+      this.x32.readState(playing).then((s) => { this.logMics(s.mics); this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
     }
     if (!this.lastBroadcast || now - this.lastBroadcast >= BROADCAST_MS) {
       this.lastBroadcast = now;
@@ -262,6 +276,7 @@ export class Engine extends EventEmitter {
       if (p >= 1) {
         const from = cf.from;
         this.crossfade = null;
+        L.info('wiedergabe', 'crossfade.done', `Übergang fertig: Player ${from} → Player ${cf.to} (${cf.dur} s)`, { env: this.env, data: { from, to: cf.to, durSec: cf.dur, curve: cf.curve } });
         this.players[from].pause().catch((e) => this.fail('pause', e));
         this.gain[from] = 1; // bereit fuer den naechsten Einsatz (Player ist pausiert)
         this.current = cf.to;
@@ -287,7 +302,9 @@ export class Engine extends EventEmitter {
     const dt = TICK_MS;
     if (target < this.duckMul) this.duckMul = Math.max(target, this.duckMul - (1 - target) * dt / cfg.ducking.attackMs);
     else if (target > this.duckMul) this.duckMul = Math.min(target, this.duckMul + (1 - Math.pow(10, cfg.ducking.db / 20)) * dt / cfg.ducking.releaseMs);
+    const was = !!this.ducking;
     this.ducking = cfg.ducking.enabled && this.duckMul < 0.995;
+    if (was !== this.ducking) L.log(this.ducking ? 'info' : 'debug', 'pult', this.ducking ? 'ducking.on' : 'ducking.off', this.ducking ? `Ducking: Musik wird abgesenkt (${cfg.ducking.db} dB), weil ein Mikrofon offen ist` : 'Ducking vorbei: Musik wieder voll', { env: this.env, data: { db: cfg.ducking.db, mics: this.x32State.mics.filter((m) => m.open).map((m) => m.name) } });
   }
 
   applyLevels() {

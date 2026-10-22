@@ -1,5 +1,5 @@
 import express from 'express';
-import { requirePerm, adminIpGuard, clientIp } from '../auth.js';
+import { requirePerm, requireAnyPerm, adminIpGuard, clientIp } from '../auth.js';
 import { requireFeature } from '../features.js';
 import { audit } from '../audit.js';
 import { settings, applyPatch } from '../settings.js';
@@ -22,7 +22,7 @@ export function aiRouter(env, engine, hub, { engines }) {
   const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 502).json({ error: e.message }); } };
   const ready = (req, res, next) => (ai.aiReady() ? next() : res.status(409).json({ error: 'Die KI ist nicht eingerichtet (Admin → KI).' }));
 
-  r.get('/ai/status', requirePerm('viewTech'), (req, res) => res.json({ ...ai.aiStats(), features: { energy: ai.aiOn('aiEnergy'), filler: ai.aiOn('aiFiller'), light: ai.aiOn('aiLight'), help: ai.aiOn('aiHelp'), recap: ai.aiOn('aiRecap') } }));
+  r.get('/ai/status', requireAnyPerm('viewTech', 'moderate'), (req, res) => res.json({ ...ai.aiStats(), features: { energy: ai.aiOn('aiEnergy'), filler: ai.aiOn('aiFiller'), light: ai.aiOn('aiLight'), help: ai.aiOn('aiHelp'), recap: ai.aiOn('aiRecap'), summary: ai.aiOn('aiSummary'), mood: ai.aiOn('aiMood'), genres: ai.aiOn('aiGenres') } }));
 
   // 3: Energie-Kurve
   r.post('/ai/energy', requireFeature('aiEnergy'), ctl, ready, throttle, json, wrap(async (req, res) => res.json(await ai.suggestEnergy(engine))));
@@ -47,6 +47,11 @@ export function aiRouter(env, engine, hub, { engines }) {
     res.json({ cue: await ai.makeLightCue(row) });
     hub.pushEnv(env);
   }));
+
+  // Wunsch-Zusammenfassung fuer die Moderation
+  r.post('/ai/summary', requireFeature('aiSummary'), requirePerm('moderate'), ready, throttle, json, wrap(async (req, res) => res.json(await ai.summarizePending(env))));
+  // Stimmung jetzt pruefen (ohne Handy-Nachricht) – zum Ausprobieren
+  r.post('/ai/mood', requireFeature('aiMood'), ctl, ready, throttle, json, wrap(async (req, res) => res.json(await ai.checkMood(engine))));
 
   // 7: Fehler-Assistent
   r.post('/ai/help', requireFeature('aiHelp'), requirePerm('viewTech'), ready, throttle, json, wrap(async (req, res) => {
@@ -80,7 +85,7 @@ export function aiRouter(env, engine, hub, { engines }) {
     }));
     r.post('/admin/ai/test', ...adm, throttle, json, wrap(async (req, res) => {
       const t0 = Date.now();
-      const out = await ai.chat({ system: 'Antworte nur mit dem JSON {"ok": true, "gruss": "<kurzer Gruß auf Deutsch>"}.', user: 'Test', schema: { type: 'object', properties: { ok: { type: 'boolean' }, gruss: { type: 'string' } }, required: ['ok', 'gruss'] }, maxTokens: 60 });
+      const out = await ai.chat({ task: 'test', system: 'Antworte nur mit dem JSON {"ok": true, "gruss": "<kurzer Gruß auf Deutsch>"}.', user: 'Test', schema: { type: 'object', properties: { ok: { type: 'boolean' }, gruss: { type: 'string' } }, required: ['ok', 'gruss'] }, maxTokens: 60 });
       audit('ai.test', req.session.label, clientIp(req), settings().ai.model);
       res.json({ ok: true, ms: Date.now() - t0, reply: String(out.gruss || '').slice(0, 120) });
     }));

@@ -220,6 +220,41 @@ Antworten kommen als JSON nach festem Schema und werden geprüft, bevor die App 
 Alles einzeln unter Funktionen (Gruppe „KI“). Anfragen laufen nacheinander (ein lokales Modell schafft meist nur eine gleichzeitig), höchstens 12 pro Person
 und Minute. Modell-Tipp: für deutsche Texte und sauberes JSON z. B. Qwen 2.5/3 oder Llama 3.1 ab 7–8 B Parametern.
 
+## Live-Protokoll (`/logs`, Technik und Admin)
+
+Ein Protokoll über alles, was passiert – **zweimal lesbar**:
+- **Mensch:** Uhrzeit, Bereich, ein verständlicher Satz und wer es war („Angenommen: Uptown Funk → Player 1 · Mia“, „🎤 Mic 1 offen“, „Spotify-Limit erreicht – Pause 7 s“).
+- **Maschine:** Zeitstempel, Level, fester Ereignisname (`request.approved`, `control.play`, `spotify.rate_limited`, `ai.energy` …) und die Rohdaten als JSON.
+  Ein Klick auf einen Eintrag zeigt das komplette JSON (farbig, kopierbar); „{ } Maschine“ schaltet die ganze Liste auf die technische Zeilenansicht.
+
+Filter: Umgebung (Live/Test/System), ab welchem Level (Alles/Info/Warnungen/Fehler), Bereiche (Wünsche, Moderation, Wiedergabe, Pult & Mics, Spotify, KI,
+Verbindungen, Companion, Admin, Sicherheit, System) und Volltextsuche (auch in den Daten). Neue Einträge kommen live oben dazu, „Anhalten“ friert die Liste ein.
+Export als JSONL (eine JSON-Zeile pro Eintrag, z. B. für `jq`).
+
+Erfasst werden u. a.: Wünsche (neu, +1, abgewiesen mit Grund), Moderation (angenommen/abgelehnt/vorgezogen/entfernt, mit Person), jeder Technik-Knopf, Übergänge,
+Lückenfüller, Not-Aus/Notfall/Ende, Mikrofone und Ducking, Verbindungen (sofort bei jedem Wechsel), Spotify-Limits und -Fehler, jede KI-Anfrage mit Dauer und Antwort,
+Companion-Tasten, Einstellungen, Anmeldungen, Sperren, Backups und Benachrichtigungen. Mit „Debug-Einträge erzeugen“ zusätzlich jede einzelne Spotify-Anfrage
+(Methode, Pfad, Status, Dauer, Budget) – nur im Speicher.
+
+Datenschutz: eigene Datei `logs.db` (nicht in den Backups, Standard 14 Tage), Gäste nur als Kürzel („Gast e928f“, gleiches Handy = gleiches Kürzel), Felder wie
+Token/Passwort werden immer als `***` gespeichert. Anmeldungen und IP-Adressen (Bereiche Sicherheit/Admin) sieht nur der Admin. Während der Generalprobe laufen deren
+tausende Gäste-Einträge nur im Speicher mit.
+
+## Companion / Stream Deck (Admin → Verbindungen)
+
+Echte Tasten über Bitfocus Companion, Modul „Generic HTTP“: „Token erzeugen“, dann pro Taste `POST <Adresse>/api/companion/action/<aktion>` mit Header
+`{"Authorization": "Bearer <Token>"}`. Aktionen: `crossfade` (optional `?sec=6`), `panic` (zweimal innerhalb von 4 s), `panic-clear`, `play-1/2`, `pause-1/2`,
+`fade-in-1/2`, `fade-out-1/2`, `wishes-open/pause/close`, `pause-mode`, `auto-toggle`, `ducking-toggle`, `emergency`, `end`.
+`GET <Adresse>/api/companion/state` liefert JSON für Tasten-Anzeigen (Titel, Countdown bis zum Übergang, Wunsch-Status, Not-Aus scharf …).
+Das Token wird nur als Hash gespeichert; ein neues Token macht das alte ungültig. Testmodus: dieselben Pfade unter der Test-Adresse.
+
+## Weitere KI-Funktionen
+
+- **Genres nachtragen:** Liefert Spotify für einen Song keine Genres (häufig bei neueren Apps), ordnet die KI ihn aus einer festen Genre-Liste ein (im Licht-Dashboard mit „🤖 KI“ markiert).
+- **Wunsch-Zusammenfassung** (Moderation → „Zusammenfassen“): Überblick über die offenen Wünsche, größte Gruppen, was man genauer ansehen sollte, womit anfangen.
+- **Stimmungs-Warnung:** Alle 10 Minuten, solange Musik läuft, prüft die KI Wunsch-Tempo, Ablehnungen, zuletzt gespielte Songs und Warteschlange. Kippt die
+  Stimmung (mittel/hoch), kommt eine Meldung **nur per ntfy** aufs Handy (Automatik → Alarm aufs Handy → „KI: Stimmung kippt“).
+
 ## Technik-Ansicht
 
 Aufgebaut nach dem, was man am Pult zuerst braucht: oben eine Statusleiste (Spotify, Player, X32, Wünsche, Mics, Auto-Crossfade und Ducking zum Antippen),

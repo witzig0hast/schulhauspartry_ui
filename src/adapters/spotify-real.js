@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { settings, spotifyApps, spotifyApp, playerRefreshToken } from '../settings.js';
 import { governor, governorFor, RateLimitError } from './spotify-governor.js';
 import { cacheGet, cacheGetStale, cacheSet } from '../apicache.js';
+import * as L from '../log.js';
 
 const API = 'https://api.spotify.com/v1';
 const ACCOUNTS = 'https://accounts.spotify.com';
@@ -57,6 +58,8 @@ async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await governor.acquire(cls); // unkritisch: wirft RateLimitError (Aufrufer nutzt Cache); kritisch: wartet
     let res;
+    const t0 = Date.now();
+    const app = ctx.name || null;
     try {
       res = await fetch(url, {
         method,
@@ -64,11 +67,14 @@ async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch (e) { // Netzwerkfehler: kurz warten (mit Streuung) und noch einmal
+      L.warn('spotify', 'spotify.network_error', `Spotify nicht erreichbar (${method} ${path}): ${e.cause?.code || e.message}`, { env: 'system', data: { method, path, cls, attempt, app } });
       if (attempt < maxAttempts - 1) { await governor.sleep(300 * 2 ** attempt + Math.random() * 200); continue; }
       throw e;
     }
+    L.debug('spotify', 'spotify.request', `${method} ${path} → ${res.status} (${Date.now() - t0} ms)`, { env: 'system', data: { method, path, query: query || null, status: res.status, ms: Date.now() - t0, cls, attempt, app, budget: `${governor.used()}/${governor.budget}` } });
     if (res.status === 429) {
       governor.onRateLimited(Number(res.headers.get('retry-after')));
+      L.warn('spotify', 'spotify.rate_limited', `Spotify-Limit erreicht – Pause ${res.headers.get('retry-after') || '?'} s${app ? ` (App „${app}“)` : ''}. Suche antwortet solange aus dem Speicher.`, { env: 'system', data: { method, path, retryAfter: res.headers.get('retry-after'), cls, app } });
       if (cls === 'critical' && attempt < maxAttempts - 1) continue; // acquire() wartet die Pause ab
       throw new RateLimitError(governor.pausedMs(), '429');
     }
@@ -76,6 +82,7 @@ async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
     if (res.status === 204 || res.status === 202) return null;
     if (!res.ok) {
       const text = await res.text().catch(() => '');
+      L.warn('spotify', 'spotify.error', `Spotify-Fehler ${res.status} bei ${method} ${path}${res.status === 404 && /player/.test(path) ? ' – kein aktives Wiedergabegerät?' : res.status === 403 ? ' – Premium nötig oder Funktion für diese App gesperrt' : res.status === 401 ? ' – Anmeldung abgelaufen, Konto neu verbinden' : ''}`, { env: 'system', data: { method, path, status: res.status, body: text.slice(0, 300), app } });
       const err = new Error(`Spotify ${method} ${path} -> ${res.status} ${text.slice(0, 120)}`);
       err.status = res.status;
       throw err;
@@ -265,7 +272,7 @@ export class RealPlayer {
       if (!this.app) throw new Error(`Player ${n}: die zugehörige Spotify-App fehlt – neu verbinden`);
       return tokenRequest({ grant_type: 'refresh_token', refresh_token: rt }, this.app);
     });
-    this.ctx = { tokens: this.tokens, gov: governorFor(this.app?.id) };
+    this.ctx = { tokens: this.tokens, gov: governorFor(this.app?.id), name: this.app ? `${this.app.name} · Player ${n}` : `Player ${n}` };
     this.volume = null;
     this.cache = { connected: false, playing: false, ended: false, uri: null, title: null, artist: null, positionMs: 0, durationMs: 0 };
     this.cacheTs = 0; this.error = null; this.deviceId = '';

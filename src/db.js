@@ -221,8 +221,12 @@ export function setSetting(key, value) {
     .run(key, JSON.stringify(value));
 }
 
+// Zusaetzlich ins Live-Protokoll (log.js haengt sich hier ein, ohne Import-Kreis)
+let eventHook = null;
+export const setEventHook = (fn) => { eventHook = fn; };
 export function logEvent(env, type, data = {}) {
   db.prepare('INSERT INTO events(env, ts, type, data) VALUES(?,?,?,?)').run(env, Date.now(), type, JSON.stringify(data));
+  eventHook?.(env, type, data);
 }
 
 export function transaction(fn) {

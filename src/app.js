@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config, validateConfig } from './config.js';
 import { openDb } from './db.js';
+import { resetLogs } from './log.js';
 import { resetCache, coverGet, coverSet, coverFailed, cacheGetStale } from './apicache.js';
 import { getDb } from './db.js';
 import { loadSettings, settings, onSettingsChange } from './settings.js';
@@ -27,7 +28,10 @@ import { rehearsalRouter } from './routes/rehearsal.js';
 import { createLiveTest } from './livetest.js';
 import { liveTestRouter } from './routes/livetest.js';
 import { aiRouter } from './routes/ai.js';
-import { startLightWorker } from './ai.js';
+import { logsRouter } from './routes/logs.js';
+import { companionRouter } from './routes/companion.js';
+import { startLightWorker, startGenreWorker, startMoodWatch } from './ai.js';
+import { sendNotify } from './notify.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -64,6 +68,7 @@ const PAGES = {
   prep: { file: 'prep.html', perm: 'viewPrep' },
   stage: { file: 'stage.html', perm: 'viewStage' },
   light: { file: 'light.html', perm: 'viewLight' },
+  logs: { file: 'logs.html', perm: 'viewLogs' },
   ton: { file: 'ton.html', perm: 'viewSound' },
   orga: { file: 'orga.html', perm: 'viewOrga' },
   dj: { file: 'dj.html', perm: 'viewDj' },
@@ -77,13 +82,13 @@ const PAGES = {
 };
 
 // Seite -> Funktionsschalter (ausgeschaltete Ansichten gibt es dann nicht mehr)
-const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', ton: 'viewTon', orga: 'viewOrga', dj: 'viewDj', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
+const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', logs: 'viewLogs', ton: 'viewTon', orga: 'viewOrga', dj: 'viewDj', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
   const problems = validateConfig();
   if (problems.length) throw new Error(problems.join(' '));
   openDb(dataDir);
-  resetCache();
+  resetCache(); resetLogs();
   loadSettings();
   ensureAdminPassword();
 
@@ -214,10 +219,12 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', extrasRouter(env, engines[env], hub));
     router.use('/api', djRouter(env, engines[env], hub));
     router.use('/api', aiRouter(env, engines[env], hub, { engines }));
+    router.use('/api', companionRouter(env, engines[env], hub));
     router.use('/api', vpnRouter());
     if (env === 'live') router.use('/api', ssoRouter());
     if (env === 'live') router.use('/api', rehearsalRouter(rehearsal));
-    if (env === 'live') router.use('/api', liveTestRouter(liveTest));   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
+    if (env === 'live') router.use('/api', liveTestRouter(liveTest));
+    if (env === 'live') router.use('/api', logsRouter());   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));
@@ -228,7 +235,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.type('html').send(renderPage('recap.html', base, env));
     });
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|ton|orga|dj|charts|wall|schedule|activity)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|logs|ton|orga|dj|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (PAGE_FEATURE[name] && !isOn(PAGE_FEATURE[name])) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Ausgeschaltet</title><p style="font:16px system-ui;padding:2rem">Diese Ansicht ist vom Admin ausgeschaltet.</p>');
@@ -271,8 +278,8 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   const timers = [];
   const monitor = createMonitor(engines);
   let stopBackup = () => {};
-  let stopLight = () => {};
-  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); stopLight = startLightWorker(engines, (env) => hub.pushEnv(env)); }
+  let stopLight = [];
+  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); stopLight = [startLightWorker(engines, (env) => hub.pushEnv(env)), startGenreWorker((env) => hub.pushEnv(env)), startMoodWatch(engines, sendNotify)]; }
   timers.push(setInterval(sweepSessions, 10 * 60000));
   timers.push(setInterval(() => shield.sweep(), 60000));
   timers.push(setInterval(() => { for (const l of limiters.values()) l.sweep(); }, 60000));
@@ -282,6 +289,6 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     app, server, engines, hub,
     monitor,
     rehearsal, liveTest,
-    async close() { if (rehearsal.isRunning()) rehearsal.stop('Server beendet'); if (liveTest.isRunning()) liveTest.stop(); timers.forEach(clearInterval); monitor.stop(); stopBackup(); stopLight(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
+    async close() { if (rehearsal.isRunning()) rehearsal.stop('Server beendet'); if (liveTest.isRunning()) liveTest.stop(); timers.forEach(clearInterval); monitor.stop(); stopBackup(); stopLight.forEach((f) => f()); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
   };
 }

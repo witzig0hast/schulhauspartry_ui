@@ -133,6 +133,7 @@ const NAV = [
   { label: 'Technik', path: '/tech', roles: ['admin', 'tech'], main: true },
   { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
   { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
+  { label: 'Protokoll', path: '/logs', g: 'Arbeiten', roles: ['admin', 'tech'], f: 'viewLogs', hint: 'Alles, was passiert – live, filterbar, mit Rohdaten' },
   { label: 'Vorbereitung', path: '/prep', g: 'Arbeiten', roles: ['admin', 'tech'], f: 'viewPrep', hint: 'Alles vor der Party prüfen & testen' },
   { label: 'Fokus-Modus', path: '/focus', g: 'Arbeiten', roles: ['admin', 'tech', 'mod', 'dj'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
   { label: 'Live-Wünsche', path: '/ticker', g: 'Bildschirme für Gäste', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewTicker', hint: 'Neue Wünsche & Entscheidungen live' },
@@ -198,7 +199,7 @@ addEventListener('DOMContentLoaded', () => {
 });
 
 // ---- WebSocket mit Reconnect; optionaler Ping (nur Spezialansichten) ----
-export function connect({ onState, onGuest, onStatus, ping = false, view = '' }) {
+export function connect({ onState, onGuest, onStatus, onLogs, ping = false, view = '' }) {
   let ws, retry = 0, closed = false, pingTimer, pingEl;
   if (ping) { pingEl = buildTag(); pingEl.textContent = `Ping – ms · v${BUILD}`; }
   const open = () => {
@@ -207,6 +208,7 @@ export function connect({ onState, onGuest, onStatus, ping = false, view = '' })
     ws.onopen = () => {
       retry = 0; onStatus?.(true);
       if (view) ws.send(JSON.stringify({ type: 'hello', view }));
+      if (onLogs) ws.send(JSON.stringify({ type: 'logs', on: true }));
       if (ping) {
         clearInterval(pingTimer);
         const send = () => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping', ts: performance.now() })); };
@@ -217,6 +219,7 @@ export function connect({ onState, onGuest, onStatus, ping = false, view = '' })
       const m = JSON.parse(e.data);
       if (m.type === 'state') onState?.(m.data);
       else if (m.type === 'guest') onGuest?.(m.data);
+      else if (m.type === 'logs') onLogs?.(m.data);
       else if (m.type === 'pong' && pingEl) pingEl.textContent = `Ping ${Math.round(performance.now() - m.ts)} ms · v${BUILD}`;
     };
     ws.onclose = (e) => {

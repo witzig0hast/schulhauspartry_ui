@@ -11,6 +11,9 @@ import { buildAnalytics } from '../analytics.js';
 import { isOn, requireFeature } from '../features.js';
 import { logEvent, getDb } from '../db.js';
 import { audit } from '../audit.js';
+import * as L from '../log.js';
+
+const staffActor = (req) => ({ kind: 'staff', label: req.session?.label || null, role: req.session?.role || null });
 
 
 const num = (v, d, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
@@ -72,6 +75,8 @@ export function staffRouter(env, engine, hub) {
     if (action === 'deny' && reason && !settings().rejectReasons.includes(String(reason))) throw new Error('Ungültiger Ablehnungsgrund');
     const out = rq.decide(env, Number(id), { action, reason, player: pl ? Number(pl) : null, accountId: req.session.accountId }, engine.current);
     if (out.ok && action === 'approve') engine.afterQueueChange(); // Genre-Balance / Stimmung, Meta laden
+    if (out.ok) { const q = out.request; L.info('moderation', `request.${action === 'approve' ? 'approved' : action === 'deny' ? 'denied' : 'later'}`, `${{ approve: 'Angenommen', deny: 'Abgelehnt', later: 'Zurückgestellt' }[action]}: ${q.title} – ${q.artist}${action === 'deny' && reason ? ` (${reason})` : ''}${action === 'approve' && q.player ? ` → Player ${q.player}` : ''}`, { env, actor: staffActor(req), data: { id: q.id, trackId: q.trackId, action, reason: reason || null, player: q.player, votes: q.votes } }); }
+    else L.info('moderation', 'request.conflict', `Entscheidung nicht möglich: ${out.error}`, { env, actor: staffActor(req), data: { id, action, status: out.status } });
     hub.pushEnv(env, { guests: true });
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     res.json({ ok: true, request: { id: out.request.id, status: out.request.status, player: out.request.player } });
@@ -79,6 +84,7 @@ export function staffRouter(env, engine, hub) {
 
   r.post('/mod/prioritize', requirePerm('prioritize'), wrap((req, res) => {
     const out = rq.prioritize(env, Number(req.body?.id), req.session.accountId, engine.current);
+    if (out.ok) L.info('moderation', 'request.prioritized', `★ Vorgezogen auf Platz ${out.position}: ${out.request.title}`, { env, actor: staffActor(req), data: { id: out.request.id, position: out.position } });
     hub.pushEnv(env, { guests: true });
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     res.json({ ok: true, position: out.position });
@@ -86,6 +92,7 @@ export function staffRouter(env, engine, hub) {
 
   r.post('/mod/remove', requirePerm('moderate'), wrap((req, res) => {
     const ok = rq.removeFromQueue(env, Number(req.body?.id), req.session.accountId);
+    if (ok) { const q = rq.getRequest(Number(req.body?.id)); L.info('moderation', 'request.removed', `Aus der Warteschlange entfernt: ${q?.title}`, { env, actor: staffActor(req), data: { id: q?.id } }); }
     hub.pushEnv(env, { guests: true });
     res.json({ ok });
   }));
@@ -127,6 +134,13 @@ export function staffRouter(env, engine, hub) {
   const ctlPerm = requirePerm('control');
   // Im Wunschlisten-Modus gibt es keine Wiedergabe ueber die App (ein DJ spielt selbst)
   const ctl = (req, res, next) => ctlPerm(req, res, () => (settings().operation.mode === 'wishlist' ? res.status(409).json({ error: 'Wunschlisten-Modus: Die App spielt keine Musik ab (der DJ spielt selbst).' }) : next()));
+  // Jeder Technik-Knopf landet im Protokoll (wer, was, womit)
+  const CTL_TEXT = { play: 'Play', pause: 'Pause', 'fade-in': 'Einblenden', 'fade-out': 'Ausblenden', crossfade: 'Crossfade von Hand', 'panic-clear': 'Not-Aus aufheben', end: 'Ende-Modus', 'end-clear': 'Ende-Modus aufheben', emergency: 'Notfall-Playlist', 'emergency-clear': 'Notfall beenden' };
+  r.use('/control/:act', (req, res, next) => {
+    const act = req.params.act, t = CTL_TEXT[act];   // merken: req.params aendert sich beim weiteren Routing
+    if (t && req.method === 'POST') res.on('finish', () => L.log(res.statusCode < 400 ? 'info' : 'warn', 'wiedergabe', `control.${act}`, `${t}${req.body?.player ? ` (Player ${req.body.player})` : ''}${res.statusCode >= 400 ? ` – abgelehnt (${res.statusCode})` : ''}`, { env, actor: staffActor(req), data: { action: act, body: req.body || null, status: res.statusCode } }));
+    next();
+  });
   r.post('/control/play', ctl, wrap(async (req, res) => { await engine.play(player(req.body.player)); res.json({ ok: true }); }));
   r.post('/control/pause', ctl, wrap(async (req, res) => { await engine.pause(player(req.body.player)); res.json({ ok: true }); }));
   r.post('/control/fade-in', ctl, wrap(async (req, res) => { await engine.fadeIn(player(req.body.player), num(req.body.sec, 5, 0.1, 120)); res.json({ ok: true }); }));

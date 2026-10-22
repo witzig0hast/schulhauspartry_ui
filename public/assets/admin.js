@@ -177,6 +177,7 @@ function viewConnections() {
       h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Eigenes Budget'), budget, h('span', { class: 'small muted' }, 'Anfragen pro 30 s und App (Standard 60)'),
         h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
+    companionCard(),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
       field('Anbindung', adapter), field('Pi-URL(s) des Relays', piUrl), field('Token', piToken),
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
@@ -185,6 +186,38 @@ function viewConnections() {
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
       h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
+}
+
+// Hardware-Knoepfe ueber Bitfocus Companion (Stream Deck): Token, Adressen, Anleitung
+const COMPANION_ACTIONS = [['crossfade', 'Crossfade zum nächsten Song'], ['panic', 'NOT-AUS (2× innerhalb von 4 s)'], ['panic-clear', 'Not-Aus aufheben'], ['play-1', 'Player 1 Play'], ['pause-1', 'Player 1 Pause'], ['play-2', 'Player 2 Play'], ['pause-2', 'Player 2 Pause'],
+  ['fade-in-1', 'P1 einblenden'], ['fade-out-1', 'P1 ausblenden'], ['fade-in-2', 'P2 einblenden'], ['fade-out-2', 'P2 ausblenden'], ['wishes-open', 'Wünsche öffnen'], ['wishes-pause', 'Wünsche pausieren'], ['wishes-close', 'Wünsche schließen'],
+  ['pause-mode', 'Pausen-Modus an/aus'], ['auto-toggle', 'Auto-Crossfade an/aus'], ['ducking-toggle', 'Ducking an/aus'], ['emergency', 'Notfall-Playlist an/aus'], ['end', 'Ende-Modus an/aus']];
+function companionCard() {
+  if (!data.features.flags.companion) return h('span');
+  const c = data.settings.companion;
+  const base = `${data.publicUrl || origin()}`;
+  const testBase = data.settings.test.enabled ? `${base}/${data.settings.test.prefix}` : null;
+  const tokenBox = h('div');
+  const copy = (t) => () => navigator.clipboard.writeText(t).then(() => toast('Kopiert'), () => toast(t));
+  const urlRow = (label, url) => h('div', { class: 'linkrow' }, h('div', { class: 'lbl' }, label), h('div', { class: 'url' }, url), h('button', { class: 'small', onclick: copy(url) }, 'Kopieren'));
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🎛 Companion / Stream Deck'), h('span', { class: `badge ${c.enabled && c.hasToken ? 'ok' : ''}` }, c.enabled && c.hasToken ? 'aktiv' : 'aus')),
+    h('p', { class: 'small muted' }, 'Echte Tasten für die Technik: In Bitfocus Companion das Modul „Generic HTTP“ hinzufügen. Pro Taste eine Aktion „POST“ mit der Adresse unten und dem Header ', h('code', {}, '{"Authorization": "Bearer <Token>"}'), '. Für Anzeigen auf den Tasten (Titel, Countdown, Not-Aus) die Status-Adresse per GET abfragen und als Variablen nutzen.'),
+    h('div', { class: 'row' },
+      h('button', { class: 'primary', onclick: safe(async () => {
+        if (c.hasToken && !confirm('Neuen Token erzeugen? Der alte funktioniert dann nicht mehr – Companion muss den neuen bekommen.')) return;
+        const out = await api('/admin/companion/token', { method: 'POST', body: {} });
+        clear(tokenBox).append(h('div', { class: 'banner-pause stack' }, h('b', {}, 'Token (wird nur jetzt angezeigt):'), h('code', { style: 'user-select:all;word-break:break-all' }, out.token), h('button', { class: 'small', style: 'justify-self:start', onclick: copy(`{"Authorization": "Bearer ${out.token}"}`) }, 'Header für Companion kopieren')));
+        data.settings.companion = { enabled: true, hasToken: true };
+      }) }, c.hasToken ? '↻ Neuen Token erzeugen' : 'Token erzeugen & aktivieren'),
+      c.hasToken ? h('button', { onclick: () => save({ companion: { enabled: !c.enabled } }, c.enabled ? 'Companion aus' : 'Companion an') }, c.enabled ? 'Ausschalten' : 'Einschalten') : null,
+      c.hasToken ? h('button', { class: 'ghost small', onclick: () => { if (confirm('Token löschen? Companion-Tasten funktionieren dann nicht mehr.')) save({ companion: { clearToken: true } }, 'Token gelöscht'); } }, 'Token löschen') : null),
+    tokenBox,
+    h('details', { class: 'more' }, h('summary', {}, 'Adressen für die Tasten'),
+      h('div', { class: 'stack', style: 'margin-top:8px' },
+        urlRow('Status (GET)', `${base}/api/companion/state`),
+        ...COMPANION_ACTIONS.map(([id, label]) => urlRow(label, `${base}/api/companion/action/${id}`)),
+        h('p', { class: 'small muted' }, 'Fade- und Crossfade-Dauer lässt sich anhängen, z. B. ', h('code', {}, '…/action/crossfade?sec=6'), '. Not-Aus braucht zwei Drücke innerhalb von 4 Sekunden (Status zeigt „panic_armed“).'),
+        testBase ? h('p', { class: 'small muted' }, 'Für den Testmodus statt der Adresse oben: ', h('code', {}, `${testBase}/api/companion/…`)) : null)));
 }
 
 // Was die App schon von Spotify weiss, fragt sie nicht noch einmal (dauerhaft gespeichert, auch nach Neustart)
@@ -343,7 +376,7 @@ function viewAutomation() {
   const eShuf = chk(em.shuffle);
   const nOn = chk(nt.enabled), nUrl = h('input', { value: nt.url, placeholder: 'https://ntfy.sh oder eigener Server' }), nTopic = h('input', { value: nt.topic, placeholder: 'geheimes-topic-name' });
   const nTok = h('input', { type: 'password', placeholder: nt.token ? '(gesetzt – leer lassen zum Behalten)' : 'Zugriffstoken (optional)', autocomplete: 'new-password' }), nDown = num(nt.downSec, { min: 5, max: 300 });
-  const EVLABEL = { x32: 'X32/Pi nicht erreichbar', spotify: 'Spotify-Problem oder -Limit', player: 'Player getrennt', panic: 'Not-Aus ausgelöst', queueEmpty: 'Warteschlange leer', emergency: 'Notfall-Playlist gestartet', backup: 'Backup fehlgeschlagen' };
+  const EVLABEL = { x32: 'X32/Pi nicht erreichbar', spotify: 'Spotify-Problem oder -Limit', player: 'Player getrennt', panic: 'Not-Aus ausgelöst', queueEmpty: 'Warteschlange leer', emergency: 'Notfall-Playlist gestartet', backup: 'Backup fehlgeschlagen', mood: 'KI: Stimmung kippt' };
   const evs = Object.fromEntries(Object.keys(nt.events).map((k) => [k, chk(nt.events[k])]));
   const sta = s.start, opn = s.opening;
   const stPl = h('input', { value: sta.playlist, placeholder: 'Playlist-Link oder -ID' }), stMin = num(sta.minQueue, { min: 1, max: 10, class: 'num' }), stAuto = chk(sta.autoStart), stAt = h('input', { type: 'time', value: sta.startAt });
@@ -556,6 +589,10 @@ function viewAi() {
       feat('aiLight', 'Licht-Vorschläge: Farben, Tempo, Intensität, Strobo im Licht-Dashboard'),
       feat('aiHelp', 'Fehler-Assistent: „Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard'),
       feat('aiRecap', 'Rückblick: Bericht & Export → „Rückblick schreiben“'),
+      feat('aiGenres', 'Genres nachtragen: wenn Spotify keine liefert (im Licht-Dashboard mit „🤖 KI“ markiert)'),
+      feat('aiSummary', 'Wunsch-Zusammenfassung: Moderation → „Zusammenfassen“'),
+      h('div', { class: 'row' }, feat('aiMood', 'Stimmungs-Warnung: alle 10 Minuten, Meldung nur per ntfy (Automatik → Alarm aufs Handy)'),
+        h('button', { class: 'small', onclick: safe(async () => { const r = await api('/ai/mood', { method: 'POST', body: {} }); toast(r.drop ? `Kippt (${r.severity}): ${r.reason}` : `In Ordnung: ${r.reason}`); }) }, 'Jetzt einmal prüfen')),
       h('p', { class: 'small muted' }, 'Einzeln an- und ausschalten unter Zugang → Funktionen (Gruppe „KI“). Modell-Tipp: Für deutsche Texte und sauberes JSON eignen sich z. B. Qwen 2.5/3 oder Llama 3.1 ab 7–8 B Parametern; kleinere Modelle sind schneller, liefern aber öfter unbrauchbare Vorschläge.')));
 }
 

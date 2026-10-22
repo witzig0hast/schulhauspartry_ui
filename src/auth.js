@@ -37,6 +37,7 @@ export const PERMS = {
   connections: ['admin', 'tech', 'display', 'light'], // Mics, Verbindungsampel
   viewSound: ['admin', 'tech', 'orga', 'display'],                 // Ton-Dashboard
   viewOrga: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],     // Orga-Dashboard
+  viewLogs: ['admin', 'tech'],                                     // Live-Protokoll
 };
 export const can = (role, perm) => !!role && (PERMS[perm] || []).includes(role);
 
@@ -51,6 +52,7 @@ export const START_VIEWS = [
   { path: '/orga', label: 'Dashboard Orga / Einlass', perm: 'viewOrga', feature: 'viewOrga' },
   { path: '/dj', label: 'DJ', perm: 'viewDj', feature: 'viewDj' },
   { path: '/foh', label: 'FOH-Anzeige', perm: 'viewFoh', feature: 'viewFoh' },
+  { path: '/logs', label: 'Protokoll', perm: 'viewLogs', feature: 'viewLogs' },
   { path: '/board', label: 'Board', perm: 'viewBoard', feature: 'viewBoard' },
   { path: '/focus', label: 'Fokus-Modus', perm: 'moderate', feature: 'viewFocus' },
 ];

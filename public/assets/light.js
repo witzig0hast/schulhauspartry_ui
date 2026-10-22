@@ -14,9 +14,9 @@ const deptSlot = h('div');
 const pad = (n) => String(n).padStart(2, '0');
 const hhmmss = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
-const chips = (genres, families) => h('div', { class: 'lt-chips' },
+const chips = (genres, families, ai = false) => h('div', { class: 'lt-chips' },
   ...(families || []).map((f) => h('span', { class: `lt-fam ${f === 'Unbekannt' ? 'unk' : ''}` }, f)),
-  ...((genres || []).slice(0, 4).map((g) => h('span', { class: 'lt-gen' }, g))));
+  ...((genres || []).slice(0, 4).map((g) => h('span', { class: 'lt-gen' }, g))), ai ? h('span', { class: 'lt-gen', title: 'Genres von der KI ergänzt (Spotify lieferte keine)' }, '🤖 KI') : null);
 
 // KI-Lichtvorschlag (Farben, Tempo, Intensitaet, Strobo) – kompakt fuer die Warteschlange, ausfuehrlich fuer den laufenden Song
 const cueLine = (c, big = false) => (!c ? null : h('div', { class: 'stack', style: 'gap:2px' },
@@ -62,7 +62,7 @@ function render() {
     h('div', { class: 'lt-hero-main' }, coverOnce(cur.p.title, 'xl', cur.p.trackId), h('div', { class: 'lt-main grow', style: 'min-width:0' },
       h('div', { class: 'eyebrow' }, `Jetzt läuft · Player ${cur.n}${meta?.auto ? ' · Auto-Lückenfüller' : meta ? ' · Gästewunsch' : ''}`),
       h('div', { class: 'lt-title' }, cur.p.title), h('div', { class: 'lt-artist' }, cur.p.artist),
-      meta ? chips(meta.genres, meta.families) : null,
+      meta ? chips(meta.genres, meta.families, meta.genresAi) : null,
       cueLine(meta?.light, true),
       h('div', { class: 'lt-facts' }, meta?.year ? h('span', {}, `${meta.year}`) : null, h('span', {}, `Länge ${mmss(cur.p.durationMs)}`), h('span', {}, `noch ${mmss(left)}`), meta?.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null),
       h('div', { class: 'bar lt-bar' }, h('i', { style: `width:${Math.round(100 * (cur.p.durationMs ? 1 - left / cur.p.durationMs : 0))}%` })))),
@@ -81,7 +81,7 @@ function render() {
         h('div', { class: 'lt-time' }, eta != null ? h('div', { class: 'lt-eta mono' }, `in ${mmss(eta)}`) : h('div', { class: 'lt-eta muted' }, i === 0 ? 'als Nächstes' : `+${i}`), eta != null ? h('div', { class: 'tiny muted mono' }, hhmmss(Date.now() + eta)) : null),
         coverOnce(u.title, 'lg', u.trackId),
         h('div', { class: 'grow' },
-          h('div', { class: 'lt-t' }, u.title), h('div', { class: 'lt-a' }, u.artist), chips(u.genres, u.families), cueLine(u.light),
+          h('div', { class: 'lt-t' }, u.title), h('div', { class: 'lt-a' }, u.artist), chips(u.genres, u.families, u.genresAi), cueLine(u.light),
           h('div', { class: 'lt-facts' }, u.year ? h('span', {}, `${u.year}`) : null, u.durationMs ? h('span', {}, `Länge ${mmss(u.durationMs)}`) : null,
             u.introMs > 15000 ? h('span', { class: 'badge', title: 'Langes ruhiges Intro' }, `♪ Intro ${Math.round(u.introMs / 1000)} s`) : null,
             u.prioritized ? h('span', { class: 'badge bad' }, '★ Prio') : null, u.auto ? h('span', { class: 'badge' }, 'Auto') : h('span', { class: 'badge ok' }, `Wunsch${u.votes > 1 ? ` · ${u.votes}×` : ''}`),

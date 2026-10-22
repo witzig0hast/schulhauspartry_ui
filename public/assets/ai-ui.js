@@ -84,3 +84,25 @@ export async function aiCard() {
       f.help ? h('button', { onclick: () => clear(out).append(helpPanel()) }, '🩺 Was ist los?') : null),
     out);
 }
+
+// ---- Wunsch-Zusammenfassung (Moderation) ----
+export async function summaryBox() {
+  const st = await aiStatus();
+  if (!st?.ready || !st.features.summary) return null;
+  const out = h('div');
+  const run = async () => {
+    busy(out, 'Die KI liest die offenen Wünsche …');
+    try {
+      const r = await api('/ai/summary', { method: 'POST', body: {} });
+      clear(out).append(h('div', { class: 'stack', style: 'gap:8px' },
+        h('div', {}, h('b', {}, r.overview)),
+        r.groups.length ? h('div', { class: 'row', style: 'gap:6px' }, ...r.groups.map((g) => h('span', { class: 'badge' }, `${g.name} · ${g.count}`))) : null,
+        r.flagged.length ? h('div', { class: 'stack', style: 'gap:2px' }, h('div', { class: 'eyebrow' }, 'Bitte genauer ansehen'),
+          ...r.flagged.map((f) => h('div', { class: 'q-row' }, cover(f.title, 'sm', f.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, f.title), h('div', { class: 'a' }, f.artist)), h('span', { class: 'badge warn' }, f.reason)))) : null,
+        r.advice ? h('div', { class: 'small' }, `👉 ${r.advice}`) : null,
+        h('div', { class: 'tiny muted' }, 'Nur ein Überblick der KI – entscheiden tust du.')));
+    } catch (e) { fail(out, e); }
+  };
+  return h('div', { class: 'card stack', style: 'padding:12px 14px;margin-bottom:10px' },
+    h('div', { class: 'row between' }, h('b', {}, '🤖 Überblick über die offenen Wünsche'), h('button', { class: 'small', onclick: run }, 'Zusammenfassen')), out);
+}

@@ -5,7 +5,8 @@ import { familiesOf } from './genres.js';
 import { localHHMM, currentPhase } from './autoorder.js';
 import { isBlacklisted, playedBlock } from './blocklist.js';
 import { cacheGetStale, cacheSet } from './apicache.js';
-import { setSetting, getSetting } from './db.js';
+import { setSetting, getSetting, getDb } from './db.js';
+import * as L from './log.js';
 
 // KI-Funktionen ueber einen eigenen Ollama-Server (ein Modell fuer alles).
 // Grundsaetze: die KI schlaegt nur vor, ein Mensch entscheidet (Ausnahme: Licht-Vorschlaege und der optionale
@@ -59,8 +60,19 @@ export function chat(opts) {
   waiting++;
   const p = chain.then(() => rawChat({ temperature: 0.3, maxTokens: 900, ...opts }));
   chain = p.catch(() => {}).finally(() => { waiting--; });
-  return p.then((v) => { stats.calls++; stats.lastOk = Date.now(); stats.lastError = null; return v; }, (e) => { stats.errors++; stats.lastError = e.message; throw e; });
+  const t0 = Date.now(), task = opts.task || 'chat';
+  return p.then((v) => {
+    stats.calls++; stats.lastOk = Date.now(); stats.lastError = null;
+    L.info('ki', `ai.${task}`, `KI (${TASK_NAMES[task] || task}) hat in ${((Date.now() - t0) / 1000).toFixed(1)} s geantwortet`, { env: 'system', actor: { kind: 'ai', model: settings().ai.model }, data: { task, model: settings().ai.model, ms: Date.now() - t0, answer: v } });
+    return v;
+  }, (e) => {
+    stats.errors++; stats.lastError = e.message;
+    L.warn('ki', `ai.${task}.failed`, `KI (${TASK_NAMES[task] || task}) fehlgeschlagen: ${e.message}`, { env: 'system', data: { task, model: settings().ai.model, ms: Date.now() - t0 } });
+    throw e;
+  });
 }
+
+const TASK_NAMES = { energy: 'Energie-Kurve', filler: 'Lückenfüller', light: 'Licht-Vorschlag', help: 'Fehler-Assistent', recap: 'Rückblick', test: 'Verbindungstest', genres: 'Genres', summary: 'Wunsch-Zusammenfassung', mood: 'Stimmungs-Warnung' };
 
 export async function listModels(url = settings().ai.url) {
   if (!url) throw new AiError('Keine Ollama-Adresse eingetragen.', 400);
@@ -117,7 +129,7 @@ export async function suggestEnergy(engine) {
     zuletzt_gespielt: rq.history(env, 8).map(songOf),
     warteschlange: up.map((u) => ({ id: u.id, ...songOf(u), votes: u.votes, quelle: u.deviceId === 'auto' ? 'Füllsong' : 'Wunsch', fest: fixed.includes(u) })),
   };
-  const out = await chat({ system: ENERGY_SYS, user: data, schema: ENERGY_SCHEMA, temperature: 0.4 });
+  const out = await chat({ task: 'energy', system: ENERGY_SYS, user: data, schema: ENERGY_SCHEMA, temperature: 0.4 });
   // Reihenfolge pruefen: nur bekannte, freie IDs, jede einmal; Fehlende behalten ihre bisherige Reihenfolge am Ende
   const freeIds = free.map((u) => u.id), seen = new Set();
   const order = (Array.isArray(out.reihenfolge) ? out.reihenfolge : []).map(Number).filter((id) => freeIds.includes(id) && !seen.has(id) && seen.add(id));
@@ -163,7 +175,7 @@ export async function suggestFiller(engine, n = 6) {
     letzte_wuensche: wishes.map(songOf), zuletzt_gespielt: recent.map(songOf),
     schon_gespielt_oder_geplant: [...recent, ...rq.upcoming(env)].map((r) => `${r.title} – ${r.artist}`).slice(0, 40),
   };
-  const out = await chat({ system: FILLER_SYS, user: data, schema: FILLER_SCHEMA, temperature: 0.6 });
+  const out = await chat({ task: 'filler', system: FILLER_SYS, user: data, schema: FILLER_SCHEMA, temperature: 0.6 });
   const known = new Set([...recent, ...rq.upcoming(env), ...rq.pending(env)].map((r) => r.trackId));
   const now = Date.now();
   const result = [];
@@ -240,7 +252,7 @@ export function lightCue(trackId) {
 }
 const lightBusy = new Set(), lightFailed = new Map();
 export async function makeLightCue(r) {
-  const out = cleanLight(await chat({ system: LIGHT_SYS, user: { ...songOf(r), dauer_s: r.durationMs ? Math.round(r.durationMs / 1000) : null, intro_s: r.introMs ? Math.round(r.introMs / 1000) : null }, schema: LIGHT_SCHEMA, temperature: 0.4, maxTokens: 500 }));
+  const out = cleanLight(await chat({ task: 'light', system: LIGHT_SYS, user: { ...songOf(r), dauer_s: r.durationMs ? Math.round(r.durationMs / 1000) : null, intro_s: r.introMs ? Math.round(r.introMs / 1000) : null }, schema: LIGHT_SCHEMA, temperature: 0.4, maxTokens: 500 }));
   if (!out) throw new AiError('Keine verwertbare Licht-Antwort.');
   cacheSet('ailight', r.trackId, out); lightMem.set(r.trackId, out);
   return out;
@@ -292,7 +304,7 @@ const HELP_SYS = sys(
 );
 
 export async function diagnose(context, question = '') {
-  const out = await chat({ system: HELP_SYS, user: { frage: String(question || '').slice(0, 400) || null, ...context }, schema: HELP_SCHEMA, temperature: 0.2, maxTokens: 1200 });
+  const out = await chat({ task: 'help', system: HELP_SYS, user: { frage: String(question || '').slice(0, 400) || null, ...context }, schema: HELP_SCHEMA, temperature: 0.2, maxTokens: 1200 });
   return {
     summary: String(out.zusammenfassung || '').slice(0, 400), level: ['ok', 'warn', 'fail'].includes(out.ampel) ? out.ampel : 'warn', answer: String(out.antwort || '').slice(0, 800),
     problems: (Array.isArray(out.probleme) ? out.probleme : []).slice(0, 4).map((p) => ({ title: String(p.titel || '').slice(0, 100), severity: ['hoch', 'mittel', 'niedrig'].includes(p.schwere) ? p.schwere : 'mittel', cause: String(p.ursache || '').slice(0, 300), steps: (Array.isArray(p.schritte) ? p.schritte : []).slice(0, 6).map((x) => String(x).slice(0, 160)) })),
@@ -318,9 +330,142 @@ export async function writeRecap(env, report, analytics) {
     genres: analytics?.genres?.requested?.slice(0, 6) || [], interpreten: analytics?.artists?.requested?.slice(0, 6) || [],
     fehler: report.errors, not_aus: report.panics,
   };
-  const out = await chat({ system: RECAP_SYS, user: data, schema: RECAP_SCHEMA, temperature: 0.7, maxTokens: 1400 });
+  const out = await chat({ task: 'recap', system: RECAP_SYS, user: data, schema: RECAP_SCHEMA, temperature: 0.7, maxTokens: 1400 });
   const recap = { title: String(out.titel || 'Rückblick').slice(0, 120), guests: String(out.text_gaeste || '').slice(0, 3000), team: String(out.text_team || '').slice(0, 3000), ts: Date.now(), model: settings().ai.model };
   setSetting(`ai:recap:${env}`, recap);
   return recap;
 }
 export const lastRecap = (env) => getSetting(`ai:recap:${env}`, null);
+
+// ---------- Genres nachtragen ----------
+// Neuere Spotify-Apps liefern oft keine Genres. Dann ordnet die KI den Song selbst ein – nur aus einer festen Liste,
+// damit Auswertungen, Licht-Dashboard und Auto-Ordnung damit rechnen koennen.
+export const GENRE_LIST = ['pop', 'dance pop', 'german pop', 'synthpop', 'k-pop', 'schlager', 'partyschlager', 'neue deutsche welle', 'deutschrock', 'hip hop', 'german hip hop', 'rap', 'trap',
+  'r&b', 'soul', 'edm', 'house', 'techno', 'trance', 'eurodance', 'drum and bass', 'disco', 'funk', 'latin pop', 'reggaeton', 'rock', 'pop rock', 'indie rock', 'classic rock', 'hard rock', 'metal', 'punk',
+  'reggae', 'dancehall', 'country', 'folk', 'jazz', 'blues', 'classical', 'singer-songwriter'];
+const GENRE_SCHEMA = { type: 'object', properties: { genres: { type: 'array', items: { type: 'string', enum: GENRE_LIST } }, sicher: { type: 'boolean' } }, required: ['genres', 'sicher'] };
+const GENRE_SYS = sys(
+  'Rolle: Musik-Redakteur:in, die Songs Genres zuordnet.',
+  '- Wähle 1 bis 3 passende Genres ausschließlich aus der erlaubten Liste (Feld "genres" im Schema), das wichtigste zuerst.',
+  '- "sicher": true nur, wenn du den Song oder Interpreten wirklich kennst; sonst leite vorsichtig aus Titel, Interpret, Sprache und Jahr ab und setze false.',
+);
+const genreMem = new Map();
+export function aiGenresOf(trackId) {
+  if (!trackId) return null;
+  if (!genreMem.has(trackId)) { genreMem.set(trackId, cacheGetStale('aigenre', trackId)); if (genreMem.size > 3000) genreMem.delete(genreMem.keys().next().value); }
+  return genreMem.get(trackId) || null;
+}
+export async function guessGenres(r) {
+  const out = await chat({ task: 'genres', system: GENRE_SYS, user: { titel: r.title, interpret: r.artist, jahr: r.year || null }, schema: GENRE_SCHEMA, temperature: 0.1, maxTokens: 120 });
+  const genres = [...new Set((Array.isArray(out.genres) ? out.genres : []).filter((g) => GENRE_LIST.includes(g)))].slice(0, 3);
+  if (!genres.length) throw new AiError('Keine Genres erkannt.');
+  const val = { genres, sure: !!out.sicher };
+  cacheSet('aigenre', r.trackId, val); genreMem.set(r.trackId, val);
+  // Alle Eintraege dieses Songs ohne Genres ergaenzen (gleicher Song kann mehrfach vorkommen)
+  getDb().prepare("UPDATE requests SET genres = ? WHERE track_id = ? AND (genres IS NULL OR genres = '[]')").run(JSON.stringify(genres), r.trackId);
+  L.info('ki', 'genres.filled', `Genres ergänzt: ${r.title} – ${r.artist} → ${genres.join(', ')}${val.sure ? '' : ' (geschätzt)'}`, { env: 'system', actor: { kind: 'ai' }, data: { trackId: r.trackId, genres, sure: val.sure } });
+  return val;
+}
+const genreFailed = new Map();
+function startGenreWorker(onNew) {
+  let busy = false;
+  const t = setInterval(async () => {
+    if (busy || !aiOn('aiGenres')) return;
+    const now = Date.now();
+    const rows = getDb().prepare("SELECT env, track_id, title, artist, year FROM requests WHERE ((genres IS NULL AND created_at < ?) OR genres = '[]') AND created_at > ? ORDER BY id DESC LIMIT 30").all(now - 30000, now - 7 * 86400000);
+    const r = rows.find((x) => x.track_id && now - (genreFailed.get(x.track_id) || 0) > 30 * 60000);
+    if (!r) return;
+    busy = true;
+    try {
+      const known = aiGenresOf(r.track_id);
+      if (known) getDb().prepare("UPDATE requests SET genres = ? WHERE track_id = ? AND (genres IS NULL OR genres = '[]')").run(JSON.stringify(known.genres), r.track_id);
+      else await guessGenres({ trackId: r.track_id, title: r.title, artist: r.artist, year: r.year });
+      onNew?.(r.env);
+    } catch { genreFailed.set(r.track_id, now); } finally { busy = false; }
+  }, 5000);
+  t.unref?.();
+  return () => clearInterval(t);
+}
+
+// ---------- Wunsch-Zusammenfassung fuer die Moderation ----------
+const SUMMARY_SCHEMA = { type: 'object', properties: {
+  ueberblick: { type: 'string' },
+  gruppen: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, anzahl: { type: 'integer' } }, required: ['name', 'anzahl'] } },
+  auffaellig: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' }, grund: { type: 'string' } }, required: ['id', 'grund'] } },
+  empfehlung: { type: 'string' },
+}, required: ['ueberblick', 'gruppen', 'auffaellig', 'empfehlung'] };
+const SUMMARY_SYS = sys(
+  'Rolle: hilft der Moderation, bei vielen offenen Wünschen schnell den Überblick zu behalten.',
+  '- "ueberblick": 1–2 Sätze (z. B. "14 offen, vor allem Deutschrap und Schlager; zwei Wünsche warten schon über 10 Minuten").',
+  '- "gruppen": die 3–6 größten Gruppen (Genre-Familie, Jahrzehnt oder Interpret – was am meisten hilft) mit Anzahl, größte zuerst.',
+  '- "auffaellig": Wünsche, die man prüfen sollte: Titel, die anzüglich, beleidigend oder für eine Schulparty unpassend sein könnten (auch ohne Explicit-Kennzeichen), offensichtliche Troll- oder Spaßwünsche, sehr lange Wartezeit, sehr viele Stimmen. Nur ids aus den Daten, höchstens 6, "grund" höchstens 8 Wörter. Lieber zu wenig als falscher Alarm.',
+  '- "empfehlung": ein Satz, womit die Moderation jetzt anfangen sollte.',
+  '- Du entscheidest nichts – du gibst nur einen Überblick.',
+);
+export async function summarizePending(env) {
+  const list = rq.pending(env).concat(rq.later(env)).slice(0, 60);
+  if (!list.length) return { overview: 'Keine offenen Wünsche.', groups: [], flagged: [], advice: '', count: 0 };
+  const now = Date.now();
+  const out = await chat({ task: 'summary', system: SUMMARY_SYS, temperature: 0.2, maxTokens: 700, schema: SUMMARY_SCHEMA,
+    user: { uhrzeit: localHHMM(), offen: list.map((r) => ({ id: r.id, titel: r.title, interpret: r.artist, explicit: !!r.explicit, stimmen: r.votes, familie: familiesOf(r.genres)[0], jahr: r.year || null, wartet_min: Math.round((now - r.createdAt) / 60000), zurueckgestellt: r.status === 'later' })) } });
+  const ids = new Map(list.map((r) => [r.id, r]));
+  return {
+    count: list.length, overview: String(out.ueberblick || '').slice(0, 300), advice: String(out.empfehlung || '').slice(0, 200),
+    groups: (Array.isArray(out.gruppen) ? out.gruppen : []).slice(0, 6).map((g) => ({ name: String(g.name || '').slice(0, 40), count: Math.max(0, Number(g.anzahl) || 0) })),
+    flagged: (Array.isArray(out.auffaellig) ? out.auffaellig : []).filter((x) => ids.has(Number(x.id))).slice(0, 6).map((x) => { const r = ids.get(Number(x.id)); return { id: r.id, title: r.title, artist: r.artist, trackId: r.trackId, reason: String(x.grund || '').slice(0, 80) }; }),
+  };
+}
+
+// ---------- Stimmungs-Warnung (nur per ntfy) ----------
+const MOOD_SCHEMA = { type: 'object', properties: { kippt: { type: 'boolean' }, schwere: { type: 'string', enum: ['niedrig', 'mittel', 'hoch'] }, grund: { type: 'string' }, vorschlag: { type: 'string' } }, required: ['kippt', 'schwere', 'grund', 'vorschlag'] };
+const MOOD_SYS = sys(
+  'Rolle: erfahrene:r Party-DJ, der/die aus den Zahlen erkennt, ob die Stimmung gerade kippt.',
+  'Anzeichen: deutlich weniger Wünsche als vorher, viele Ablehnungen, mehrere ruhige oder unbekannte Songs am Stück, häufige Genre-Brüche, leere Warteschlange, lange Pause.',
+  'Normal ist: am Anfang wenig los, gegen Ende ruhiger (Ausklang) – das ist kein Kippen.',
+  '- "kippt": nur true, wenn mehrere Anzeichen zusammenkommen. Im Zweifel false – Fehlalarme nerven.',
+  '- "schwere": niedrig/mittel/hoch. "grund": ein Satz mit den konkreten Zahlen. "vorschlag": ein konkreter Satz, was die Technik jetzt tun kann (z. B. welchen Wunsch aus der Warteschlange vorziehen).',
+);
+async function checkMood(engine) {
+  const env = engine.env, now = Date.now();
+  const db = getDb();
+  const wishes = (from, to) => db.prepare("SELECT COUNT(*) c FROM requests WHERE env = ? AND device_id NOT IN ('auto','staff') AND created_at >= ? AND created_at < ?").get(env, now - from * 60000, now - to * 60000).c;
+  const decided = db.prepare("SELECT status, COUNT(*) c FROM requests WHERE env = ? AND decided_at > ? GROUP BY status").all(env, now - 30 * 60000);
+  const played = rq.history(env, 8);
+  const data = {
+    uhrzeit: localHHMM(), phase: currentPhase()?.name || null,
+    wuensche_letzte_15_min: wishes(15, 0), wuensche_15_bis_30_min_davor: wishes(30, 15), wuensche_30_bis_60_min_davor: wishes(60, 30),
+    entscheidungen_30_min: Object.fromEntries(decided.map((d) => [d.status, d.c])),
+    zuletzt_gespielt: played.map((r) => ({ titel: r.title, interpret: r.artist, familie: familiesOf(r.genres)[0], quelle: r.deviceId === 'auto' ? 'Füllsong' : 'Wunsch', stimmen: r.votes, licht_intensitaet: lightCue(r.trackId)?.intensity ?? null })),
+    warteschlange: rq.upcoming(env).slice(0, 6).map((u) => ({ id: u.id, titel: u.title, interpret: u.artist, familie: familiesOf(u.genres)[0], stimmen: u.votes, quelle: u.deviceId === 'auto' ? 'Füllsong' : 'Wunsch' })),
+    offene_wuensche: rq.pending(env).length,
+  };
+  const out = await chat({ task: 'mood', system: MOOD_SYS, user: data, schema: MOOD_SCHEMA, temperature: 0.2, maxTokens: 300 });
+  const res = { drop: !!out.kippt, severity: ['niedrig', 'mittel', 'hoch'].includes(out.schwere) ? out.schwere : 'niedrig', reason: String(out.grund || '').slice(0, 300), idea: String(out.vorschlag || '').slice(0, 300) };
+  L.log(res.drop ? 'warn' : 'info', 'ki', 'mood.check', res.drop ? `Stimmung kippt (${res.severity}): ${res.reason}` : `Stimmung geprüft: in Ordnung (${res.reason})`, { env, actor: { kind: 'ai' }, data: { ...res, input: data } });
+  return res;
+}
+export function startMoodWatch(engines, notify) {
+  const last = {};
+  const tick = async () => {
+    if (!aiOn('aiMood')) return;
+    const n = settings().notify;
+    if (!isOn('notify') || !n.enabled || !n.topic || n.events.mood === false) return;   // Warnung geht nur aufs Handy (ntfy)
+    for (const engine of Object.values(engines)) {
+      const env = engine.env;
+      if (engine.wishlist || engine.liveTest || engine.state.ended || engine.state.panic) continue;
+      if (env !== 'live' && !engine.realConnections) continue;
+      if (![1, 2].some((p) => engine.players[p].status().playing)) continue;
+      if (rq.history(env, 4).length < 4) continue;                  // erst wenn der Abend laeuft
+      if (Date.now() - (last[env] || 0) < 10 * 60000) continue;    // hoechstens alle 10 Minuten pruefen
+      last[env] = Date.now();
+      try {
+        const r = await checkMood(engine);
+        if (r.drop && r.severity !== 'niedrig') await notify({ title: r.severity === 'hoch' ? '📉 Stimmung kippt!' : '📉 Stimmung lässt nach', message: `${r.reason}\n\n💡 ${r.idea}`, priority: r.severity === 'hoch' ? 4 : 3, tags: ['chart_with_downwards_trend'], key: `mood:${env}`, env });
+      } catch { /* naechstes Mal */ }
+    }
+  };
+  const t = setInterval(tick, 60000);
+  t.unref?.();
+  return Object.assign(() => clearInterval(t), { tick });   // tick fuer Tests direkt aufrufbar
+}
+export { startGenreWorker, checkMood };

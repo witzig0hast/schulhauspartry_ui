@@ -42,7 +42,7 @@ export const DEFAULTS = {
   autoOrder: { enabled: true, maxRepeat: 2, window: 4, mood: true, phases: [] }, // phases: [{name, from:'HH:MM', to:'HH:MM', prefer:[Genre-Familien]}]
   filler: { enabled: false, playlist: '', minQueue: 1, avoidMin: 90 },
   emergency: { playlist: '', player: 1, shuffle: true },
-  notify: { enabled: false, url: 'https://ntfy.sh', topic: '', token: '', downSec: 20, events: { x32: true, security: true, flood: true, spotify: true, player: true, panic: true, queueEmpty: true, emergency: true, backup: true } },
+  notify: { enabled: false, url: 'https://ntfy.sh', topic: '', token: '', downSec: 20, events: { x32: true, security: true, flood: true, spotify: true, player: true, panic: true, queueEmpty: true, emergency: true, backup: true, mood: true } },
   backup: { enabled: true, everyMin: 60, keep: 24 },
   brand: { name: 'Schulhauspartry', tagline: '', accent: '', logo: null },
   ducking: { enabled: false, db: -12, attackMs: 250, releaseMs: 900 },
@@ -57,6 +57,10 @@ export const DEFAULTS = {
   // Mehrere Spotify-Apps (Developer Dashboard): jede App hat ihr eigenes Anfrage-Limit. search = fuer die Gaeste-Suche mitnutzen.
   // Ein Player gehoert immer zu der App, ueber die er verbunden wurde (appId).
   spotify: { clientId: '', clientSecret: '', apiBudget: 60, apps: [], players: { 1: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' }, 2: { refreshToken: '', deviceId: '', deviceName: '', user: '', appId: '' } } },
+  // Live-Protokoll: wie lange aufheben, ob Debug-Eintraege (jede Spotify-/KI-Anfrage) erzeugt werden
+  logs: { keepDays: 14, debug: false },
+  // Hardware-Knoepfe ueber Bitfocus Companion (Token nur als Hash)
+  companion: { enabled: false, tokenHash: '' },
   // KI ueber einen eigenen Ollama-Server: ein Modell fuer alles. token = optional (z. B. hinter einem Reverse-Proxy)
   ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false },
   // Grundpegel (Pegel-Fenster): Player-Fader am X32 bei 100 %, Spotify-Lautstaerke, optional Mic-Fader
@@ -335,6 +339,16 @@ export function applyPatch(patch, { allow }) {
       if (pp.disconnect) o.players[p] = EMPTY_PLAYER();
     }
   }
+  if (has('companion')) {
+    const c = patch.companion;
+    if ('enabled' in c) s.companion.enabled = !!c.enabled;
+    if (typeof c.tokenHash === 'string' && /^[0-9a-f]{64}$/.test(c.tokenHash)) s.companion.tokenHash = c.tokenHash;
+    if (c.clearToken) { s.companion.tokenHash = ''; s.companion.enabled = false; }
+  }
+  if (has('logs')) {
+    if ('keepDays' in patch.logs) s.logs.keepDays = Math.round(clamp(patch.logs.keepDays, 1, 365, s.logs.keepDays));
+    if ('debug' in patch.logs) s.logs.debug = !!patch.logs.debug;
+  }
   if (has('ai')) {
     const q = patch.ai, o = s.ai;
     if ('enabled' in q) o.enabled = !!q.enabled;
@@ -406,6 +420,7 @@ export function publicSettings() {
   s.x32.piToken = s.x32.piToken ? '***' : '';
   s.notify.token = s.notify.token ? '***' : '';
   s.ai.token = s.ai.token ? '***' : '';
+  s.companion = { enabled: s.companion.enabled, hasToken: !!s.companion.tokenHash };
   s.sso.clientSecret = s.sso.clientSecret || process.env.SSO_CLIENT_SECRET ? '***' : '';
   return s;
 }

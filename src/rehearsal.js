@@ -8,6 +8,8 @@ import { isOn } from './features.js';
 import { createPoll, closePoll } from './extras.js';
 import { sha256, randomToken } from './security.js';
 import * as rq from './requests.js';
+import * as L from './log.js';
+import { setQuietEnv } from './log.js';
 
 // Generalprobe: simuliert eine komplette Party gegen den TESTMODUS -- viele Gaeste (Seite laden, suchen, wuenschen, abstimmen,
 // Live-Verbindung), eine Moderation, die annimmt/ablehnt, und Wiedergabe mit Crossfades. Alles laeuft ueber die echten
@@ -70,6 +72,8 @@ export function createRehearsal({ server, engines }) {
     const acc = Number(db.prepare('INSERT INTO accounts(role, label, code_hash, created_at) VALUES(?,?,?,?)').run('mod', 'Generalprobe-Bot', `probe:${sha256(randomToken(16))}`, Date.now()).lastInsertRowid);
     const botCookie = `sid=${newSession(acc, 'mod', '127.0.0.1', 'Generalprobe')}`;
 
+    L.info('system', 'rehearsal.started', `Generalprobe gestartet: ${opt.guests} Gäste, ${opt.durationMin} Min., Aktivität ${opt.intensity}`, { env: 'test', data: opt });
+    setQuietEnv('test');   // tausende Gaeste-Aktionen: nur im Speicher protokollieren
     const r = run = {
       opt, startedAt: Date.now(), endsAt: Date.now() + opt.durationMin * 60000, who, base, prefix, acc, oldSpeed, stopping: false,
       guests: [], timers: [], inflight: 0, skipped: 0,
@@ -269,6 +273,8 @@ export function createRehearsal({ server, engines }) {
     shield.unbanWhere((ip) => ip.startsWith(SIM_NET) || ip === '127.0.0.1');
     if (r.opt.resetAfter) { rq.resetEnv('test'); engines.test.resetAll(); }
     run = null;
+    setQuietEnv(null);   // vor dem Abschluss-Eintrag, damit er gespeichert wird
+    L.info('system', 'rehearsal.ended', `Generalprobe beendet (${reason}): ${last.verdict === 'ok' ? 'bestanden' : last.verdict === 'warn' ? 'mit Hinweisen' : 'Probleme'}`, { env: 'test', data: { reason, verdict: last.verdict, totals: last.totals } });
     return status();
   }
 

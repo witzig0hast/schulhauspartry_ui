@@ -8,7 +8,8 @@ import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
 import { trackIdOfUri } from './engine.js';
-import { lightCue } from './ai.js';
+import { lightCue, aiGenresOf } from './ai.js';
+import { onLog, ADMIN_ONLY } from './log.js';
 import { familiesOf } from './genres.js';
 import { isBlocked } from './devices.js';
 import { isOn } from './features.js';
@@ -19,6 +20,7 @@ const publicReq = (r) => ({
   id: r.id, title: r.title, artist: r.artist, explicit: r.explicit, votes: r.votes, player: r.player, status: r.status,
   auto: r.deviceId === 'auto', introMs: getMeta(r.trackId)?.intro_ms ?? null, outroMs: getMeta(r.trackId)?.outro_ms ?? null, durationMs: r.durationMs, families: familiesOf(r.genres), popularity: r.popularity, etaMs: r.etaMs ?? null, createdAt: r.createdAt, decidedAt: r.decidedAt, playedAt: r.playedAt, genres: r.genres, year: r.year, reason: r.reason, artists: artistNames(r.artist), trackId: r.trackId, prioritized: !!r.prioritizedAt, prioritizedBy: labelOf(r.prioritizedBy), decidedBy: labelOf(r.decidedBy),
   light: isOn('aiLight') ? lightCue(r.trackId) : null,
+  genresAi: isOn('aiGenres') && !!aiGenresOf(r.trackId),
 });
 
 // Baut den Zustand, den eine Rolle sehen darf.
@@ -148,7 +150,8 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
           try {
             const m = JSON.parse(raw.toString());
             if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong', ts: m.ts }));
-            else if (m.type === 'hello' && /^[a-z]{2,12}$/.test(String(m.view))) c.view = m.view;   // welche Ansicht (Beamer, Gaeste-Seite ...) – fuer den Live-Test
+            else if (m.type === 'hello' && /^[a-z]{2,12}$/.test(String(m.view))) c.view = m.view;
+            else if (m.type === 'logs' && c.session && can(c.session.role, 'viewLogs') && isOn('viewLogs')) c.logs = !!m.on;   // Live-Protokoll abonnieren   // welche Ansicht (Beamer, Gaeste-Seite ...) – fuer den Live-Test
           } catch { /* ignorieren */ }
         });
         sendTo(c);
@@ -200,6 +203,21 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
     engines[env].on('change', () => pushEnv(env, { guests: true }));
   }
 
+  // Live-Protokoll: Eintraege sammeln und hoechstens ~3x pro Sekunde gebuendelt an Abonnenten schicken
+  let logBuf = [];
+  const offLog = onLog((e) => { logBuf.push(e); if (logBuf.length > 500) logBuf = logBuf.slice(-500); });
+  const logTimer = setInterval(() => {
+    if (!logBuf.length) return;
+    const batch = logBuf; logBuf = [];
+    for (const c of clients) {
+      if (!c.logs) continue;
+      const admin = can(c.session?.role, 'viewAdmin');
+      const mine = admin ? batch : batch.filter((e) => !ADMIN_ONLY.has(e.cat));
+      if (mine.length) c.ws.send(JSON.stringify({ type: 'logs', data: mine }));
+    }
+  }, 300);
+  logTimer.unref?.();
+
   const hb = setInterval(() => {
     for (const c of clients) {
       if (!c.alive) { c.ws.terminate(); clients.delete(c); continue; }
@@ -215,6 +233,6 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
     kickAll: () => { for (const c of clients) if (c.session && !sessionFromToken(c.token)) c.ws.close(4001, 'revoked'); },
     kickSession: (accountId) => { for (const c of clients) if (c.session?.accountId === accountId) c.ws.close(4001, 'revoked'); },
     closeEnv: (env) => { for (const c of clients) if (c.env === env) c.ws.close(4004, 'disabled'); },
-    close: () => { clearInterval(hb); wss.close(); for (const c of clients) c.ws.terminate(); },
+    close: () => { clearInterval(hb); clearInterval(logTimer); offLog(); wss.close(); for (const c of clients) c.ws.terminate(); },
   };
 }

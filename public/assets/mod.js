@@ -1,6 +1,7 @@
 import { h, api, connect, topbar, clear, eq, toast, BASE, $, feat, safe, coverOnce } from '/assets/app.js';
 import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban, isPressing, onRelease } from '/assets/staff-ui.js';
 import { actionFor, openHotkeyEditor, getHotkeys, ACTIONS } from '/assets/hotkeys.js';
+import { summaryBox } from '/assets/ai-ui.js';
 
 // Moderation: ruhige Reiter statt alles auf einmal, Tastenkuerzel, Team-Chat.
 const app = $('#app');
@@ -27,6 +28,7 @@ const assignSel = h('select', { 'aria-label': 'Annehmen auf', onchange: (e) => {
 const assignRow = h('div', { class: 'row between' }, h('span', { class: 'small muted' }, 'Annehmen auf'), assignSel);
 const pendingBox = h('div'); const laterBox = h('div');
 boxes.wuensche.append(assignRow, pendingBox);
+summaryBox().then((b) => { if (b) boxes.wuensche.prepend(b); }).catch(() => {});
 boxes.spaeter.append(laterBox);
 
 function renderTabs() {

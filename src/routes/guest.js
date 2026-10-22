@@ -1,4 +1,6 @@
 import express from 'express';
+import * as L from '../log.js';
+import { guestTag } from '../log.js';
 import { randomToken, sign, unsign, parseCookies, cookieString, isSecure, clientIp, RateLimiter, cookieName, readCookie } from '../security.js';
 import { settings } from '../settings.js';
 import * as rq from '../requests.js';
@@ -85,7 +87,9 @@ export function guestRouter(env, engine, hub) {
   });
 
   r.post('/request', express.json({ limit: '2kb' }), async (req, res) => {
-    if (isBlocked(env, req.deviceId)) return res.status(403).json({ error: 'Von diesem Gerät sind keine Wünsche mehr möglich.' });
+    const who = { kind: 'guest', label: guestTag(req.deviceId) };
+    const t0 = (track, why, level = 'info') => L.log(level, 'wunsch', 'request.rejected', `Wunsch abgewiesen (${why}): ${track ? `${track.title} – ${track.artist}` : 'unbekannter Song'}`, { env, actor: who, data: { reason: why, trackId: track?.id || req.body?.trackId || null } });
+    if (isBlocked(env, req.deviceId)) { t0(null, 'Gerät gesperrt', 'warn'); return res.status(403).json({ error: 'Von diesem Gerät sind keine Wünsche mehr möglich.' }); }
     const gs = guestState(engine, req.deviceId);
     if (gs.wishMode !== 'open') return res.status(423).json({ error: gs.message, state: gs });
     const trackId = String(req.body?.trackId || '');
@@ -93,17 +97,20 @@ export function guestRouter(env, engine, hub) {
     let track;
     try { track = await engine.spotify.getTrack(trackId); } catch (e) { if (e instanceof RateLimitError) return limited(res, e); return res.status(502).json({ error: 'Spotify ist gerade nicht erreichbar.' }); }
     if (!track) return res.status(404).json({ error: 'Song nicht gefunden.' });
-    if (settings().explicitMode === 'block' && track.explicit) { logAttempt(env, 'explicit', track.id); return res.status(403).json({ error: 'Dieser Song ist hier leider nicht möglich.' }); }
+    if (settings().explicitMode === 'block' && track.explicit) { logAttempt(env, 'explicit', track.id); t0(track, 'Explicit gesperrt'); return res.status(403).json({ error: 'Dieser Song ist hier leider nicht möglich.' }); }
     // Gesperrte oder (je nach Regel) schon gespielte Songs: nicht annehmen. Laeuft er gerade, greift der Duplikat-Pfad unten.
     const br = blockReason(env, track);
-    if (br) { logAttempt(env, br.kind, track.id); return res.status(403).json({ error: br.text }); }
+    if (br) { logAttempt(env, br.kind, track.id); t0(track, br.short || br.kind); return res.status(403).json({ error: br.text }); }
 
     if (!shield.wishOk(clientIp(req))) return res.status(429).json({ error: 'Von dieser Adresse kommen gerade sehr viele Wünsche. Bitte etwas später.' });
     const open = rq.counts(env);
     if (shield.pendingFull(open.pending + open.later)) return res.status(503).json({ error: 'Gerade sind sehr viele Wünsche offen. Bitte gleich nochmal versuchen.' });
     const out = rq.submitWish(env, track, req.deviceId);
     if (out.result === 'created') noteWish(env);
+    if (out.result === 'created') L.info('wunsch', 'request.created', `Neuer Wunsch: ${track.title} – ${track.artist}`, { env, actor: who, data: { id: out.request.id, trackId: track.id, title: track.title, artist: track.artist, explicit: !!track.explicit } });
+    else if (out.result === 'duplicate') L.info('wunsch', 'request.duplicate', `+1 für ${track.title} – ${track.artist} (jetzt ${out.request.votes} Stimmen)`, { env, actor: who, data: { id: out.request.id, votes: out.request.votes, alreadyVoted: out.alreadyVoted, status: out.request.status } });
     if (out.result === 'limit') {
+      t0(track, 'Wunsch-Limit erreicht');
       const min = Math.ceil(out.limit.retryAfterMs / 60000);
       return res.status(429).json({ error: `Du hast dein Limit erreicht. Versuch es in ca. ${min} Min. wieder.`, limit: out.limit });
     }
