@@ -35,7 +35,7 @@ function render() {
   update(listBox, JSON.stringify([up.map((u) => [u.id, u.prioritized, u.votes]), wl]), () => h('div', { class: 'stack' },
     h('div', { class: 'row between' }, h('h2', {}, `Angenommen · ${up.length}`), h('span', { class: 'small muted' }, wl ? 'Reihenfolge = Annahme; ★ Prio rückt Songs nach vorn' : '')),
     up.length ? h('div', { class: 'list' }, ...up.map((u, i) => h('div', { class: `item row between nowrap ${u.prioritized ? 'prio' : ''}` },
-      h('div', { class: 'row nowrap', style: 'gap:12px;align-items:flex-start' }, h('div', { class: 'idx' }, String(i + 1)), cover(u.title, 'sm'),
+      h('div', { class: 'row nowrap', style: 'gap:12px;align-items:flex-start' }, h('div', { class: 'idx' }, String(i + 1)), cover(u.title, 'sm', u.trackId),
         h('div', {}, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist), chips(u), facts(u))),
       h('div', { class: 'row' },
         canMark ? h('button', { class: 'small', onclick: () => post('/dj/now', u.id) }, '▶ Läuft jetzt') : null,

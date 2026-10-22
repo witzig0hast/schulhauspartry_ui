@@ -11,7 +11,8 @@ export function getMeta(trackId) {
 export async function ensureMeta(spotify, track) {
   if (!track?.id || !spotify.getTrackMeta) return null;
   const known = getDb().prepare('SELECT ts FROM track_meta WHERE track_id = ?').get(track.id);
-  if (known && Date.now() - known.ts < TTL) return getMeta(track.id);
+  const meta0 = known && getMeta(track.id);
+  if (known && Date.now() - known.ts < (meta0?.src === 'spotify' ? 30 * TTL : TTL)) return meta0;   // echte Analyse: 30 Tage gemerkt
   let meta = null;
   // Dauer aus der Datenbank ergaenzen, falls der Aufrufer nur die ID hat
   if (!track.durationMs) track = { ...track, durationMs: getDb().prepare('SELECT duration_ms d FROM requests WHERE track_id = ? ORDER BY id DESC LIMIT 1').get(track.id)?.d };

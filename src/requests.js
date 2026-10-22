@@ -8,7 +8,7 @@ const mapRow = (r) => r && ({
   explicit: !!r.explicit, durationMs: r.duration_ms, createdAt: r.created_at, status: r.status,
   reason: r.reason, decidedBy: r.decided_by, decidedAt: r.decided_at, player: r.player, queuePos: r.queue_pos,
   votes: r.votes, prioritizedBy: r.prioritized_by, prioritizedAt: r.prioritized_at, playedAt: r.played_at,
-  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity,
+  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity, cover: r.cover || null,
 });
 
 export const getRequest = (id) => mapRow(db().prepare('SELECT * FROM requests WHERE id = ?').get(id));
@@ -69,9 +69,9 @@ export function submitWish(env, track, deviceId, now = Date.now()) {
       return { result: 'duplicate', request: getRequest(dup.id), alreadyVoted: !!voted, limit: limitState(env, deviceId, now) };
     }
 
-    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, artist_ids, genres, year, popularity)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, deviceId, now,
-      JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null);
+    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, artist_ids, genres, year, popularity, cover)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, deviceId, now,
+      JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null, track.cover || null);
     const id = Number(info.lastInsertRowid);
     db().prepare('INSERT INTO votes(request_id, device_id) VALUES(?,?)').run(id, deviceId);
     db().prepare('INSERT INTO guest_actions(env, device_id, ts) VALUES(?,?,?)').run(env, deviceId, now);
@@ -85,7 +85,7 @@ export function guestRequests(env, deviceId, playingNow) {
   const rows = db().prepare(`SELECT r.* FROM requests r JOIN votes v ON v.request_id = r.id
     WHERE r.env = ? AND v.device_id = ? ORDER BY r.created_at DESC LIMIT 20`).all(env, deviceId).map(mapRow);
   return rows.map((r) => ({
-    id: r.id, title: r.title, artist: r.artist, status: r.status === 'later' ? 'pending' : r.status, reason: r.status === 'denied' ? r.reason : null,
+    id: r.id, trackId: r.trackId, title: r.title, artist: r.artist, status: r.status === 'later' ? 'pending' : r.status, reason: r.status === 'denied' ? r.reason : null,
     votes: r.votes, player: r.status === 'approved' || r.status === 'playing' ? r.player : null,
     ahead: wl ? null : songsAhead(env, r, playingNow),                           // im Wunschlisten-Modus gibt es keine feste Reihenfolge
     position: r.status === 'approved' && !wl ? upIds.indexOf(r.id) : null, // 0 = naechster Song der Warteschlange
@@ -288,9 +288,9 @@ export function requeue(env, id, accountId, currentPlayer, now = Date.now()) {
 export function addAuto(env, track, currentPlayer, now = Date.now()) {
   return transaction(() => {
     const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
-    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_at, player, queue_pos, artist_ids, genres, year, popularity)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, 'auto', now, 'approved', now,
-      assignPlayer(env, currentPlayer), (max ?? 0) + 1, JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null);
+    const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_at, player, queue_pos, artist_ids, genres, year, popularity, cover)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, 'auto', now, 'approved', now,
+      assignPlayer(env, currentPlayer), (max ?? 0) + 1, JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null, track.cover || null);
     return getRequest(Number(info.lastInsertRowid));
   });
 }

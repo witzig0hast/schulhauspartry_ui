@@ -7,6 +7,7 @@ import { getDb } from './db.js';
 import { listBlacklist, artistNames } from './blocklist.js';
 import { recentMessages } from './chat.js';
 import { getMeta } from './trackmeta.js';
+import { trackIdOfUri } from './engine.js';
 import { familiesOf } from './genres.js';
 import { isBlocked } from './devices.js';
 import { isOn } from './features.js';
@@ -31,7 +32,7 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   };
   for (const p of [1, 2]) {
     const pl = snap.players[p];
-    out.players[p] = { playing: pl.playing, title: pl.title, artist: pl.artist, positionMs: pl.positionMs, durationMs: pl.durationMs, remainingMs: pl.remainingMs, fading: pl.fading };
+    out.players[p] = { playing: pl.playing, title: pl.title, artist: pl.artist, trackId: trackIdOfUri(pl.uri), positionMs: pl.positionMs, durationMs: pl.durationMs, remainingMs: pl.remainingMs, fading: pl.fading };
     if (can(role, 'viewTech') || can(role, 'viewFoh')) Object.assign(out.players[p], { gain: pl.gain, level: pl.level, meter: pl.meter, connected: pl.connected });
   }
   if (can(role, 'viewTech') || can(role, 'viewFoh')) {
@@ -68,6 +69,7 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
     if (isOn('polls')) out.poll = currentPoll(engine.env);
     out.maxGain = isOn('faderLimit') ? settings().limits.maxGain : 1;
     out.schedule = isOn('viewSchedule') ? scheduleList(engine.env) : [];
+    out.guestsOnline = extra.guestsOnline ?? null;
   }
   out.notice = { enabled: settings().notice.enabled, text: settings().notice.text };
   return out;
@@ -80,7 +82,7 @@ export function guestState(engine, deviceId) {
   const np = engine.nowPlaying();
   const mode = engine.wishMode;
   return {
-    nowPlaying: np && isOn('guestNowPlaying') ? { title: np.title, artist: np.artist } : null,
+    nowPlaying: np && isOn('guestNowPlaying') ? { title: np.title, artist: np.artist, trackId: np.trackId || null } : null,
     wishMode: mode,
     ended: engine.state.ended,
     message: mode === 'open' ? null : (engine.state.ended ? g.wishMessages.ended : engine.state.awaitOpen && isOn('openingGate') ? openingText(engine) : (mode === 'paused' ? g.wishMessages.paused : g.wishMessages.closed)),
@@ -109,7 +111,8 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
   const release = (env, id, by) => { const c = claims.get(`${env}:${id}`); if (c && c.by === by) claims.delete(`${env}:${id}`); };
   const claimsOf = (env) => { const now = Date.now(); const out = []; for (const [k, v] of claims) { if (v.until < now) { claims.delete(k); continue; } if (k.startsWith(`${env}:`)) out.push({ id: Number(k.split(':')[1]), label: v.label, by: v.by }); } return out; };
   const onlineOf = (env) => [...new Set([...clients].filter((c) => c.env === env && c.session && ['admin', 'tech', 'mod', 'dj', 'orga'].includes(c.session.role)).map((c) => c.session.label))];
-  const extraFor = (env) => ({ ...staffExtra(env), claims: claimsOf(env), online: onlineOf(env) });
+  const guestsOnline = (env) => new Set([...clients].filter((c) => c.env === env && !c.session && c.deviceId).map((c) => c.deviceId)).size;
+  const extraFor = (env) => ({ ...staffExtra(env), claims: claimsOf(env), online: onlineOf(env), guestsOnline: guestsOnline(env) });
 
   server.on('upgrade', (req, socket, head) => {
     try {

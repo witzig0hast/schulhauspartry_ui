@@ -71,11 +71,27 @@ export function icon(name) {
 }
 
 // Monogramm-Cover: stabile Farbe aus dem Titel
-export function cover(title = '?', size = '') {
+// Cover: farbige Initialen; mit Spotify-Track-ID liegt das echte Album-Cover darueber (vom Server gemerkt, faellt bei Fehlern weg)
+export function cover(title = '?', size = '', trackId = null) {
   let hash = 0;
-  for (const ch of title) hash = (hash * 31 + ch.codePointAt(0)) % 360;
-  const letters = (title.match(/[\p{L}\p{N}]+/gu) || ['?']).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-  return h('div', { class: `cover ${size}`, style: `--h:${hash}`, 'aria-hidden': 'true' }, letters);
+  for (const ch of title || '?') hash = (hash * 31 + ch.codePointAt(0)) % 360;
+  const letters = ((title || '?').match(/[\p{L}\p{N}]+/gu) || ['?']).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const el = h('div', { class: `cover ${size}`, style: `--h:${hash}`, 'aria-hidden': 'true' }, letters);
+  if (trackId && /^[A-Za-z0-9]{22}$/.test(trackId) && feat('covers')) {
+    const img = h('img', { src: `/cover/${trackId}`, alt: '', loading: 'lazy', decoding: 'async' });
+    img.addEventListener('error', () => img.remove());
+    img.addEventListener('load', () => el.classList.add('has-img'));
+    el.append(img);
+  }
+  return el;
+}
+// Fuer Ansichten, die oft neu zeichnen (Jetzt-laeuft, Dashboards): dasselbe Cover-Element wiederverwenden, sonst flackert das Bild
+const coverPool = new Map();
+export function coverOnce(title, size = '', trackId = null) {
+  const k = `${size}|${trackId || ''}|${title}`;
+  let el = coverPool.get(k);
+  if (!el) { el = cover(title, size, trackId); coverPool.set(k, el); if (coverPool.size > 120) coverPool.delete(coverPool.keys().next().value); }
+  return el;
 }
 export const eq = (on) => h('span', { class: `eq ${on ? '' : 'off'}`, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'), h('i'));
 
@@ -106,6 +122,8 @@ export function brandLogo(size = '') {
 const STAFF = ['admin', 'tech', 'mod', 'orga', 'display'];
 const NAV = [
   { label: 'DJ', path: '/dj', roles: ['admin', 'tech', 'mod', 'dj'], hint: 'Angenommene Wünsche, „Läuft jetzt“ / „Gespielt“ markieren', f: 'viewDj' },
+  { label: 'Ton', path: '/ton', roles: ['admin', 'tech', 'orga', 'display'], hint: 'Dashboard Ton: Player, Pegel, Übergang, Mics, nächste Songs', f: 'viewTon' },
+  { label: 'Orga', path: '/orga', roles: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'], hint: 'Dashboard Orga/Einlass: Uhr, Zeitplan, Zahlen, Gäste online', f: 'viewOrga' },
   { label: 'Licht', path: '/light', roles: ['admin', 'tech', 'orga', 'display', 'light'], hint: 'Für die Lichttechnik: jetzt, nächste Songs, Übergang', f: 'viewLight', main: false },
   { label: 'Bühne', path: '/stage', roles: STAFF, hint: 'Jetzt, Nächster, Uhr, Zeitplan, Mics', f: 'viewStage' },
   { label: 'Zeitplan', path: '/schedule', roles: STAFF, hint: 'Programmpunkte mit Countdown', f: 'viewSchedule' },

@@ -12,7 +12,7 @@ async function load() {
   const k = rows.map((r) => r.ts).join(',');
   if (k === key) return;
   const first = !key; key = k;
-  clear(list).append(...(rows.length ? rows.map((r) => h('div', { class: 'item row nowrap' }, cover(r.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)), h('span', { class: 'tiny muted' }, fmtClock(r.ts)))) : [h('div', { class: 'muted' }, 'Die Party fängt gleich an …')]));
+  clear(list).append(...(rows.length ? rows.map((r) => h('div', { class: 'item row nowrap' }, cover(r.title, 'sm', r.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)), h('span', { class: 'tiny muted' }, fmtClock(r.ts)))) : [h('div', { class: 'muted' }, 'Die Party fängt gleich an …')]));
   if (first) stagger(list, 35); else flash(list.firstChild, 'flash');
 }
 app.append(h('div', { class: 'wrap narrow-wide', style: 'padding-top:5vh' }, h('div', { class: 'eyebrow' }, BRAND.name), h('h1', { class: 'bm-h', style: 'text-align:left' }, 'Das lief heute Abend'), list));

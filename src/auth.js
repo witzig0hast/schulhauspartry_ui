@@ -5,6 +5,7 @@ import {
 } from './security.js';
 import { audit } from './audit.js';
 import { settings } from './settings.js';
+import { isOn } from './features.js';
 import { adminIpAllowed } from './ipallow.js';
 import { sendNotify } from './notify.js';
 import { config } from './config.js';
@@ -34,8 +35,33 @@ export const PERMS = {
   wishMode: ['admin', 'tech'],      // Wuensche sperren / pausieren
   notice: ['admin', 'tech'],        // Orga-Hinweis
   connections: ['admin', 'tech', 'display', 'light'], // Mics, Verbindungsampel
+  viewSound: ['admin', 'tech', 'orga', 'display'],                 // Ton-Dashboard
+  viewOrga: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],     // Orga-Dashboard
 };
 export const can = (role, perm) => !!role && (PERMS[perm] || []).includes(role);
+
+// Startansicht nach dem Login: eigene Ansicht des Codes (Admin → Codes), sonst die der Rolle
+const ROLE_HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
+export const START_VIEWS = [
+  { path: '/tech', label: 'Technik', perm: 'viewTech' },
+  { path: '/mod', label: 'Moderation', perm: 'viewMod' },
+  { path: '/ton', label: 'Dashboard Ton', perm: 'viewSound', feature: 'viewTon' },
+  { path: '/light', label: 'Dashboard Licht', perm: 'viewLight', feature: 'viewLight' },
+  { path: '/stage', label: 'Dashboard Bühne / Moderation am Mikro', perm: 'viewStage', feature: 'viewStage' },
+  { path: '/orga', label: 'Dashboard Orga / Einlass', perm: 'viewOrga', feature: 'viewOrga' },
+  { path: '/dj', label: 'DJ', perm: 'viewDj', feature: 'viewDj' },
+  { path: '/foh', label: 'FOH-Anzeige', perm: 'viewFoh', feature: 'viewFoh' },
+  { path: '/board', label: 'Board', perm: 'viewBoard', feature: 'viewBoard' },
+  { path: '/focus', label: 'Fokus-Modus', perm: 'moderate', feature: 'viewFocus' },
+];
+export const startViewAllowed = (role, path) => START_VIEWS.some((v) => v.path === path && can(role, v.perm) && (!v.feature || isOn(v.feature)));
+export function homeFor(role, accountId = null) {
+  if (accountId != null) {
+    const home = getDb().prepare('SELECT home FROM accounts WHERE id = ?').get(accountId)?.home;
+    if (home && startViewAllowed(role, home)) return home;
+  }
+  return settings().roleHome?.[role] || ROLE_HOME[role] || '/';
+}
 
 const loginLimiter = new RateLimiter(8, 10 * 60 * 1000);
 const globalLoginLimiter = new RateLimiter(120, 10 * 60 * 1000);

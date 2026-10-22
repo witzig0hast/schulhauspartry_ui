@@ -10,10 +10,10 @@ const db = () => getDb();
 // ---------- Wunsch-Voting ----------
 export function votingList(env, deviceId, limit = 20) {
   if (!isOn('voting')) return [];
-  const rows = db().prepare("SELECT r.id, r.title, r.artist, r.votes, r.created_at, (SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.device_id = ?) AS mine FROM requests r WHERE r.env = ? AND r.status IN ('pending','later')").all(deviceId, env);
+  const rows = db().prepare("SELECT r.id, r.track_id, r.title, r.artist, r.votes, r.created_at, (SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.device_id = ?) AS mine FROM requests r WHERE r.env = ? AND r.status IN ('pending','later')").all(deviceId, env);
   if (settings().voting.sortByVotes) rows.sort((a, b) => b.votes - a.votes || a.created_at - b.created_at);
   else rows.sort((a, b) => a.created_at - b.created_at);
-  return rows.slice(0, limit).map((r) => ({ id: r.id, title: r.title, artist: r.artist, votes: r.votes, mine: !!r.mine }));
+  return rows.slice(0, limit).map((r) => ({ id: r.id, trackId: r.track_id, title: r.title, artist: r.artist, votes: r.votes, mine: !!r.mine }));
 }
 
 export function voteState(env, deviceId, now = Date.now()) {
@@ -117,13 +117,13 @@ export function publicData(env, engine, deviceId = null) {
   const np = engine.nowPlaying();
   const out = {
     brand: { name: settings().brand.name, tagline: settings().brand.tagline },
-    nowPlaying: np ? { title: np.title, artist: np.artist } : null,
+    nowPlaying: np ? { title: np.title, artist: np.artist, trackId: np.trackId || null } : null,
     wishMode: engine.wishMode, pause: engine.state.pauseMode && isOn('pauseMode') ? settings().pause.message : null,
     poll: currentPoll(env, deviceId),
     schedule: isOn('viewSchedule') ? scheduleList(env, true).filter((s) => !s.done) : [],
   };
-  if (isOn('viewCharts')) out.charts = db().prepare("SELECT title, artist, votes, status FROM requests WHERE env = ? AND status IN ('pending','approved','playing','later') AND device_id NOT IN ('staff','auto') ORDER BY votes DESC, id ASC LIMIT 10").all(env);
-  if (isOn('viewWall')) out.wall = db().prepare('SELECT title, artist, ts FROM plays WHERE env = ? ORDER BY ts DESC LIMIT 40').all(env);
+  if (isOn('viewCharts')) out.charts = db().prepare("SELECT track_id AS trackId, title, artist, votes, status FROM requests WHERE env = ? AND status IN ('pending','approved','playing','later') AND device_id NOT IN ('staff','auto') ORDER BY votes DESC, id ASC LIMIT 10").all(env);
+  if (isOn('viewWall')) out.wall = db().prepare('SELECT p.title, p.artist, p.ts, r.track_id AS trackId FROM plays p LEFT JOIN requests r ON r.id = p.request_id WHERE p.env = ? ORDER BY p.ts DESC LIMIT 40').all(env);
   return out;
 }
 

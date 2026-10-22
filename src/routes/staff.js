@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-  login, logout, requirePerm, requireAnyPerm, can, setSessionCookie, clearSessionCookie, clientIp,
+  login, logout, requirePerm, requireAnyPerm, can, setSessionCookie, clearSessionCookie, clientIp, homeFor,
 } from '../auth.js';
 import { parseCookies, readCookie } from '../security.js';
 import * as rq from '../requests.js';
@@ -9,10 +9,9 @@ import { staffState } from '../hub.js';
 import { addBlock, removeBlock, listBlacklist, isBlacklisted } from '../blocklist.js';
 import { buildAnalytics } from '../analytics.js';
 import { isOn, requireFeature } from '../features.js';
-import { logEvent } from '../db.js';
+import { logEvent, getDb } from '../db.js';
 import { audit } from '../audit.js';
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 
 const num = (v, d, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
 const player = (v) => { const n = Number(v); if (n !== 1 && n !== 2) throw Object.assign(new Error('Ungültiger Player'), { status: 400 }); return n; };
@@ -31,7 +30,7 @@ export function staffRouter(env, engine, hub) {
     const out = login(String(req.body?.secret || '').slice(0, 200), clientIp(req), req.headers['user-agent']);
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     setSessionCookie(req, res, out.token);
-    res.json({ ok: true, role: out.role, home: settings().roleHome?.[out.role] || HOME[out.role] });
+    res.json({ ok: true, role: out.role, home: homeFor(out.role, out.accountId) });
   });
   r.post('/logout', (req, res) => {
     logout(readCookie(parseCookies(req.headers.cookie || ''), 'sid'));
@@ -40,17 +39,29 @@ export function staffRouter(env, engine, hub) {
   });
   r.get('/me', (req, res) => {
     if (!req.session) return res.json({ role: null });
-    res.json({ role: req.session.role, label: req.session.label, home: settings().roleHome?.[req.session.role] || HOME[req.session.role], env });
+    res.json({ role: req.session.role, label: req.session.label, home: homeFor(req.session.role, req.session.accountId), env });
   });
 
   r.get('/state', requireAnyPerm('viewMod', 'viewFoh', 'viewLight'), (req, res) => {
     res.json(staffState(engine, req.session.role, engine.snapshot(), { ...hub.extraFor(env), me: req.session.accountId ?? 'admin' }));
   });
 
-  r.get('/stats', requireFeature('viewBoard'), requireAnyPerm('viewStats'), (req, res) => res.json(rq.liveStats(env)));
+  // Auswertungen werden kurz gemerkt: viele offene Boards/Dashboards fragen alle 10 s – berechnet wird nur neu,
+  // wenn sich an den Wuenschen etwas geaendert hat oder 15 s vergangen sind
+  const results = new Map();
+  const fingerprint = getDb().prepare("SELECT COUNT(*) n, MAX(id) i, MAX(decided_at) d, MAX(played_at) p, SUM(votes) v FROM requests WHERE env = ?");
+  const remembered = (key, fn) => {
+    const fp = JSON.stringify(fingerprint.get(env));
+    const hit = results.get(key);
+    if (hit && hit.fp === fp && Date.now() - hit.ts < 15000) return hit.value;
+    const value = fn();
+    results.set(key, { fp, ts: Date.now(), value });
+    return value;
+  };
+  r.get('/stats', requireFeature('viewBoard'), requireAnyPerm('viewStats'), (req, res) => res.json(remembered('stats', () => rq.liveStats(env))));
   r.get('/analytics', requireFeature('viewAnalytics'), requireAnyPerm('viewStats'), (req, res) => {
-    const r = Number(req.query.range);
-    res.json(buildAnalytics(env, [0, 15, 60, 120, 360].includes(r) ? r : 0));
+    const r = Number(req.query.range), range = [0, 15, 60, 120, 360].includes(r) ? r : 0;
+    res.json(remembered(`analytics:${range}`, () => buildAnalytics(env, range)));
   });
 
   // ----- Moderation -----

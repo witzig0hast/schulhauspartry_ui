@@ -6,6 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config, validateConfig } from './config.js';
 import { openDb } from './db.js';
+import { resetCache, coverGet, coverSet, coverFailed, cacheGetStale } from './apicache.js';
+import { getDb } from './db.js';
 import { loadSettings, settings, onSettingsChange } from './settings.js';
 import { ensureAdminPassword, attachSession, originCheck, can, sweepSessions } from './auth.js';
 import { Engine } from './engine.js';
@@ -60,6 +62,8 @@ const PAGES = {
   prep: { file: 'prep.html', perm: 'viewPrep' },
   stage: { file: 'stage.html', perm: 'viewStage' },
   light: { file: 'light.html', perm: 'viewLight' },
+  ton: { file: 'ton.html', perm: 'viewSound' },
+  orga: { file: 'orga.html', perm: 'viewOrga' },
   dj: { file: 'dj.html', perm: 'viewDj' },
   charts: { file: 'charts.html', perm: null },
   wall: { file: 'wall.html', perm: null },
@@ -71,12 +75,13 @@ const PAGES = {
 };
 
 // Seite -> Funktionsschalter (ausgeschaltete Ansichten gibt es dann nicht mehr)
-const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', dj: 'viewDj', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
+const PAGE_FEATURE = { board: 'viewBoard', beamer: 'viewBeamer', focus: 'viewFocus', ticker: 'viewTicker', analytics: 'viewAnalytics', prep: 'viewPrep', foh: 'viewFoh', stage: 'viewStage', light: 'viewLight', ton: 'viewTon', orga: 'viewOrga', dj: 'viewDj', charts: 'viewCharts', wall: 'viewWall', schedule: 'viewSchedule', activity: 'viewActivity' };
 
 export function createApp({ dataDir = config.dataDir, startEngines = true } = {}) {
   const problems = validateConfig();
   if (problems.length) throw new Error(problems.join(' '));
   openDb(dataDir);
+  resetCache();
   loadSettings();
   ensureAdminPassword();
 
@@ -143,6 +148,36 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     if (!l) return res.status(404).type('text').send('Kein Logo');
     res.set({ 'Content-Type': l.mime, 'Cache-Control': 'public, max-age=300', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff' }).send(Buffer.from(l.data));
   });
+  // Album-Cover: einmal von Spotifys Bildserver geholt, dann aus dem Speicher (cache.db). Gaeste-Geraete sprechen nie direkt mit Spotify.
+  // Nur fuer Songs, die die App schon kennt (Wunsch, Suche, laufender Song) – fremde IDs loesen keine Abfrage aus.
+  const coverInflight = new Map();
+  const COVER_URL = /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/;
+  const coverUrlOf = (id) => getDb().prepare('SELECT cover FROM requests WHERE track_id = ? AND cover IS NOT NULL ORDER BY id DESC LIMIT 1').get(id)?.cover || cacheGetStale('track', id)?.cover || null;
+  async function loadCover(id, url) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' });
+      const mime = String(r.headers.get('content-type') || '').split(';')[0];
+      if (!r.ok || !/^image\/(jpeg|png|webp)$/.test(mime)) throw new Error(`Cover ${r.status}`);
+      const data = Buffer.from(await r.arrayBuffer());
+      if (!data.length || data.length > 800 * 1024) throw new Error('Cover zu groß');
+      coverSet(id, mime, data);
+      return { mime, data };
+    } catch { coverFailed(); return null; }
+  }
+  app.get('/cover/:id', async (req, res) => {
+    const id = req.params.id;
+    const miss = (sec) => res.status(404).set('Cache-Control', `public, max-age=${sec}`).end();
+    if (!isOn('covers') || !/^[A-Za-z0-9]{22}$/.test(id)) return miss(3600);
+    let c = coverGet(id);
+    if (!c) {
+      const url = coverUrlOf(id);
+      if (!url || !COVER_URL.test(url)) return miss(300);
+      if (!coverInflight.has(id)) coverInflight.set(id, loadCover(id, url).finally(() => coverInflight.delete(id)));
+      c = await coverInflight.get(id);
+      if (!c) return miss(60);
+    }
+    res.set({ 'Content-Type': c.mime, 'Cache-Control': 'public, max-age=604800, immutable', 'Content-Security-Policy': "default-src 'none'; sandbox" }).send(Buffer.from(c.data));
+  });
   app.get('/brand.css', (req, res) => { res.set({ 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-cache, must-revalidate', 'CDN-Cache-Control': 'no-store' }).send(brandCss()); });
 
   app.use(spotifyCallbackRouter(() => { for (const e of Object.values(engines)) e.setReal(e.realConnections, true); }));
@@ -190,7 +225,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.type('html').send(renderPage('recap.html', base, env));
     });
-    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|dj|charts|wall|schedule|activity)?\/?$/, (req, res) => {
+    router.get(/^\/(tech|mod|foh|admin|login|board|beamer|focus|ticker|analytics|prep|stage|light|ton|orga|dj|charts|wall|schedule|activity)?\/?$/, (req, res) => {
       const name = (req.params[0] || '');
       const page = PAGES[name];
       if (PAGE_FEATURE[name] && !isOn(PAGE_FEATURE[name])) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Ausgeschaltet</title><p style="font:16px system-ui;padding:2rem">Diese Ansicht ist vom Admin ausgeschaltet.</p>');

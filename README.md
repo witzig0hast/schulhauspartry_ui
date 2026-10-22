@@ -200,6 +200,35 @@ blockierte Versuche. Zeitraum wählbar (Gesamt / 15 Min / 1–6 Std), jede Grafi
 Genres kommen von Spotify (über den Interpreten) und werden zu Familien zusammengefasst (Pop, Hip-Hop & Rap, Electronic & Dance, …).
 Liefert Spotify für eure App keine Genres, erscheinen die Wünsche unter „Unbekannt“ – alles andere funktioniert weiter.
 
+## Abteilungs-Dashboards (Ton, Licht, Bühne, Orga)
+
+Fertige Ansichten zum Ansehen, oben mit einer Leiste zum Wechseln zwischen den Abteilungen:
+- **Ton** (`/ton`): beide Player mit Cover, ON AIR, Fortschritt, Fader-Stellung (in % und dB) und Pegel am Pult, Grundpegel und Spotify-Lautstärke,
+  Countdown bis zum nächsten Übergang, Mikrofone mit Pegel und Ducking, die nächsten Songs mit Player, Startzeit und Hinweisen (langes Intro, Explicit),
+  Verbindungen und letzte Fehler, Warnungen (Not-Aus, Notfall, Pause, Ducking aktiv) ganz oben.
+- **Licht** (`/light`): jetzt mit Album-Cover, Genres, Jahr, Countdown bis zum Übergang, nächste Songs mit Cover, Startzeit und Genrewechsel.
+- **Bühne** (`/stage`): für die Leute am Mikro – jetzt (mit Cover), Nächster, Uhr, Zeitplan, Mics.
+- **Orga** (`/orga`): große Uhr, Zeitplan mit Countdown, Gäste online, offene/angenommene/gespielte Wünsche, Stand der Wünsche (Freischaltung, Pause),
+  Orga-Hinweis, Übergabe-Notiz, Umfrage, Team online und Team-Chat.
+
+**Startansicht pro Code:** Admin → Codes → „Startansicht“ (beim Anlegen oder später in der Liste). Ein Technik-Code für die Tonleute landet so
+direkt im Ton-Dashboard, einer für das Licht im Licht-Dashboard. Angeboten wird nur, was die Rolle öffnen darf. Gilt auch für Passkey- und SSO-Login.
+
+## Album-Cover
+
+Spotify liefert zu jedem Song ein Cover. Der Server lädt es **einmal** von Spotifys Bildserver (`i.scdn.co`, nur von dort) und merkt es sich; danach kommt
+es aus dem Speicher (`/cover/<track-id>`). Die Handys der Gäste sprechen dabei nie direkt mit Spotify, die strenge CSP bleibt. Geladen wird nur für Songs,
+die die App schon kennt (Wunsch, Suche, laufender Song). Ohne Cover (Simulation, Fehler) erscheinen wie bisher die farbigen Initialen. Schalter: Funktionen → „Album-Cover“.
+
+## Gespeicherte Spotify-Antworten
+
+Was einmal bei Spotify abgefragt wurde, wird **dauerhaft** gespeichert (eigene Datei `cache.db` im Datenordner, nicht in den Backups) und nicht erneut angefragt –
+auch nicht nach einem Neustart: Songs und Genres der Interpreten 30 Tage, Suchtreffer 12 Stunden, Playlists 1 Stunde, Intro-/Outro-Analysen 30 Tage, Cover dauerhaft.
+Sucht die Moderation oder ein Gast etwas, das schon einmal gesucht wurde, oder wird ein schon bekannter Song gewünscht, geht keine Anfrage an Spotify.
+Ist Spotify im Limit, antwortet notfalls auch ein abgelaufener Eintrag. Die eigenen Auswertungen (`/api/stats`, `/api/analytics`) werden ebenfalls gemerkt und nur
+neu berechnet, wenn sich an den Wünschen etwas geändert hat (sonst höchstens alle 15 s), auch wenn viele Dashboards gleichzeitig offen sind.
+Admin → Verbindungen zeigt, was gespeichert ist und wie viele Abfragen dadurch gespart wurden („Leeren“ löscht den Speicher).
+
 ## Spotify-Rate-Limits
 
 Spotify begrenzt die Web-API pro App (gleitendes ~30-Sekunden-Fenster, bei Überschreitung `429` mit `Retry-After`). Das Limit lässt sich nicht

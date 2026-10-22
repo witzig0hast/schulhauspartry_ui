@@ -63,7 +63,7 @@ function strike(ip, reason) {
 }
 const banned = (ip, now = Date.now()) => { const b = bans.get(ip); if (!b) return false; if (b.until <= now) { bans.delete(ip); return false; } return true; };
 
-const isAsset = (p) => p.startsWith('/assets/') || p === '/brand.css' || p.startsWith('/brand/');
+const isAsset = (p) => p.startsWith('/assets/') || p === '/brand.css' || p.startsWith('/brand/') || p.startsWith('/cover/');
 const isGuestApi = (p) => /^(\/t-[a-z0-9]+)?\/api\/guest\//.test(p);
 const reject = (res, code, retry, text = 'Zu viele Anfragen. Bitte kurz warten.') => {
   res.status(code).set({ 'Retry-After': String(retry), 'Cache-Control': 'no-store' });

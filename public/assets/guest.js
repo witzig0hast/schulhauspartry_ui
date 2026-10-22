@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, BRAND, $ } from '/assets/app.js';
+import { h, api, connect, topbar, clear, modal, toast, icon, cover, eq, BRAND, $, coverOnce } from '/assets/app.js';
 import { confetti, stagger, flash } from '/assets/motion.js';
 
 const app = $('#app');
@@ -75,7 +75,7 @@ function renderVoting() {
   if (!show) return;
   clear(voteEl).append(h('div', { class: 'row between' }, h('h2', {}, 'Das wünschen sich andere'), h('span', { class: 'tiny muted' }, v.remaining > 0 ? `Noch ${v.remaining} „+1“ frei` : 'Gerade genug abgestimmt')),
     h('div', { class: 'list' }, ...v.list.map((r) => h('div', { class: 'item row between nowrap' },
-      h('div', { class: 'req-main grow' }, cover(r.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))),
+      h('div', { class: 'req-main grow' }, cover(r.title, 'sm', r.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))),
       h('button', { class: `vote-btn ${r.mine ? 'mine' : ''}`, disabled: r.mine || v.remaining <= 0, 'aria-label': `+1 für ${r.title}`, onclick: async (e) => {
         try { const out = await api('/guest/vote', { method: 'POST', body: { id: r.id } }); state = out.state; render(); flash(e.target.closest('.item'), 'flash'); } catch (er) { toast(er.message, true); }
       } }, r.mine ? '✓' : '+1', h('b', {}, String(r.votes)))))));
@@ -97,7 +97,7 @@ function render() {
   lastPlaying = pk || '';
   if (state.nowPlaying) {
     nowEl.classList.remove('hidden');
-    clear(nowEl).append(h('div', { class: 'hero' }, cover(state.nowPlaying.title), h('div', { class: 'meta' },
+    clear(nowEl).append(h('div', { class: 'hero' }, coverOnce(state.nowPlaying.title, '', state.nowPlaying.trackId), h('div', { class: 'meta' },
       h('div', { class: 'row', style: 'gap:8px' }, eq(true), h('span', { class: 'eyebrow' }, 'Jetzt läuft')),
       h('div', { class: 'title', style: 'font-size:1.05rem;font-weight:700;letter-spacing:-.02em' }, state.nowPlaying.title), h('div', { class: 'a muted small' }, state.nowPlaying.artist))));
   } else nowEl.classList.add('hidden');
@@ -123,7 +123,7 @@ function render() {
     if (r.status === 'denied' && r.reason) extra.push(h('div', { class: 'small muted' }, `Grund: ${r.reason}`));
     if (r.votes > 1) extra.push(h('div', { class: 'small muted' }, `+${r.votes - 1} weitere wünschen sich das auch`));
     mine.append(h('div', { class: 'item' + (r.status === 'denied' ? ' denied' : '') },
-      h('div', { class: 'row between nowrap' }, h('div', { class: 'req-main grow' }, cover(r.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))), statusBadge(r)), ...extra));
+      h('div', { class: 'row between nowrap' }, h('div', { class: 'req-main grow' }, cover(r.title, 'sm', r.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist))), statusBadge(r)), ...extra));
   }
 }
 
@@ -138,7 +138,7 @@ async function search() {
     if (!out.tracks.length) results.append(h('div', { class: 'muted' }, 'Nichts gefunden. Probier es mit einem anderen Suchwort.'));
     for (const t of out.tracks) {
       results.append(h('div', { class: 'item row between nowrap' },
-        h('div', { class: 'req-main grow' }, cover(t.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, t.title), h('div', { class: 'a' }, t.artist))),
+        h('div', { class: 'req-main grow' }, cover(t.title, 'sm', t.id), h('div', { class: 'grow' }, h('div', { class: 't' }, t.title), h('div', { class: 'a' }, t.artist))),
         t.blocked ? h('span', { class: 'badge' }, 'nicht möglich') : h('button', { class: 'primary small', onclick: () => send(t) }, 'Wünschen')));
     }
   } catch (e) {

@@ -72,7 +72,7 @@ function render() {
   const age = Math.max(0, Math.round((Date.now() - r.createdAt) / 60000));
   stage.append(corner, dot,
     h('div', { class: 'fx-card' },
-      cover(r.title, 'xl'),
+      cover(r.title, 'xl', r.trackId),
       h('div', {}, h('div', { class: 'fx-title' }, r.title), h('div', { class: 'fx-artist' }, r.artist)),
       h('div', { class: 'fx-meta' },
         r.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null,

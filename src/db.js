@@ -200,6 +200,8 @@ export function openDb(dataDir) {
   addColumn('requests', 'popularity', 'INTEGER');
   addColumn('requests', 'tag', 'TEXT');
   addColumn('accounts', 'email', 'TEXT');
+  addColumn('accounts', 'home', 'TEXT');           // Startansicht/Dashboard dieses Codes (leer = Standard der Rolle)
+  addColumn('requests', 'cover', 'TEXT');          // Adresse des Album-Covers bei Spotify (geladen wird es ueber /cover/<id>)
   addColumn('sessions', 'ip', 'TEXT');
   addColumn('sessions', 'ua', 'TEXT');
   addColumn('sessions', 'last_seen', 'INTEGER');

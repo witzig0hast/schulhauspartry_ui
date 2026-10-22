@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   requirePerm, adminIpGuard, newSession, setSessionCookie, clearSessionCookie, clientIp, listSessions, revokeSessionById, revokeAllSessions, changeAdminPassword,
+  homeFor,
 } from '../auth.js';
 import { adminIpAllowed } from '../ipallow.js';
 import { requireFeature } from '../features.js';
@@ -14,7 +15,6 @@ import { listDevices, blockDevice, unblockDevice, deviceOfRequest } from '../dev
 const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } };
 const authLimiter = new RateLimiter(20, 10 * 60 * 1000);
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 
 export function securityRouter(env, engine, hub) {
   const r = express.Router();
@@ -35,7 +35,7 @@ export function securityRouter(env, engine, hub) {
     const token = newSession(out.accountId, out.role, ip, req.headers['user-agent']);
     audit('login.passkey', out.who, ip, `Rolle ${out.role}, ${out.passkeyLabel}`);
     setSessionCookie(req, res, token);
-    res.json({ ok: true, role: out.role, home: settings().roleHome?.[out.role] || HOME[out.role] });
+    res.json({ ok: true, role: out.role, home: homeFor(out.role, out.accountId) });
   }));
 
   // ----- Passkeys verwalten (angemeldet) -----

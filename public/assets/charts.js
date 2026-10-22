@@ -14,7 +14,7 @@ async function load() {
   const first = !key; key = k;
   const max = Math.max(1, ...rows.map((r) => r.votes));
   clear(list).append(...(rows.length ? rows.map((r, i) => h('div', { class: 'chart-row' },
-    h('div', { class: 'chart-rank' }, String(i + 1)), cover(r.title, 'sm'),
+    h('div', { class: 'chart-rank' }, String(i + 1)), cover(r.title, 'sm', r.trackId),
     h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist), h('div', { class: 'chart-bar' }, h('i', { style: `width:${Math.round(100 * r.votes / max)}%` }))),
     h('div', { class: 'chart-votes' }, h('b', { 'data-v': '0' }, String(r.votes)), h('span', {}, r.votes === 1 ? 'Stimme' : 'Stimmen')))) : [h('div', { class: 'muted' }, 'Noch keine Wünsche – scannt den QR-Code!')]));
   if (first) stagger(list, 60);

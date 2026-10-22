@@ -88,16 +88,23 @@ function viewSettings() {
 
 // ---------- Codes ----------
 function viewCodes() {
-  const role = h('select', {}, ...data.roles.map((r) => h('option', { value: r.id }, r.label)));
+  const role = h('select', { 'aria-label': 'Rolle' }, ...data.roles.map((r) => h('option', { value: r.id }, r.label)));
   const label = h('input', { placeholder: 'Bezeichnung (z. B. Mod Lisa)', maxlength: 40 });
+  // Startansicht: welche Ansicht/welches Dashboard der Code nach dem Login sieht (nur was die Rolle darf)
+  const viewLabel = (p) => data.startViews.find((v) => v.path === p)?.label || p;
+  const viewOptions = (roleId, current = '') => [h('option', { value: '' }, 'Standard der Rolle'), ...(data.roles.find((r) => r.id === roleId)?.views || []).map((p) => h('option', { value: p, selected: p === current }, viewLabel(p)))];
+  const home = h('select', { 'aria-label': 'Startansicht' }, ...viewOptions(role.value));
+  role.addEventListener('change', () => clear(home).append(...viewOptions(role.value)));
   const table = h('div', { class: 'card', style: 'overflow-x:auto' });
   async function refresh() {
     const { accounts } = await api('/admin/accounts');
     clear(table).append(h('table', {},
-      h('thead', {}, h('tr', {}, ...['Bezeichnung', 'Rolle', 'Angenommen', 'Abgelehnt', 'Priorisiert', 'Zuletzt', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ...['Bezeichnung', 'Rolle', 'Startansicht', 'Angenommen', 'Abgelehnt', 'Priorisiert', 'Zuletzt', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, ...accounts.map((a) => h('tr', {},
         h('td', {}, h('strong', {}, a.label), a.sso ? h('span', { class: 'badge', style: 'margin-left:6px', title: 'Konto wurde über SSO angelegt' }, 'SSO') : null, a.ssoLinked ? h('span', { class: 'badge ok', style: 'margin-left:6px', title: 'Mit einem SSO-Konto verbunden' }, 'SSO verbunden') : null, a.email ? h('div', { class: 'tiny muted' }, a.email) : null, a.revoked ? h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'gesperrt') : null),
-        h('td', {}, a.roleLabel), h('td', {}, a.approved), h('td', {}, a.denied), h('td', {}, a.prioritized), h('td', {}, a.last_seen ? fmtClock(a.last_seen) : '–'),
+        h('td', {}, a.roleLabel),
+        h('td', {}, a.role === 'admin' ? '–' : h('select', { class: 'small', 'aria-label': `Startansicht ${a.label}`, onchange: safe(async (e) => { await api(`/admin/accounts/${a.id}/home`, { method: 'POST', body: { home: e.target.value } }); toast('Startansicht gespeichert'); }) }, ...viewOptions(a.role, a.home || ''))),
+        h('td', {}, a.approved), h('td', {}, a.denied), h('td', {}, a.prioritized), h('td', {}, a.last_seen ? fmtClock(a.last_seen) : '–'),
         h('td', {}, h('div', { class: 'row' },
           h('button', { class: 'small', onclick: safe(async () => { const { decisions } = await api(`/admin/accounts/${a.id}/decisions`); showDecisions(a, decisions); }) }, 'Entscheidungen'),
           !a.sso ? h('button', { class: 'small ghost', title: 'E-Mail für die automatische SSO-Zuordnung', onclick: safe(async () => { const e = prompt('E-Mail-Adresse dieser Person im SSO (leer = entfernen):', a.email || ''); if (e == null) return; await api(`/admin/accounts/${a.id}/email`, { method: 'POST', body: { email: e } }); refresh(); }) }, '✉') : null,
@@ -108,8 +115,9 @@ function viewCodes() {
   refresh();
   return h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Neuen Code erstellen'),
-      h('div', { class: 'row' }, role, label, h('button', { class: 'primary', onclick: safe(async () => {
-        const out = await api('/admin/accounts', { method: 'POST', body: { role: role.value, label: label.value } });
+      h('p', { class: 'small muted' }, 'Mit „Startansicht“ landet ein Code direkt in seinem Dashboard – z. B. ein Technik-Code für die Tonleute im Ton-Dashboard, einer für das Licht im Licht-Dashboard.'),
+      h('div', { class: 'row' }, role, label, home, h('button', { class: 'primary', onclick: safe(async () => {
+        const out = await api('/admin/accounts', { method: 'POST', body: { role: role.value, label: label.value, home: home.value } });
         label.value = '';
         const close = modal([h('h2', {}, 'Neuer Code'), h('p', { class: 'big', style: 'letter-spacing:.06em;user-select:all' }, out.code), h('p', { class: 'small muted' }, 'Wird nur jetzt angezeigt und kann später nicht mehr eingesehen werden.'), h('button', { class: 'primary', onclick: () => close() }, 'Notiert')]);
         refresh();
@@ -164,6 +172,7 @@ function viewConnections() {
           h('div', { class: 'row between small' }, h('span', {}, `${a.name}${a.search ? '' : ' (nur Player)'}`), h('span', { class: a.pausedSec ? 'badge warn' : 'muted' }, a.pausedSec ? `Pause ${a.pausedSec} s` : `${a.used}/${a.budget}`)),
           h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * a.used / a.budget))}%` })))) : []))
         : h('div', { class: 'small muted' }, 'Sobald echte Spotify-Verbindungen aktiv sind, erscheint hier die Auslastung.'),
+      apiCacheBox(data.apiCache),
       h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Eigenes Budget'), budget, h('span', { class: 'small muted' }, 'Anfragen pro 30 s und App (Standard 60)'),
         h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
@@ -175,6 +184,18 @@ function viewConnections() {
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
       h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
+}
+
+// Was die App schon von Spotify weiss, fragt sie nicht noch einmal (dauerhaft gespeichert, auch nach Neustart)
+function apiCacheBox(c) {
+  if (!c) return h('span');
+  const k = c.kinds || {};
+  const total = c.hits + c.misses;
+  return h('div', { class: 'stack', style: 'gap:6px;border-top:1px solid var(--line);padding-top:10px' },
+    h('div', { class: 'row between' }, h('strong', { class: 'small help-host' }, 'Gespeicherte Spotify-Daten'),
+      h('button', { class: 'small ghost', onclick: safe(async () => { if (!confirm('Gespeicherte Spotify-Daten und Cover löschen? Die App fragt sie bei Bedarf neu an.')) return; await api('/admin/cache/clear', { method: 'POST', body: {} }); toast('Speicher geleert'); await load(); }) }, 'Leeren')),
+    h('div', { class: 'small muted' }, `${k.track || 0} Songs · ${k.artist || 0} Interpreten (Genres) · ${k.search || 0} Suchen · ${k.playlist || 0} Playlists · ${c.covers} Cover (${Math.round(c.coverBytes / 1024)} KB)`),
+    h('div', { class: 'small muted' }, total ? `Seit Start ${c.hits} von ${total} Abfragen aus dem Speicher beantwortet (${Math.round(100 * c.hits / total)} %) – so oft musste Spotify nicht gefragt werden.` : 'Seit Start noch keine Abfragen.'));
 }
 
 // Mehrere Spotify-Apps: jede hat ein eigenes Anfrage-Limit. Die Suche der Gaeste verteilt sich auf alle Apps mit „Suche";
@@ -216,7 +237,9 @@ const PAGES = [
   ['Board', '/board', 'Eigene Ansicht aus Bausteinen'],
   ['Beamer', '/beamer', 'Großer Bildschirm für die Gäste (öffentlich)'],
   ['Bühne', '/stage', 'Jetzt, Nächster, Uhr, Zeitplan, Mics'],
-  ['Licht', '/light', 'Lichttechnik: jetzt, nächste Songs mit Genre, Übergang-Countdown'],
+  ['Dashboard Ton', '/ton', 'Tontechnik: beide Player mit Pegel, Übergang, Mics & Ducking, nächste Songs'],
+  ['Dashboard Licht', '/light', 'Lichttechnik: jetzt (mit Cover), nächste Songs mit Genre, Übergang-Countdown'],
+  ['Dashboard Orga', '/orga', 'Orga & Einlass: Uhr, Zeitplan, Zahlen, Gäste online, Hinweise'],
   ['DJ', '/dj', 'DJ: angenommene Wünsche, Läuft jetzt / Gespielt markieren'],
   ['Zeitplan', '/schedule', 'Programmpunkte mit Countdown'],
   ['Verlauf', '/activity', 'Was ist heute passiert?'],
@@ -491,7 +514,7 @@ function viewFeatures() {
   const vPer = num(v.votesPerWindow, { min: 1, max: 100, class: 'num' }), vWin = num(v.windowMin, { min: 1, max: 600, class: 'num' }), vSort = chk(v.sortByVotes);
   const gain = num(Math.round(lim.maxGain * 100), { min: 30, max: 100, class: 'num' }), maxSong = num(Math.round(lim.maxSongSec / 60 * 10) / 10, { min: 0, max: 30, step: 0.5, class: 'num' });
   const pmsg = h('input', { value: pz.message, maxlength: 120 });
-  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/light', 'Licht'], ['/dj', 'DJ'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
+  const HOMES = [['', 'Standard'], ['/mod', 'Moderation'], ['/tech', 'Technik'], ['/stage', 'Bühne'], ['/ton', 'Dashboard Ton'], ['/light', 'Dashboard Licht'], ['/orga', 'Dashboard Orga'], ['/dj', 'DJ'], ['/focus', 'Fokus-Modus'], ['/ticker', 'Live-Wünsche'], ['/board', 'Board'], ['/foh', 'Anzeige'], ['/analytics', 'Analytics']];
   const homes = Object.fromEntries(['tech', 'mod', 'orga', 'display', 'light', 'dj'].map((r) => [r, h('select', {}, ...HOMES.map(([val, l]) => h('option', { value: val, selected: (data.settings.roleHome?.[r] || '') === val }, l)))]));
   const ROLE = { tech: 'Technik', mod: 'Moderation', orga: 'Orga', display: 'FOH-Anzeige', light: 'Lichttechnik', dj: 'DJ' };
   return h('div', { class: 'stack', style: 'gap:16px' },
@@ -908,6 +931,7 @@ const HELP = {
   'Client ID': 'Aus dem Spotify-Developer-Dashboard deiner App.',
   'Client Secret': 'Aus dem Spotify-Developer-Dashboard. Wird verschlüsselt gespeichert.',
   'Spotify-Apps (Developer Dashboard)': 'Jede App aus developer.spotify.com hat ein eigenes Anfrage-Limit (ca. 30-Sekunden-Fenster). Mit mehreren Apps verteilt sich die Gäste-Suche, und fällt eine App ins Limit, springt die nächste ein. Im Entwicklungsmodus erlaubt eine App nur wenige Spotify-Konten – dann Player 1 und 2 über verschiedene Apps verbinden.',
+  'Gespeicherte Spotify-Daten': 'Songs, Genres, Suchtreffer, Playlists und Album-Cover, die schon einmal von Spotify geholt wurden, liegen dauerhaft im Speicher (eigene Datei cache.db, nicht in den Backups). Die App fragt sie nicht erneut an – auch nicht nach einem Neustart. Songs/Genres bleiben 30 Tage, Suchen 12 Stunden, Playlists 1 Stunde.',
   'Für die Gäste-Suche mitnutzen': 'An: Suche, Song-Infos und Genres dürfen über diese App laufen. Aus: die App ist nur für den Player da, der über sie verbunden ist (so bleibt ihr Limit ganz für Play/Pause/Crossfade).',
   'Verbinden über App': 'Über welche Spotify-App sich dieser Player anmeldet. Der Player bleibt bei dieser App, bis du ihn neu verbindest.',
   // Live-Test

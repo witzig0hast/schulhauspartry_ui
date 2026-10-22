@@ -21,6 +21,8 @@ export const FEATURES = [
   { id: 'viewPrep', group: 'views', label: 'Vorbereitung', desc: 'Checkliste und Testknöpfe vor der Party.', def: true },
   { id: 'viewFoh', group: 'views', label: 'FOH-Anzeige', desc: 'Statusanzeige zum Ansehen.', def: true },
   { id: 'viewDj', group: 'views', label: 'DJ-Ansicht', desc: 'Angenommene Wünsche als Arbeitsliste: „Läuft jetzt“ und „Gespielt“ markieren (vor allem im Wunschlisten-Modus).', def: true },
+  { id: 'viewTon', group: 'views', label: 'Ton-Dashboard', desc: 'Für die Tontechnik: beide Player mit Pegel und Fader, Übergang-Countdown, Mikrofone & Ducking, nächste Songs mit Intro-Hinweisen, Verbindungen.', def: true },
+  { id: 'viewOrga', group: 'views', label: 'Orga-Dashboard', desc: 'Für Orga und Einlass: Uhr, Zeitplan, Zahlen, Gäste online, Status der Wünsche, Hinweise und Team.', def: true },
   { id: 'viewLight', group: 'views', label: 'Licht-Ansicht', desc: 'Für die Lichttechnik: aktueller Song, die nächsten mit Genre, Übergang-Countdown.', def: true },
   { id: 'viewStage', group: 'views', label: 'Bühnen-Ansicht', desc: 'Jetzt läuft, Nächster Song, Uhr, Zeitplan und Mics auf einen Blick.', def: true },
   { id: 'viewCharts', group: 'views', label: 'Wunsch-Charts (öffentlich)', desc: 'Rangliste der meistgewünschten Songs für den Bildschirm.', def: true },
@@ -67,6 +69,7 @@ export const FEATURES = [
   { id: 'animations', group: 'visual', label: 'Animationen', desc: 'Übergänge, Einblendungen und Bewegung. Aus = alles ruhig.', def: true },
   { id: 'confetti', group: 'visual', label: 'Konfetti', desc: 'Wenn der Wunsch eines Gastes läuft.', def: true },
   { id: 'countUp', group: 'visual', label: 'Zahlen zählen hoch', desc: 'Animierte Kennzahlen.', def: true },
+  { id: 'covers', group: 'visual', label: 'Album-Cover', desc: 'Echte Cover der Songs (von Spotify, vom Server einmal geladen und gemerkt). Aus = farbige Initialen.', def: true },
   { id: 'beamerFx', group: 'visual', label: 'Beamer-Effekte', desc: 'Leuchtende Farbverläufe und bewegte Hintergründe.', def: true },
   { id: 'sounds', group: 'visual', label: 'Töne in der Moderation', desc: 'Klingelton bei neuen Wünschen im Fokus-Modus erlauben.', def: true },
 ];

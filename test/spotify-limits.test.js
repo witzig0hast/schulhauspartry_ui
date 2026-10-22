@@ -5,6 +5,7 @@ import { config } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { loadSettings, setPlayerToken } from '../src/settings.js';
 import { RealSpotify, RealPlayer } from '../src/adapters/spotify-real.js';
+import { cacheClear, cacheInfo } from '../src/apicache.js';
 
 // ---- Regler (mit simulierter Uhr) ----
 function fakeGov(budget = 10) {
@@ -93,6 +94,7 @@ test('Suche: bei Spotify-Limit antwortet der Cache, ohne Cache kommt ein klarer 
   const sp = new RealSpotify();
   await sp.search('alt');
   sp.searchCache.get([...sp.searchCache.keys()][0]).ts = 0; // abgelaufen
+  cacheClear();                                              // auch im dauerhaften Speicher nicht mehr frisch
   handler = () => ({ status: 429, body: {}, headers: { 'Retry-After': '7' } });
   const stale = await sp.search('alt');
   assert.equal(stale[0].title, 'Song A', 'abgelaufene Treffer statt Fehler');
@@ -139,4 +141,21 @@ test('Steuerbefehle (Play) werden nach 429 automatisch wiederholt', async () => 
     await pl.play({ uri: 'spotify:track:x' });
     assert.equal(n, 2, 'zweiter Versuch ging durch');
   } finally { governor.sleep = realSleep; }
+});
+
+test('Dauerhafter Speicher: was einmal abgefragt wurde, kommt nach einem Neustart ohne Spotify-Anfrage', async () => {
+  resetGov(); cacheClear();
+  handler = (url) => (url.includes('/v1/search') ? { status: 200, body: { tracks: { items: [{ ...track(ID1, 'Song A'), album: { name: 'Alb', release_date: '2020', images: [{ url: 'https://i.scdn.co/image/abc640', width: 640 }, { url: 'https://i.scdn.co/image/abc300', width: 300 }, { url: 'https://evil.example/x.jpg', width: 300 }] } }] } } }
+    : url.includes('/v1/artists') ? { status: 200, body: { artists: [{ id: 'A'.repeat(22), genres: ['pop'] }] } } : { status: 404, body: {} });
+  const a = new RealSpotify();
+  const list = await a.search('Gemerkt');
+  assert.equal(list[0].cover, 'https://i.scdn.co/image/abc300', 'Cover ~300 px von Spotifys Bildserver');
+  assert.deepEqual(await a.getGenres(list[0]), ['pop']);
+  const before = calls.length;
+  const b = new RealSpotify();                     // wie nach einem Neustart: Speicher im Prozess ist leer
+  assert.equal((await b.search('gemerkt'))[0].title, 'Song A');
+  assert.equal((await b.getTrack(ID1)).title, 'Song A');
+  assert.deepEqual(await b.getGenres(list[0]), ['pop']);
+  assert.equal(calls.length, before, 'keine weitere Anfrage an Spotify');
+  assert.ok(cacheInfo().kinds.track >= 1 && cacheInfo().kinds.artist >= 1 && cacheInfo().hits >= 3);
 });

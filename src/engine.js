@@ -18,6 +18,7 @@ const localDay = (tz = settings().timezone) => new Intl.DateTimeFormat('sv-SE', 
 const BROADCAST_MS = 250;
 const other = (p) => (p === 1 ? 2 : 1);
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+export const trackIdOfUri = (uri) => (/^spotify:track:([A-Za-z0-9]{22})$/.exec(uri || '') || [])[1] || null;
 const dbToAmp = (db) => Math.pow(10, (Number(db) || 0) / 20);
 
 function curveLevels(curve, p) {
@@ -560,11 +561,11 @@ export class Engine extends EventEmitter {
   get wishMode() { return this.state.wishMode; }
 
   nowPlaying() {
-    if (this.wishlist) { const r = rq.nowPlayingRequest(this.env); return r ? { player: null, title: r.title, artist: r.artist } : null; }
+    if (this.wishlist) { const r = rq.nowPlayingRequest(this.env); return r ? { player: null, title: r.title, artist: r.artist, trackId: r.trackId } : null; }
     for (const p of [this.current, other(this.current || 1)]) {
       if (!p) continue;
       const st = this.players[p].status();
-      if (st.playing && st.title) return { player: p, title: st.title, artist: st.artist };
+      if (st.playing && st.title) return { player: p, title: st.title, artist: st.artist, trackId: trackIdOfUri(st.uri) };
     }
     return null;
   }

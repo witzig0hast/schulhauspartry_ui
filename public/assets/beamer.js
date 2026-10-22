@@ -1,4 +1,4 @@
-import { h, api, connect, clear, cover, eq, qrElement, BASE, BRAND, $, feat } from '/assets/app.js';
+import { h, api, connect, clear, eq, qrElement, BASE, BRAND, $, feat, coverOnce } from '/assets/app.js';
 import { stagger, flash } from '/assets/motion.js';
 
 // Beamer-/Bildschirmansicht fuer die Gaeste: Jetzt laeuft + QR-Code. Oeffentlich, zeigt nichts Internes.
@@ -33,7 +33,7 @@ function render() {
   renderExtra();
   const np = state.nowPlaying;
   clear(nowBox).append(np
-    ? h('div', { class: 'bm-hero' }, cover(np.title, 'xl'), h('div', {}, h('div', { class: 'row', style: 'gap:10px' }, eq(true), h('span', { class: 'eyebrow' }, 'Jetzt läuft')), h('div', { class: 'bm-title' }, np.title), h('div', { class: 'bm-artist' }, np.artist)))
+    ? h('div', { class: 'bm-hero' }, coverOnce(np.title, 'xl', np.trackId), h('div', {}, h('div', { class: 'row', style: 'gap:10px' }, eq(true), h('span', { class: 'eyebrow' }, 'Jetzt läuft')), h('div', { class: 'bm-title' }, np.title), h('div', { class: 'bm-artist' }, np.artist)))
     : h('div', { class: 'bm-hero idle' }, h('div', {}, h('div', { class: 'eyebrow' }, 'Gleich geht’s weiter'), h('div', { class: 'bm-title' }, 'Musikwünsche?'))));
   const notice = state.notice;
   const text = state.wishMode !== 'open' ? state.message : notice;

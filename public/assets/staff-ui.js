@@ -1,4 +1,4 @@
-import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon, feat } from '/assets/app.js';
+import { h, api, clear, safe, toast, fmtTime, fmtClock, cover, eq, icon, feat, coverOnce } from '/assets/app.js';
 import { actionFor } from '/assets/hotkeys.js';
 
 // Waehrend ein Finger/die Maus gedrueckt ist, darf die Oberflaeche nicht neu aufgebaut werden:
@@ -64,7 +64,7 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
   state.upcoming.forEach((u, i) => {
     box.append(h('div', { class: `q-row ${u.prioritized ? 'prio' : ''}` },
       h('div', { class: 'idx' }, String(i + 1)),
-      cover(u.title, 'sm'),
+      cover(u.title, 'sm', u.trackId),
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
         u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
@@ -102,7 +102,7 @@ export function pendingList(state, { canAct, assign, onAfter, list = 'pending', 
     const take = () => { if (canAct) api('/mod/claim', { method: 'POST', body: { id: r.id } }).catch(() => {}); };
     box.append(h('div', { class: `item req ${claim && claim.by !== me ? 'claimed' : ''}`, onpointerdown: take },
       h('div', { class: 'req-main' },
-        cover(r.title),
+        cover(r.title, '', r.trackId),
         h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)),
         h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
           r.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'Explicit') : null,
@@ -146,7 +146,7 @@ export function historyList(state, { canAct, onAfter } = {}) {
   for (const r of state.history) {
     const isBlocked = blocked.has(r.trackId);
     box.append(h('div', { class: 'q-row' },
-      cover(r.title, 'sm'),
+      cover(r.title, 'sm', r.trackId),
       h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, `${r.artist} · ${r.status === 'playing' ? 'läuft jetzt' : ago(r.playedAt)}`)),
       isBlocked ? h('span', { class: 'badge bad' }, 'gesperrt') : null,
       canAct && r.status !== 'playing' && !isBlocked ? h('button', { class: 'small', title: 'Nochmal hinten einreihen', onclick: safe(async () => { const o = await api('/mod/requeue', { method: 'POST', body: { id: r.id } }); toast(`Wieder eingereiht (${playerName(o.player)})`); onAfter?.(); }) }, '↻ Nochmal') : null,
@@ -164,7 +164,7 @@ export function blacklistPanel(state, { canAct, onAfter } = {}) {
     const input = h('input', { type: 'search', placeholder: 'Song suchen, um ihn zu sperren …', maxlength: 80, oninput: () => { clearTimeout(t); t = setTimeout(safe(async () => {
       const q = input.value.trim(); if (q.length < 2) return clear(results);
       const { tracks } = await api(`/mod/search?q=${encodeURIComponent(q)}`);
-      clear(results).append(...tracks.map((x) => h('div', { class: 'item row between nowrap' }, h('div', { class: 'req-main grow' }, cover(x.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, x.artist))),
+      clear(results).append(...tracks.map((x) => h('div', { class: 'item row between nowrap' }, h('div', { class: 'req-main grow' }, cover(x.title, 'sm', x.id), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, x.artist))),
         h('button', { class: 'small outline-bad', onclick: () => ban({ kind: 'track', trackId: x.id, title: x.title, artist: x.artist }, `„${x.title}“`, () => { input.value = ''; clear(results); onAfter?.(); }) }, '⛔ Sperren'))));
     }), 300); } });
     wrap.append(input, results);
@@ -207,7 +207,7 @@ export function playerSummary(n, p, { fohStyle = false, onAir = false } = {}) {
       h('div', { class: 'row', style: 'gap:8px' }, h('span', { class: 'eyebrow' }, playerName(n)), onAir ? h('span', { class: 'badge ink' }, 'On Air') : null),
       h('div', { class: 'row', style: 'gap:8px' }, eq(p.playing), h('span', { class: `badge ${p.playing ? 'ok' : ''}` }, p.playing ? 'spielt' : 'gestoppt'))),
     h('div', { class: `hero ${idle ? 'idle' : ''}` },
-      idle ? h('div', { class: `cover ${fohStyle ? 'lg' : 'lg'}`, style: '--h:0;background:var(--bg-2);color:var(--faint);text-shadow:none;box-shadow:none' }, '–') : cover(p.title, 'lg'),
+      idle ? h('div', { class: `cover ${fohStyle ? 'lg' : 'lg'}`, style: '--h:0;background:var(--bg-2);color:var(--faint);text-shadow:none;box-shadow:none' }, '–') : coverOnce(p.title, 'lg', p.trackId),
       h('div', { class: 'meta' }, h('div', { class: 't' }, p.title || 'Kein Song'), h('div', { class: 'a' }, p.artist || 'Bereit'))),
     h('div', { style: 'margin-top:14px' }, bar(pct, `p${n}`), h('div', { class: 'time' }, h('span', {}, fmtTime(p.positionMs)), h('span', {}, `−${fmtTime(p.remainingMs)}`))));
 }

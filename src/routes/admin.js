@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { requirePerm, adminIpGuard, clientIp, createAccount, revokeAccount, deleteAccount, ROLES, ROLE_LABELS } from '../auth.js';
+import { requirePerm, adminIpGuard, clientIp, createAccount, revokeAccount, deleteAccount, ROLES, ROLE_LABELS, START_VIEWS, startViewAllowed, can } from '../auth.js';
 import { getDb } from '../db.js';
 import { applyPatch, publicSettings, settings, setPlayerToken, spotifyApps } from '../settings.js';
 import * as rq from '../requests.js';
@@ -10,7 +10,8 @@ import { RealPlayer } from '../adapters/spotify-real.js';
 import { audit } from '../audit.js';
 import { testConnection, unlinkFor } from '../sso.js';
 import { backupNow } from '../backup.js';
-import { FEATURES, GROUPS, allFlags } from '../features.js';
+import { cacheInfo, cacheClear } from '../apicache.js';
+import { FEATURES, GROUPS, allFlags, isOn } from '../features.js';
 
 const oauthStates = new Map(); // state -> {player, appId, exp}
 
@@ -71,7 +72,8 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const s = publicSettings();
     res.json({
       settings: s,
-      roles: ROLES.filter((x) => x !== 'admin').map((id) => ({ id, label: ROLE_LABELS[id] })),
+      roles: ROLES.filter((x) => x !== 'admin').map((id) => ({ id, label: ROLE_LABELS[id], views: START_VIEWS.filter((v) => can(id, v.perm) && (!v.feature || isOn(v.feature))).map((v) => v.path) })),
+      startViews: START_VIEWS.map(({ path, label }) => ({ path, label })),
       publicUrl: config.publicUrl,
       features: { list: FEATURES, groups: GROUPS, flags: allFlags() },
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
@@ -82,6 +84,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       env,
       counts: Object.fromEntries(Object.keys(engines).map((e) => [e, rq.counts(e)])),
       connections: Object.fromEntries(Object.entries(engines).map(([k, v]) => [k, v.connections()])),
+      apiCache: cacheInfo(),
     });
   });
 
@@ -111,6 +114,9 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     res.json({ ok: true });
   }));
 
+  // Gespeicherte Spotify-Antworten und Cover leeren (danach fragt die App bei Bedarf neu)
+  r.post('/admin/cache/clear', wrap((req, res) => { cacheClear(); audit('cache.clear', req.session.label, clientIp(req)); res.json({ ok: true }); }));
+
   r.post('/admin/sso/test', wrap(async (req, res) => {
     try { res.json({ ok: true, ...(await testConnection()) }); }
     catch (e) { res.status(400).json({ error: e.message }); }
@@ -122,14 +128,16 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status IN ('approved','playing','played','removed')) AS approved,
       (SELECT COUNT(*) FROM requests WHERE decided_by = a.id AND status = 'denied') AS denied,
       (SELECT COUNT(*) FROM requests WHERE prioritized_by = a.id) AS prioritized,
-      (a.code_hash LIKE 'sso:%') AS sso, a.email AS email,
+      (a.code_hash LIKE 'sso:%') AS sso, a.email AS email, a.home AS home,
       (SELECT COUNT(*) FROM sso_links l WHERE l.kind = 'account' AND l.account_id = a.id) AS sso_links
       FROM accounts a ORDER BY a.id`).all();
     res.json({ accounts: rows.map((x) => ({ ...x, revoked: !!x.revoked, sso: !!x.sso, ssoLinked: x.sso_links > 0, roleLabel: ROLE_LABELS[x.role] })) });
   });
   r.post('/admin/accounts', wrap((req, res) => {
     const out = createAccount(String(req.body?.role), String(req.body?.label || ''));
-    audit('account.create', req.session.label, clientIp(req), `${out.role} #${out.id}`);
+    const home = String(req.body?.home || '');
+    if (home && startViewAllowed(out.role, home)) getDb().prepare('UPDATE accounts SET home = ? WHERE id = ?').run(home, out.id);
+    audit('account.create', req.session.label, clientIp(req), `${out.role} #${out.id}${home ? ` → ${home}` : ''}`);
     res.json({ ok: true, ...out }); // Klartext-Code nur dieses eine Mal
   }));
   // E-Mail fuer die automatische SSO-Zuordnung und Verbindung zu einem SSO-Konto loesen
@@ -138,6 +146,16 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Ungültige E-Mail-Adresse.');
     getDb().prepare("UPDATE accounts SET email = ? WHERE id = ? AND code_hash NOT LIKE 'sso:%'").run(email || null, Number(req.params.id));
     audit('account.email', req.session.label, clientIp(req), `#${req.params.id}`);
+    res.json({ ok: true });
+  }));
+  // Startansicht/Dashboard eines Codes (leer = Standard der Rolle)
+  r.post('/admin/accounts/:id/home', wrap((req, res) => {
+    const acc = getDb().prepare('SELECT role FROM accounts WHERE id = ?').get(Number(req.params.id));
+    if (!acc) throw Object.assign(new Error('Zugang nicht gefunden'), { status: 404 });
+    const home = String(req.body?.home || '');
+    if (home && !startViewAllowed(acc.role, home)) throw new Error('Diese Ansicht darf die Rolle nicht öffnen.');
+    getDb().prepare('UPDATE accounts SET home = ? WHERE id = ?').run(home || null, Number(req.params.id));
+    audit('account.home', req.session.label, clientIp(req), `#${req.params.id} → ${home || 'Standard'}`);
     res.json({ ok: true });
   }));
   r.delete('/admin/accounts/:id/sso', wrap((req, res) => {

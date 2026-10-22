@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, cover, eq, toast, BASE, $, feat, safe } from '/assets/app.js';
+import { h, api, connect, topbar, clear, eq, toast, BASE, $, feat, safe, coverOnce } from '/assets/app.js';
 import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban, isPressing, onRelease } from '/assets/staff-ui.js';
 import { actionFor, openHotkeyEditor, getHotkeys, ACTIONS } from '/assets/hotkeys.js';
 
@@ -51,7 +51,7 @@ function render() {
   const now = list.find((x) => x.p.playing && x.n === state.current) || list.find((x) => x.p.playing);
   const pct = now && now.p.durationMs ? now.p.positionMs / now.p.durationMs : 0;
   clear(nowBox).append(now
-    ? h('div', { class: 'hero' }, cover(now.p.title), h('div', { class: 'meta' },
+    ? h('div', { class: 'hero' }, coverOnce(now.p.title, '', now.p.trackId), h('div', { class: 'meta' },
         h('div', { class: 'row', style: 'gap:8px' }, eq(true), h('span', { class: 'eyebrow' }, `Jetzt läuft · Player ${now.n}`)),
         h('div', { class: 't', style: 'font-size:1.1rem' }, now.p.title), h('div', { class: 'a small' }, now.p.artist),
         h('div', { class: 'bar', style: 'margin-top:8px' }, h('i', { style: `width:${Math.round(pct * 100)}%` }))))

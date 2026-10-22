@@ -42,7 +42,7 @@ function render() {
     let e = els.get(r.id);
     if (!e) {
       e = { el: h('div', {}), info: h('div', { style: 'min-width:0' }), state: h('div', { class: 'tk-state' }) };
-      e.el.append(cover(r.title, 'lg'), e.info, e.state);
+      e.el.append(cover(r.title, 'lg', r.trackId), e.info, e.state);
       els.set(r.id, e);
     }
     e.el.className = `tk-item ${s.cls} ${flashUntil.get(r.id) > now ? 'flash' : ''}`;

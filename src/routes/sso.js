@@ -1,6 +1,6 @@
 import express from 'express';
 import { parseCookies, cookieString, cookieName, readCookie, isSecure, clientIp, RateLimiter } from '../security.js';
-import { newSession, setSessionCookie, sessionFromRequest } from '../auth.js';
+import { newSession, setSessionCookie, sessionFromRequest, homeFor } from '../auth.js';
 import { adminIpAllowed } from '../ipallow.js';
 import { settings } from '../settings.js';
 import { getDb } from '../db.js';
@@ -8,10 +8,9 @@ import { audit } from '../audit.js';
 import { requireFeature } from '../features.js';
 import { ssoReady, ssoConfig, startLogin, completeLogin, resolveLogin, provision, linkIdentity, linksOf, unlinkFor, SsoError } from '../sso.js';
 
-const HOME = { admin: '/admin', tech: '/tech', mod: '/mod', orga: '/mod', display: '/foh', light: '/light', dj: '/dj' };
 const limiter = new RateLimiter(150, 10 * 60 * 1000);   // viele Mitarbeitende hinter derselben Schul-Adresse
 const safeNext = (n) => (typeof n === 'string' && /^\/[A-Za-z0-9/_-]*$/.test(n) && !n.startsWith('//') ? n : '');
-const homeOf = (role) => settings().roleHome?.[role] || HOME[role] || '/';
+const homeOf = (role, accountId = null) => homeFor(role, accountId);
 
 // SSO-Anmeldung und -Verknuepfung (nur live; die Rueckkehr-Adresse beim Anbieter ist PUBLIC_URL/api/sso/callback)
 export function ssoRouter() {
@@ -102,7 +101,7 @@ export function ssoRouter() {
       audit('login.sso', label, ip, `Rolle ${role}${who.kind === 'new' ? ' (neues Konto)' : ' (verbundener Zugang)'}${claims.email ? `, ${claims.email}` : ''}`);
       setSessionCookie(req, res, token);
       clearCookie();
-      res.redirect(next || homeOf(role));
+      res.redirect(next || homeOf(role, accountId));
     } catch (e) {
       if (e instanceof SsoError) return fail(e.code === 'locked' ? 'locked' : e.code === 'expired' ? 'expired' : 'failed', e.message);
       return fail('failed', e.message);

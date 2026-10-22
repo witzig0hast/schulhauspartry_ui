@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, safe, toast, cover, eq, fmtTime, $ } from '/assets/app.js';
+import { h, api, connect, topbar, clear, safe, toast, cover, eq, fmtTime, $, coverOnce } from '/assets/app.js';
 import { pendingList, upcomingList, recentList, historyList, blacklistPanel, chatPanel, playerSummary, ampel, bar, kpi, empty } from '/assets/staff-ui.js';
 import { hbars, stackedColumns, entityColor, COLORS } from '/assets/viz.js';
 
@@ -34,7 +34,7 @@ const WIDGETS = {
         const now = list.find((x) => x.p.playing && x.n === s.current) || list.find((x) => x.p.playing);
         const pct = now && now.p.durationMs ? now.p.positionMs / now.p.durationMs : 0;
         clear(box).append(now
-          ? h('div', { class: 'hero' }, cover(now.p.title, 'lg'), h('div', { class: 'meta' },
+          ? h('div', { class: 'hero' }, coverOnce(now.p.title, 'lg', now.p.trackId), h('div', { class: 'meta' },
               h('div', { class: 'row', style: 'gap:8px' }, eq(true), h('span', { class: 'eyebrow' }, `Player ${now.n}`)),
               h('div', { class: 't' }, now.p.title), h('div', { class: 'a' }, now.p.artist),
               h('div', { style: 'margin-top:10px' }, bar(pct, `p${now.n}`), h('div', { class: 'time' }, h('span', {}, fmtTime(now.p.positionMs)), h('span', {}, `−${fmtTime(now.p.remainingMs)}`)))))
@@ -87,7 +87,7 @@ const WIDGETS = {
       return { el: box, update(s) {
         const byId = new Map(); for (const r of [...(s.recent || []), ...(s.pending || [])]) byId.set(r.id, r);
         const feed = [...byId.values()].filter((r) => r.status !== 'removed').sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
-        memo(box, JSON.stringify(feed.map((r) => [r.id, r.status, r.votes])), () => feed.length ? h('div', {}, ...feed.map((r) => h('div', { class: 'q-row' }, cover(r.title, 'sm'),
+        memo(box, JSON.stringify(feed.map((r) => [r.id, r.status, r.votes])), () => feed.length ? h('div', {}, ...feed.map((r) => h('div', { class: 'q-row' }, cover(r.title, 'sm', r.trackId),
           h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, r.artist)),
           h('span', { class: `badge ${r.status === 'pending' ? 'warn' : r.status === 'denied' ? 'bad' : 'ok'}` }, r.status === 'pending' ? 'wartet' : r.status === 'denied' ? 'abgelehnt' : 'angenommen')))) : empty('Noch keine Wünsche.'));
       } };

@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { settings, spotifyApps, spotifyApp, playerRefreshToken } from '../settings.js';
 import { governor, governorFor, RateLimitError } from './spotify-governor.js';
+import { cacheGet, cacheGetStale, cacheSet } from '../apicache.js';
 
 const API = 'https://api.spotify.com/v1';
 const ACCOUNTS = 'https://accounts.spotify.com';
@@ -85,11 +86,18 @@ async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
   throw new RateLimitError(governor.pausedMs() || 1000, 'retries');
 }
 
-const mapTrack = (t) => ({
+// Album-Cover: das Bild, das am naechsten an 300 px liegt (wird ueber /cover/<id> vom Server geladen und gemerkt)
+const pickCover = (images) => {
+  const list = (images || []).filter((i) => /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/.test(i?.url || ''));
+  if (!list.length) return null;
+  return list.reduce((best, i) => (Math.abs((i.width || 300) - 300) < Math.abs((best.width || 300) - 300) ? i : best)).url;
+};
+export const mapTrack = (t) => ({
   id: t.id, uri: t.uri, title: t.name, artist: t.artists.map((a) => a.name).join(', '),
   album: t.album?.name || '', explicit: !!t.explicit, durationMs: t.duration_ms,
   artistIds: t.artists.map((a) => a.id).filter(Boolean), year: Number(String(t.album?.release_date || '').slice(0, 4)) || null,
   popularity: Number.isFinite(t.popularity) ? t.popularity : null,
+  cover: pickCover(t.album?.images),
 });
 
 const SEARCH_TTL = 10 * 60 * 1000;
@@ -153,16 +161,19 @@ export class RealSpotify {
     const key = `s:${limit}:${String(q).toLowerCase().trim().replace(/\s+/g, ' ')}`;
     const hit = this.searchCache.get(key);
     if (hit && Date.now() - hit.ts < SEARCH_TTL) { governor.stats.cacheHits++; return hit.list; }
+    const stored = cacheGet('search', key);   // dauerhaft gemerkt (auch nach Neustart)
+    if (stored) { governor.stats.cacheHits++; remember(this.searchCache, key, { ts: Date.now(), list: stored }); return stored; }
     return this._once(key, async () => {
       try {
         const r = await this.pool.call('GET', '/search', { query: { q, type: 'track', limit: String(limit), market: 'DE' }, cls: 'search' });
         const list = r.tracks.items.map(mapTrack);
         remember(this.searchCache, key, { ts: Date.now(), list });
-        for (const t of list) remember(this.trackCache, t.id, { ts: Date.now(), track: t });
+        cacheSet('search', key, list);
+        for (const t of list) { remember(this.trackCache, t.id, { ts: Date.now(), track: t }); cacheSet('track', t.id, t); }
         this.lastOk = Date.now(); this.lastError = null;
         return list;
       } catch (e) {
-        if (e instanceof RateLimitError) { if (hit) return hit.list; throw e; } // abgelaufene Treffer sind besser als keine
+        if (e instanceof RateLimitError) { const old = hit?.list || cacheGetStale('search', key); if (old) return old; throw e; } // abgelaufene Treffer sind besser als keine
         this.lastError = e.message; throw e;
       }
     });
@@ -171,13 +182,16 @@ export class RealSpotify {
     if (!/^[A-Za-z0-9]{22}$/.test(id)) return null;
     const hit = this.trackCache.get(id);
     if (hit && Date.now() - hit.ts < TRACK_TTL) { governor.stats.cacheHits++; return hit.track; }
+    const stored = cacheGet('track', id);
+    if (stored) { governor.stats.cacheHits++; remember(this.trackCache, id, { ts: Date.now(), track: stored }); return stored; }
     return this._once(`t:${id}`, async () => {
       try {
         const track = mapTrack(await this.pool.call('GET', `/tracks/${id}`, { query: { market: 'DE' }, cls: 'search' }));
         remember(this.trackCache, id, { ts: Date.now(), track });
+        cacheSet('track', id, track);
         return track;
       } catch (e) {
-        if (e instanceof RateLimitError && hit) return hit.track;
+        if (e instanceof RateLimitError) { const old = hit?.track || cacheGetStale('track', id); if (old) return old; }
         if (e.status === 404 || e.status === 400) return null;
         throw e;
       }
@@ -187,11 +201,12 @@ export class RealSpotify {
   // Fehler/Limit -> leer, nie blockierend.
   async getGenres(track) {
     const ids = [...new Set(track.artistIds || [])].filter((id) => /^[A-Za-z0-9]{22}$/.test(id)).slice(0, 5);
+    for (const id of ids) if (!this.genreCache.has(id)) { const g = cacheGet('artist', id); if (g) remember(this.genreCache, id, g); }
     const missing = ids.filter((id) => !this.genreCache.has(id));
     if (missing.length) {
       try {
         const r = await this.pool.call('GET', '/artists', { query: { ids: missing.join(',') }, cls: 'search' });
-        for (const a of r.artists || []) if (a) remember(this.genreCache, a.id, a.genres || []);
+        for (const a of r.artists || []) if (a) { remember(this.genreCache, a.id, a.genres || []); cacheSet('artist', a.id, a.genres || []); }
         this.genresOk = true;
       } catch (e) { if (!(e instanceof RateLimitError)) { this.genresOk = false; this.genreError = e.message; } }
     }
@@ -203,16 +218,19 @@ export class RealSpotify {
     this.playlistCache ??= new Map();
     const hit = this.playlistCache.get(id);
     if (hit && Date.now() - hit.ts < 30 * 60000) { governor.stats.cacheHits++; return hit.list; }
+    const stored = cacheGet('playlist', id);
+    if (stored) { governor.stats.cacheHits++; remember(this.playlistCache, id, { ts: Date.now(), list: stored }); return stored; }
     return this._once(`p:${id}`, async () => {
       try {
         const list = [];
-        let path = `/playlists/${id}/tracks`, query = { limit: '100', market: 'DE', fields: 'items(track(id,uri,name,explicit,duration_ms,popularity,artists(id,name),album(name,release_date))),next' };
+        let path = `/playlists/${id}/tracks`, query = { limit: '100', market: 'DE', fields: 'items(track(id,uri,name,explicit,duration_ms,popularity,artists(id,name),album(name,release_date,images))),next' };
         for (let page = 0; page < 3 && path; page++) {
           const r = await this.pool.call('GET', path, { query, cls: 'search' });
           for (const it of r.items || []) if (it?.track?.id && it.track.uri?.startsWith('spotify:track:')) list.push(mapTrack(it.track));
           path = r.next ? r.next.replace(API, '') .split('?')[0] : null; query = r.next ? Object.fromEntries(new URL(r.next).searchParams) : undefined;
         }
         remember(this.playlistCache, id, { ts: Date.now(), list });
+        cacheSet('playlist', id, list);
         return list;
       } catch (e) { if (e instanceof RateLimitError && hit) return hit.list; this.lastError = e.status === 403 || e.status === 404 ? `Playlist nicht lesbar (${e.status})` : e.message; return hit?.list || []; }
     });
@@ -301,6 +319,7 @@ export class RealPlayer {
         this.cache = { ...this.cache, connected: true, playing: false, ended: !!this.cache.uri && this.cache.positionMs > 0 };
       } else {
         const ended = !s.is_playing && s.progress_ms === 0 && this.cache.uri === s.item.uri && this.cache.positionMs > s.item.duration_ms - 3000;
+        if (s.item.id && s.item.uri?.startsWith('spotify:track:') && s.item.uri !== this.cache.uri && !cacheGet('track', s.item.id)) cacheSet('track', s.item.id, mapTrack(s.item));   // fuer Cover & Infos, ohne extra Anfrage
         this.cache = {
           connected: true, playing: s.is_playing, ended, uri: s.item.uri, title: s.item.name,
           artist: s.item.artists.map((a) => a.name).join(', '), positionMs: s.progress_ms || 0, durationMs: s.item.duration_ms,

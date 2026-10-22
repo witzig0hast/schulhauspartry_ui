@@ -26,7 +26,7 @@ function render() {
     h('div', { class: 'row between small' }, h('strong', {}, m.name), h('span', { class: `badge ${m.open ? 'ok' : ''}` }, m.open ? 'offen' : 'stumm')), bar(m.level, 'meter')))));
   clear(upBox).append(...section(`Als Nächstes · ${state.upcomingTotal}`,
     state.upcoming.length ? h('div', {}, ...state.upcoming.slice(0, 7).map((u, i) => h('div', { class: `q-row ${u.prioritized ? 'prio' : ''}` },
-      h('div', { class: 'idx' }, String(i + 1)), cover(u.title, 'sm'), h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
+      h('div', { class: 'idx' }, String(i + 1)), cover(u.title, 'sm', u.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       u.prioritized ? h('span', { class: 'badge bad' }, '★') : null, h('span', { class: `badge p${u.player}` }, `P${u.player}`)))) : h('div', { class: 'muted' }, 'Warteschlange leer')));
   const bits = [
     ['Wünsche', state.wishMode === 'open' ? 'offen' : state.wishMode === 'paused' ? 'pausiert' : 'geschlossen'],
