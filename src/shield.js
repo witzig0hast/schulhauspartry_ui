@@ -55,6 +55,7 @@ function strike(ip, reason) {
   if (!w.strike.hit(ip, cfg().banStrikes)) {
     if (!bans.has(ip)) {
       bans.set(ip, { until: Date.now() + cfg().banMin * 60000, reason, since: Date.now() });
+      if (ip.startsWith('198.18.')) return;   // Generalprobe: keine Meldungen fuer Mess-Adressen
       audit('shield.ban', null, ip, `${reason}, ${cfg().banMin} Min.`);
       sendNotify({ title: '🛡️ Absender gesperrt', message: `${ip} wurde wegen Dauerfeuer (${reason}) für ${cfg().banMin} Minuten gesperrt.`, priority: 3, tags: ['shield'], key: `ban:${ip}` }).catch(() => {});
     }
@@ -125,6 +126,7 @@ export const shield = {
       bans: [...bans.entries()].filter(([, b]) => b.until > now).map(([ip, b]) => ({ ip, reason: b.reason, untilSec: Math.ceil((b.until - now) / 1000) })),
     };
   },
+  unbanWhere(fn) { for (const ip of [...bans.keys()]) if (fn(ip)) bans.delete(ip); for (const ip of [...stats.offenders.keys()]) if (fn(ip)) stats.offenders.delete(ip); for (const k of [...w.strike.m.keys()]) if (fn(k)) w.strike.m.delete(k); },
   unban(ip) { stats.offenders.delete(ip); w.strike.m.delete(ip); return bans.delete(ip); },
   sweep() { const now = Date.now(); for (const x of Object.values(w)) x.sweep(now); for (const [ip, b] of bans) if (b.until <= now) bans.delete(ip); },
   reset() { for (const x of Object.values(w)) x.m.clear(); bans.clear(); stats.total = 0; stats.byReason = {}; stats.perMinute.clear(); stats.offenders.clear(); },

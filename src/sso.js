@@ -8,7 +8,7 @@ import { isOn } from './features.js';
 // Single Sign-On per OpenID Connect (Authorization-Code-Flow mit PKCE). Getestet fuer Authentik; geht mit jedem OIDC-Anbieter.
 // Sicherheit: state + nonce + PKCE, Bindung an den Browser per Cookie, ID-Token wird auf Signatur, Aussteller, Zielgruppe,
 // Ablauf und nonce geprueft ("none" wird abgelehnt). Zugang bekommt nur, wer per Gruppen-Zuordnung eine Rolle erhaelt.
-const PRIORITY = ['admin', 'tech', 'mod', 'light', 'orga', 'display'];
+const PRIORITY = ['admin', 'tech', 'mod', 'dj', 'light', 'orga', 'display'];
 const ALGS = ['RS256', 'PS256', 'ES256', 'HS256'];
 
 export class SsoError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }

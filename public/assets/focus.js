@@ -42,7 +42,7 @@ async function decide(action, reason) {
   try {
     const body = { id, action, reason };
     const out = await api('/mod/decide', { method: 'POST', body });
-    toast(action === 'approve' ? `✓ Player ${out.request.player}` : action === 'later' ? '⏳ Später' : '✕ Abgelehnt');
+    toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? '⏳ Später' : '✕ Abgelehnt');
   } catch (e) { toast(e.message, true); }
   busy = false; denying = false;
   // optimistisch ausblenden, bis der Server den naechsten Zustand schickt

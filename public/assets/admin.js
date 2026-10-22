@@ -1,10 +1,32 @@
 import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock, passkeysSupported, passkeyRegister } from '/assets/app.js';
 import { ampel } from '/assets/staff-ui.js';
+import { autoHelp } from '/assets/help.js';
 
 const app = $('#app');
 let data = null;
-const tabs = ['start', 'funktionen', 'sicherheit', 'vpn', 'automatik', 'design', 'poster', 'einstellungen', 'codes', 'verbindungen', 'bericht'];
-const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Einstellungen', codes: 'Codes', verbindungen: 'Verbindungen', bericht: 'Bericht & Export' };
+// Tabs in Gruppen: was man waehrend der Party braucht zuerst, Technik und Auswertung hinten
+const TAB_GROUPS = [
+  ['Party', ['start', 'einstellungen', 'automatik', 'design', 'poster']],
+  ['Zugang', ['codes', 'sicherheit', 'funktionen']],
+  ['Technik', ['verbindungen', 'vpn', 'probe']],
+  ['Auswertung', ['bericht']],
+];
+const tabs = TAB_GROUPS.flatMap(([, t]) => t);
+const tabLabels = { start: 'Start & Links', funktionen: 'Funktionen', sicherheit: 'Sicherheit', vpn: 'VPN', automatik: 'Automatik', design: 'Design', poster: 'QR & Poster', einstellungen: 'Wünsche & Regeln', codes: 'Codes', verbindungen: 'Verbindungen', probe: 'Generalprobe', bericht: 'Bericht & Export' };
+const TAB_INTRO = {
+  start: 'Betriebsart, Abend-Start, alle Links und das Zurücksetzen.',
+  einstellungen: 'Wie viele Wünsche Gäste haben, welche Songs erlaubt sind und welche Texte sie sehen.',
+  automatik: 'Was die App von selbst erledigt: sortieren, auffüllen, Start-Playlist, Notfall, Alarme, Backups.',
+  design: 'Name, Farbe und Logo der Veranstaltung.',
+  poster: 'QR-Code und Plakat zum Ausdrucken.',
+  codes: 'Zugänge für das Team: anlegen, sperren, mit SSO verbinden.',
+  sicherheit: 'Schutz vor Überlastung, SSO, Passkeys, Sitzungen und das Sicherheitsprotokoll.',
+  funktionen: 'Jede Funktion und Ansicht einzeln an- oder ausschalten.',
+  verbindungen: 'Spotify-Konten und die Anbindung an Pi und X32.',
+  vpn: 'Geräte für den WireGuard-Server (Pi, PC, Handy).',
+  probe: 'Simulierte Party im Testmodus: Hält das System viele Gäste aus?',
+  bericht: 'Zahlen zur Party, Setlist als PDF und CSV.',
+};
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
 const body = h('div');
 const tabBar = h('div', { class: 'tabs' });
@@ -21,7 +43,8 @@ async function load() {
 }
 
 function drawTabs() {
-  clear(tabBar).append(...tabs.map((t) => h('button', { class: t === tab ? 'active' : '', onclick: () => { tab = t; location.hash = t; render(); } }, tabLabels[t])));
+  clear(tabBar).append(...TAB_GROUPS.map(([g, ts]) => h('div', { class: 'tab-group', role: 'group', 'aria-label': g }, h('span', { class: 'tab-group-l' }, g),
+    ...ts.map((t) => h('button', { class: t === tab ? 'active' : '', 'aria-current': t === tab ? 'page' : null, onclick: () => { tab = t; location.hash = t; render(); } }, tabLabels[t])))));
 }
 
 // ---------- Einstellungen ----------
@@ -140,7 +163,7 @@ function viewConnections() {
         h('button', { class: 'small', onclick: () => save({ spotify: { apiBudget: Number(budget.value) } }) }, 'Speichern'))),
     h('div', { class: 'grid two' }, playerBox(1), playerBox(2)),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
-      field('Anbindung', adapter), field('Pi-URL(s) des Relays – mehrere durch Komma: zuerst die im LAN, dann die per VPN; die App nimmt automatisch die, die antwortet', piUrl), field('Token', piToken),
+      field('Anbindung', adapter), field('Pi-URL(s) des Relays', piUrl), field('Token', piToken),
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
       h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
@@ -320,7 +343,7 @@ function viewAutomation() {
       h('div', { class: 'eyebrow' }, 'Wünsche freischalten'),
       row(opOn, 'Wünsche sind zu, bis sie freigeschaltet werden'),
       h('div', { class: 'row' }, row(opAuto, 'Automatisch freischalten um'), opAt),
-      h('label', { class: 'field' }, 'Hinweis für Gäste ({zeit} wird durch die Uhrzeit ersetzt)', opMsg),
+      h('label', { class: 'field' }, 'Hinweis für Gäste', opMsg),
       h('div', { class: 'small muted' }, 'Beim Einschalten werden die Wünsche sofort geschlossen. Freischalten geht jederzeit von Hand (Technik/Admin) – dann zählt die Uhrzeit nicht mehr.')),
     h('div', { class: 'card stack' }, h('h2', {}, '🆘 Notfall-Playlist'), h('p', { class: 'small muted' }, 'Ein Knopf in der Technik stoppt alles und startet diese Playlist (gemischt) – falls etwas ausfällt.'),
       h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Playlist', ePl), h('label', { class: 'field' }, 'Auf Player', ePlayer)), row(eShuf, 'Gemischt abspielen')),
@@ -385,7 +408,7 @@ function viewPoster() {
     const qr = await qrElement(url, { size: 340 });
     clear(out).append(h('h2', {}, head.value), h('p', { class: 'p-sub' }, sub.value), qr,
       h('div', { class: 'steps' }, h('div', {}, h('b', {}, '1'), 'QR-Code scannen'), h('div', {}, h('b', {}, '2'), 'Song suchen & antippen'), h('div', {}, h('b', {}, '3'), 'Wünschen – wir spielen ihn bald!')),
-      h('div', { class: 'p-url' }, url.replace(/^https?:\/\//, '')));
+      h('div', { class: 'p-url' }, url.replace(/^https?:\/\//, '').replace(/\/+$/, '')));
   }
   [target, head, sub].forEach((el) => el.addEventListener('input', () => paint().catch(() => {})));
   paint().catch((e) => toast(e.message, true));
@@ -498,7 +521,7 @@ function viewVpn() {
             h('button', { class: 'small bad', onclick: safe(async () => { if (!confirm(`Gerät „${p.name}“ entfernen? Es verliert sofort den Zugang.`)) return; await api(`/admin/vpn/peers/${encodeURIComponent(p.name)}`, { method: 'DELETE' }); toast('Entfernt'); paint(); }) }, 'Entfernen')))))),
       h('div', { class: 'card stack' }, h('h2', {}, 'Neues Gerät hinzufügen'),
         h('div', { class: 'row' }, name, h('button', { class: 'primary', onclick: safe(async () => { const o = await api('/admin/vpn/peers', { method: 'POST', body: { name: name.value, behind: behind.checked } }); toast(`${o.name} angelegt (${o.ip})`); await paint(); showConfig(o.name, o.config); }) }, 'Anlegen')),
-        h('label', { class: 'check' }, behind, 'Hinter diesem Gerät liegen weitere Geräte (z. B. Pi mit X32): Adressen 10.8.0.192–255 hierhin leiten'),
+        h('label', { class: 'check' }, behind, 'Hinter diesem Gerät liegen weitere Geräte'),
         h('p', { class: 'small muted' }, 'Danach QR-Code mit der WireGuard-App scannen (Handy) oder die Datei importieren (PC, Pi). Bitte Peers nur hier verwalten, nicht von Hand in der Konfiguration.')));
   }
   paint();
@@ -506,7 +529,7 @@ function viewVpn() {
 }
 
 // ---------- Single Sign-On (OpenID Connect, z. B. Authentik) ----------
-const SSO_ROLES = [['tech', 'Technik'], ['mod', 'Moderation'], ['orga', 'Orga (nur lesen)'], ['light', 'Lichttechnik'], ['display', 'FOH-Anzeige'], ['admin', 'Admin (nur wenn erlaubt)']];
+const SSO_ROLES = [['tech', 'Technik'], ['mod', 'Moderation'], ['dj', 'DJ'], ['orga', 'Orga (nur lesen)'], ['light', 'Lichttechnik'], ['display', 'FOH-Anzeige'], ['admin', 'Admin (nur wenn erlaubt)']];
 function ssoCard() {
   const o = data.settings.sso;
   const on = chk(o.enabled), issuer = h('input', { value: o.issuer, placeholder: 'https://auth.example.de/application/o/schulhauspartry/' }), cid = h('input', { value: o.clientId, autocomplete: 'off' });
@@ -527,16 +550,16 @@ function ssoCard() {
   return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🔐 Single Sign-On (SSO)'), h('span', { class: `badge ${o.enabled ? 'ok' : ''}` }, o.enabled ? 'an' : 'aus')),
     h('p', { class: 'small muted' }, 'Mitarbeitende melden sich über deinen Identity-Provider an (Authentik, Keycloak, Authelia … per OpenID Connect). Die Rolle in der App kommt aus den Gruppen des Anbieters. Codes und Passkeys funktionieren weiter.'),
     h('label', { class: 'check' }, on, 'SSO aktivieren'),
-    h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Issuer-URL (bei Authentik: „OpenID-Konfigurations-Aussteller")', issuer), h('label', { class: 'field' }, 'Client-ID', cid),
+    h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Issuer-URL', issuer), h('label', { class: 'field' }, 'Client-ID', cid),
       h('label', { class: 'field' }, 'Client-Secret', sec), h('label', { class: 'field' }, 'Beschriftung des Anmelde-Knopfs', label),
       h('label', { class: 'field' }, 'Scopes', scopes), h('label', { class: 'field' }, 'Name des Gruppen-Felds', gclaim)),
     h('div', { class: 'small' }, h('b', {}, 'Rückkehr-Adresse (Redirect-URI) beim Anbieter eintragen: '), h('code', { style: 'user-select:all' }, data.ssoRedirectUri)),
     h('div', { class: 'eyebrow' }, 'Gruppen → Rollen'), mapBox,
     h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Wer in keiner dieser Gruppen ist, bekommt', def)),
-    h('label', { class: 'check' }, autoCreate, 'Neue Konten automatisch anlegen (aus: nur wer schon mit einem bestehenden Zugang verbunden ist, kann sich per SSO anmelden)'),
-    h('label', { class: 'check' }, autoLinkEmail, 'Bestehende Zugänge automatisch per E-Mail verbinden (die E-Mail trägst du unter Codes beim Zugang ein, Symbol ✉; der Anbieter muss die E-Mail bestätigt haben)'),
+    h('label', { class: 'check' }, autoCreate, 'Neue Konten automatisch anlegen'),
+    h('label', { class: 'check' }, autoLinkEmail, 'Bestehende Zugänge per E-Mail verbinden'),
     h('p', { class: 'small muted' }, 'Verbinden kann sich auch jede Person selbst: eingeloggt auf das 🔑-Symbol oben → „Mit SSO verbinden“. Der Head-Admin verbindet seinen Zugang genauso.'),
-    h('label', { class: 'check' }, allowAdmin, 'Admin-Rolle per SSO erlauben (sonst werden Admin-Gruppen ignoriert; SSO-Admins sind nicht der Head-Admin und können z. B. kein VPN verwalten)'),
+    h('label', { class: 'check' }, allowAdmin, 'Admin-Rolle per SSO erlauben'),
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSso }, 'Speichern'),
       h('button', { onclick: safe(async () => { await saveSso(); try { const r = await api('/admin/sso/test', { method: 'POST', body: {} }); clear(result).append(h('span', { class: 'badge ok' }, 'Verbindung ok'), ` ${r.keys} Schlüssel, Aussteller ${r.issuer}`); } catch (e) { clear(result).append(h('span', { class: 'badge bad' }, 'Fehler'), ` ${e.message}`); } }) }, 'Speichern & Verbindung testen')), result,
     h('details', { class: 'more' }, h('summary', {}, 'Einrichtung in Authentik (Kurzanleitung)'), h('ol', { class: 'small', style: 'margin:10px 0 0 18px;display:grid;gap:4px' },
@@ -569,7 +592,7 @@ function shieldCard() {
       d.bans.length ? h('div', { class: 'list' }, ...d.bans.map((b) => h('div', { class: 'item row between' }, h('div', {}, h('b', { class: 'mono' }, b.ip), h('div', { class: 'tiny muted' }, `${b.reason} · noch ${Math.ceil(b.untilSec / 60)} Min.`)), h('button', { class: 'small', onclick: safe(async () => { await api('/admin/shield/unban', { method: 'POST', body: { ip: b.ip } }); paint(); }) }, 'Entsperren')))) : h('div', { class: 'small muted' }, 'Keine Sperren.'),
       d.offenders.length ? h('details', { class: 'more' }, h('summary', {}, 'Auffälligste Absender'), h('div', { class: 'stack', style: 'margin-top:8px;gap:4px' }, ...d.offenders.map((o) => h('div', { class: 'row between small' }, h('span', { class: 'mono' }, o.ip), h('span', {}, `${o.n} Abweisungen${o.banned ? ' · gesperrt' : ''}`))))) : h('span'),
       h('label', { class: 'check' }, on, 'Schutz aktiv'),
-      h('label', { class: 'check' }, attack, '🚨 Angriffsmodus: alle Grenzen auf 20 % (bei laufendem Angriff einschalten, danach wieder aus)'),
+      h('label', { class: 'check' }, attack, '🚨 Angriffsmodus'),
       h('details', { class: 'more' }, h('summary', {}, 'Grenzen einstellen'), h('div', { class: 'grid three', style: 'margin-top:10px' }, ...fields)),
       h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => {
         const v = { enabled: on.checked, attackMode: attack.checked };
@@ -601,7 +624,7 @@ function viewSecurity() {
         h('p', { class: 'small muted' }, 'Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN – nichts zum Abtippen und nicht abfangbar. Mitarbeitende registrieren ihren Passkey selbst (Schlüssel-Symbol 🔑 oben in der Leiste); hier siehst und löschst du alle.'),
         passkeysSupported() ? h('div', { class: 'row' }, label, h('button', { class: 'primary', onclick: safe(async () => { await passkeyRegister(label.value); toast('Passkey gespeichert'); paint(); }) }, 'Passkey für dieses Gerät anlegen')) : h('div', { class: 'small muted' }, 'Dieser Browser/diese Adresse unterstützt keine Passkeys (HTTPS nötig) oder die Funktion ist ausgeschaltet.'),
         pkList,
-        h('label', { class: 'check' }, only, 'Admin-Login NUR mit Passkey (Passwort wird für Admin gesperrt)'),
+        h('label', { class: 'check' }, only, 'Admin-Login nur mit Passkey'),
         h('p', { class: 'small muted' }, `Admin-Passkeys: ${d.adminPasskeys}. Erst einschalten, wenn mindestens ein Passkey funktioniert. Notfall: Server mit Umgebungsvariable ADMIN_RECOVERY=1 starten – dann geht das Passwort wieder.`)),
       shieldCard(),
       ssoCard(),
@@ -631,9 +654,187 @@ function viewSecurity() {
 
 function render() {
   drawTabs();
-  clear(body).append({ start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
+  clear(body).append(h('p', { class: 'tab-intro' }, TAB_INTRO[tab] || ''), { probe: viewProbe, start: viewStart, funktionen: viewFeatures, sicherheit: viewSecurity, vpn: viewVpn, automatik: viewAutomation, design: viewDesign, poster: viewPoster, einstellungen: viewSettings, codes: viewCodes, verbindungen: viewConnections, bericht: viewReport }[tab]());
 }
 
 app.append(topbar('Admin', { live: false, nav: true }), h('div', { class: 'wrap' }, tabBar, body));
 addEventListener('hashchange', () => { const t = location.hash.slice(1); if (tabs.includes(t) && t !== tab && data) { tab = t; render(); } });
 load().catch((e) => toast(e.message, true));
+
+// ---------- Generalprobe ----------
+let probeTimer = null;
+function viewProbe() {
+  clearInterval(probeTimer);
+  const box = h('div', { class: 'stack', style: 'gap:16px' });
+  const testOn = data.settings.test.enabled;
+  const o = { guests: num(150, { min: 5, max: 1500 }), durationMin: num(5, { min: 1, max: 30 }), rampSec: num(60, { min: 0, max: 600 }),
+    approvePct: num(80, { min: 0, max: 100 }), modDelaySec: num(6, { min: 1, max: 120 }), speed: num(10, { min: 1, max: 30 }) };
+  const intensity = h('select', {}, ...[['ruhig', 'Ruhig'], ['normal', 'Normal (lebhafte Party)'], ['hoch', 'Hoch'], ['extrem', 'Extrem (Härtetest)']].map(([v, l]) => h('option', { value: v, selected: v === 'normal' }, l)));
+  const ipMode = h('select', {}, h('option', { value: 'many' }, 'Verschiedene (mobile Daten)'), h('option', { value: 'one' }, 'Eine gemeinsame (Schul-WLAN)'));
+  const pages = chk(true), live = chk(true), poll = chk(true), reset = chk(true);
+  const form = h('div', { class: 'card stack' }, h('h2', {}, 'Neue Generalprobe'),
+    h('p', { class: 'small muted' }, 'Simuliert eine komplette Party im Testmodus: Gäste öffnen die Seite, suchen, wünschen, voten und halten Live-Verbindungen; ein Moderations-Bot nimmt an und lehnt ab; die Wiedergabe läuft mit Crossfades. Alles geht über die echten Schnittstellen inklusive Schutzgrenzen. Die Live-Party wird nicht angefasst.'),
+    !testOn ? h('div', { class: 'banner-pause' }, 'Der Testmodus ist aus. ', h('button', { class: 'small', onclick: () => save({ test: { enabled: true } }, 'Testmodus an') }, 'Testmodus einschalten')) : null,
+    h('div', { class: 'grid three' }, field('Gäste', o.guests), field('Dauer (Minuten)', o.durationMin), field('Anlaufzeit (Sekunden)', o.rampSec),
+      field('Aktivität', intensity), field('Adressen', ipMode), field('Wiedergabe-Tempo', o.speed),
+      field('Moderation nimmt an (%)', o.approvePct), field('Moderation entscheidet nach (Sekunden)', o.modDelaySec)),
+    h('div', { class: 'grid two' }, h('label', { class: 'check' }, pages, 'Seitenaufrufe mitsimulieren'), h('label', { class: 'check' }, live, 'Live-Verbindungen mitsimulieren'),
+      h('label', { class: 'check' }, poll, 'Umfrage mitsimulieren'), h('label', { class: 'check' }, reset, 'Testdaten danach zurücksetzen')),
+    h('div', { class: 'row' }, h('button', { class: 'primary', disabled: !testOn, onclick: safe(async () => {
+      const body = Object.fromEntries(Object.entries(o).map(([k, i]) => [k, Number(i.value)]));
+      Object.assign(body, { intensity: intensity.value, ipMode: ipMode.value, pages: pages.checked, live: live.checked, poll: poll.checked, resetAfter: reset.checked });
+      paint(await api('/admin/rehearsal/start', { method: 'POST', body }));
+    }) }, '▶ Generalprobe starten'), h('span', { class: 'small muted' }, 'Tipp: zuerst mit der erwarteten Gästezahl und „Normal", dann einmal „Eine gemeinsame Adresse" probieren.')));
+  const live2 = h('div', { class: 'stack', style: 'gap:16px' });
+  const LV = { ok: ['ok', '✓'], info: ['', 'ℹ'], warn: ['warn', '!'], bad: ['bad', '✕'] };
+  const ms = (v) => (v == null ? '–' : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
+  const spark = (vals, title) => { const mx = Math.max(1, ...vals); return h('div', { title, style: 'display:flex;align-items:flex-end;gap:1px;height:40px' }, ...vals.map((v) => h('i', { style: `flex:1;min-width:1px;background:var(--ink);opacity:.75;height:${Math.max(1, Math.round(40 * v / mx))}px` }))); };
+  function report(c, running) {
+    const t = c.totals, el = ((c.endedAt || Date.now()) - c.startedAt) / 1000, dur = c.opt.durationMin * 60;
+    const tile = (k, v, sub) => h('div', { class: 'kpi' }, h('div', { class: 'eyebrow' }, k), h('div', { class: 'v' }, String(v)), sub ? h('div', { class: 'tiny muted' }, sub) : h('span'));
+    return [
+      h('div', { class: 'card stack' },
+        h('div', { class: 'row between' }, h('h2', {}, running ? 'Generalprobe läuft …' : `Ergebnis (${c.endReason || 'fertig'})`),
+          running ? h('button', { class: 'bad', onclick: safe(async () => paint(await api('/admin/rehearsal/stop', { method: 'POST', body: {} }))) }, '■ Abbrechen')
+            : h('span', { class: `badge ${c.verdict === 'ok' ? 'ok' : c.verdict === 'warn' ? 'warn' : 'bad'}` }, c.verdict === 'ok' ? 'bestanden' : c.verdict === 'warn' ? 'mit Hinweisen' : 'Probleme')),
+        running ? h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * el / dur))}%` })) : h('span'),
+        h('div', { class: 'small muted' }, `${c.guests.joined} von ${c.guests.target} Gästen · ${Math.round(el)} s von ${dur} s · Aktivität ${c.opt.intensity} · ${c.opt.ipMode === 'one' ? 'eine Adresse' : 'verschiedene Adressen'}`),
+        h('div', { class: 'kpis' }, tile('Anfragen', t.n, `${t.rps}/s, Spitze ${t.peakRps}/s`), tile('Fehler', t.err, 'Server/Verbindung'), tile('Vom Schutz abgewiesen', t.shield),
+          tile('Live-Verbindungen', c.ws.open ?? c.ws.opened, `${c.ws.failed} fehlgeschlagen`), tile('Entscheidungen', c.decisions.approved + c.decisions.denied, `${c.decisions.approved} angenommen`), tile('Server-CPU max.', `${c.server.cpuMax} %`, `RAM ${c.server.rss ?? '–'} MB`)),
+        h('div', { class: 'grid two' }, h('div', {}, h('div', { class: 'eyebrow' }, 'Anfragen pro Sekunde'), spark(c.timeline.map((x) => x.req), 'Anfragen/s')), h('div', {}, h('div', { class: 'eyebrow' }, 'Server-Verzögerung (ms)'), spark(c.server.lag, 'Verzögerung')))),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Bewertung'), h('div', { class: 'list' }, ...c.findings.map((f) => h('div', { class: 'item stack', style: 'gap:4px' }, h('div', { class: 'row nowrap' }, h('span', { class: `badge ${LV[f.level][0]}` }, LV[f.level][1]), h('b', {}, f.text)), f.hint ? h('div', { class: 'small muted' }, f.hint) : h('span'))))),
+      h('div', { class: 'card', style: 'overflow-x:auto' }, h('h2', {}, 'Antwortzeiten'), h('table', {}, h('thead', {}, h('tr', {}, ...['Bereich', 'Anfragen', 'ok', 'Limit (gewollt)', 'Schutz', 'Fehler', 'Median', '95 %', 'Max'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, ...Object.entries(c.cats).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v.n), h('td', {}, v.ok), h('td', {}, v.appLimit + v.closed + v.other4xx), h('td', {}, v.shield), h('td', {}, v.err5xx + v.neterr), h('td', {}, ms(v.p50)), h('td', {}, ms(v.p95)), h('td', {}, ms(v.max))))))),
+      h('div', { class: 'small muted' }, `Testmodus jetzt: ${c.app.pending} offen, ${c.app.queue} in der Warteschlange, ${c.app.played} gespielt · ${c.crossfades} Crossfades durch den Technik-Bot.`),
+    ];
+  }
+  function paint(st) {
+    clear(live2);
+    if (st.running) live2.append(...report(st.current, true));
+    else if (st.last) live2.append(...report(st.last, false));
+    form.classList.toggle('hidden', st.running);
+    clearInterval(probeTimer);
+    if (st.running) probeTimer = setInterval(() => { if (tab !== 'probe') return clearInterval(probeTimer); api('/admin/rehearsal').then(paint).catch(() => {}); }, 1000);
+  }
+  box.append(form, live2);
+  api('/admin/rehearsal').then(paint).catch((e) => clear(live2).append(h('p', { class: 'small muted' }, e.message)));
+  return box;
+}
+
+// ---------- Erklaerungen (ⓘ) ----------
+const HELP = {
+  // Wuensche & Regeln
+  'Wunsch-Limit pro Gerät': 'Wie viele Wünsche ein Handy in einem Zeitraum abschicken darf. Ein „+1" auf einen schon gewünschten Song zählt mit. Beispiel: 2 Wünsche pro 15 Minuten.',
+  'Explicit-Filter': 'Songs mit „Explicit"-Kennzeichen von Spotify: normal behandeln, in der Moderation markieren oder für Gäste ganz sperren.',
+  'Texte': 'Was Gäste sehen, wenn Wünsche pausiert/geschlossen sind, und ein optionaler Hinweis der Organisatoren als Popup.',
+  'Organisatoren-Hinweis anzeigen': 'Zeigt den Text einmal als Popup auf jedem Gäste-Handy und dauerhaft auf dem Beamer.',
+  'Wenn Wünsche pausiert sind': 'Text auf der Gäste-Seite, wenn die Technik die Wünsche kurz pausiert.',
+  'Wenn Wünsche geschlossen sind': 'Text auf der Gäste-Seite, wenn die Wünsche geschlossen sind.',
+  'Ende-Modus': 'Text, der nach „Ende des Abends" angezeigt wird.',
+  'Schon gespielte Songs': 'Ob ein Song, der heute schon lief, noch einmal gewünscht werden darf.',
+  'Regel': '„Erlauben": beliebig oft. „Pause": erst nach der Wartezeit wieder. „Sperren": heute gar nicht mehr. Die Moderation kann Songs trotzdem von Hand wieder einreihen.',
+  'Moderation': 'Einstellungen, die die Arbeit der Moderation betreffen.',
+  'Ablehnungsgründe (eine pro Zeile)': 'Diese Gründe stehen beim Ablehnen als Knöpfe zur Wahl und werden dem Gast angezeigt.',
+  'Priorisierte Songs kommen innerhalb der nächsten … Songs': 'Wenn jemand einen Song mit ★ priorisiert, rückt er auf diesen Platz in der Warteschlange vor (1 = als Nächstes).',
+  'Fade-Presets': 'Schnellknöpfe für Fade-Zeiten in der Technik-Ansicht.',
+  'Wunsch-Voting': 'Gäste sehen offene Wünsche anderer und können „+1" geben. Hier stellst du ein, wie oft.',
+  'Beliebteste Wünsche zuerst zeigen': 'Sortiert offene Wünsche nach Stimmen statt nach Eingang – für Gäste und Moderation.',
+  'Technik-Grenzen': 'Sicherheitsgrenzen für die Wiedergabe (nur aktiv, wenn die passende Funktion eingeschaltet ist).',
+  'Text im Pausen-Modus': 'Wird im Pausen-Modus auf dem Beamer und der Gäste-Seite angezeigt.',
+  'Startseite nach der Anmeldung': 'Welche Ansicht sich nach dem Login je Rolle öffnet.',
+  // Automatik
+  'Warteschlange automatisch sortieren': 'Sortiert noch nicht priorisierte Songs sanft um: nicht zu viel vom selben Genre hintereinander, passende Genres zur Uhrzeit nach vorn.',
+  'Automatische Ordnung an': 'Schaltet das automatische Umsortieren der Warteschlange ein.',
+  'Genre-Balance': 'So viele Songs derselben Genre-Familie dürfen höchstens direkt hintereinander laufen, wenn es Alternativen gibt.',
+  'Betrachtete Wünsche pro Platz': 'Fairness: Für jeden Platz werden nur die ersten so vielen Wünsche betrachtet. Kleiner = näher an der Eingangsreihenfolge.',
+  'Stimmungskurve verwenden': 'Zu bestimmten Uhrzeiten bestimmte Genres bevorzugen (nur Vorrang, nichts wird abgelehnt).',
+  'Zeitzone der Party': 'Für alle Uhrzeiten (Stimmungskurve, Start-Playlist, Freischaltung). In Deutschland: Europe/Berlin.',
+  'Smarter Übergang': 'Der automatische Crossfade beginnt am Ende des Songs, wenn er ausklingt – nicht mitten im Refrain.',
+  'Auto-Crossfade beginnt, wenn der Song ausklingt': 'Nutzt Intro-/Outro-Zeiten von Spotify (falls verfügbar). Sonst gilt die feste Vorlaufzeit aus der Technik-Ansicht.',
+  'Lückenfüller': 'Wenn die Warteschlange fast leer ist, legt die App Songs aus einer Playlist nach, damit es keine Stille gibt.',
+  'Bei leerer Warteschlange automatisch Songs einreihen': 'Schaltet den Lückenfüller ein. Wünsche kommen immer vor die automatisch eingereihten Songs.',
+  'Playlist (öffentlich oder dein eigenes Konto)': 'Link (open.spotify.com/playlist/…) oder ID der Playlist, aus der aufgefüllt wird.',
+  '🌅 Abend-Start': 'Start-Playlist zum Auftakt und die Freischaltung der Wünsche zu einer Uhrzeit.',
+  'Playlist (Link oder ID)': 'Diese Playlist läuft zum Auftakt, bis die ersten Wünsche angenommen werden. Danach kommen Wünsche immer vor ihre Songs.',
+  'Automatisch starten um': 'Die Start-Playlist startet zu dieser Uhrzeit von selbst (einmal pro Abend). Ohne Haken: Knopf in der Technik.',
+  'Wünsche sind zu, bis sie freigeschaltet werden': 'Beim Einschalten werden die Wünsche sofort geschlossen. Gäste sehen den Hinweis mit Countdown.',
+  'Automatisch freischalten um': 'Zu dieser Uhrzeit öffnen die Wünsche von selbst. Freischalten von Hand geht immer (Technik/Admin).',
+  'Hinweis für Gäste': 'Text auf der Gäste-Seite und dem Beamer, solange die Wünsche zu sind. {zeit} wird durch die Uhrzeit ersetzt.',
+  '🆘 Notfall-Playlist': 'Ein Knopf in der Technik stoppt alles und startet diese Playlist – falls etwas ausfällt.',
+  'Playlist': 'Link oder ID der Playlist.',
+  'Auf Player': 'Auf welchem Spotify-Player die Notfall-Playlist läuft.',
+  'Gemischt abspielen': 'Zufällige Reihenfolge.',
+  '🔔 Alarm aufs Handy (ntfy)': 'Die App schickt Meldungen bei Problemen an die ntfy-App auf deinem Handy.',
+  'Benachrichtigungen an': 'Schaltet alle Handy-Meldungen ein oder aus.',
+  'Server': 'ntfy-Server: https://ntfy.sh oder dein eigener.',
+  'Topic': 'Kanalname in ntfy. Wähle einen schwer zu erratenden Namen – wer ihn kennt, kann mitlesen.',
+  'Zugriffstoken (nur bei geschütztem Server)': 'Nur nötig, wenn dein ntfy-Server eine Anmeldung verlangt.',
+  'Alarm erst nach … Sekunden Störung': 'Kurzes Ruckeln löst keinen Alarm aus – erst wenn ein Problem so lange anhält.',
+  '💾 Automatische Backups': 'Sicherungen der Datenbank (Wünsche, Codes, Einstellungen).',
+  'Datenbank regelmäßig sichern': 'Legt in festen Abständen eine Kopie an und behält die letzten N.',
+  // Design / Poster
+  'Name der Veranstaltung': 'Erscheint oben in allen Ansichten, auf dem Beamer, Poster und im PDF.',
+  'Untertitel': 'Kurzer Zusatz, z. B. „Sommerfest 2026".',
+  'Akzentfarbe (Buttons, Zähler …)': 'Farbe für Knöpfe und Hervorhebungen. Im Dunkelmodus wird sie automatisch aufgehellt.',
+  'Ziel': 'Wohin der QR-Code führt: echte Party oder Testmodus.',
+  'Überschrift': 'Großer Text auf dem Plakat.',
+  // Verbindungen
+  'Client ID': 'Aus dem Spotify-Developer-Dashboard deiner App.',
+  'Client Secret': 'Aus dem Spotify-Developer-Dashboard. Wird verschlüsselt gespeichert.',
+  'Anbindung': '„Simuliert": kein Pult nötig (zum Testen). „Pi 5 / X32": die App steuert das echte Pult über das Relay auf dem Pi.',
+  'Pi-URL(s) des Relays': 'Adresse des Relays auf dem Pi. Mehrere durch Komma: zuerst die im LAN (z. B. http://192.168.178.177:8080), dann die per VPN (http://10.8.0.2:8080). Die App nimmt automatisch die, die antwortet.',
+  'Token': 'Das geheime Token aus der .env des Pi (RELAY_TOKEN).',
+  'Player 1 (Kanal L / R)': 'Eingangskanäle am X32, auf denen Player 1 liegt. 1 Kanal = Mono, 2 = Stereo. Leer = nicht benutzt.',
+  'Player 2 (Kanal L / R)': 'Eingangskanäle am X32, auf denen Player 2 liegt.',
+  'Mikrofon-Kanäle (bis zu 3)': 'Kanäle der Mikrofone. Daran erkennt die App Durchsagen (Ducking, Anzeige).',
+  'Namen der Mikrofone': 'So heißen die Mikrofone in Technik- und Anzeige-Ansicht.',
+  'Echte Verbindungen (Spotify/Pi) nutzt': 'Nur eine Umgebung steuert die echten Geräte. Für Tests vor der Party: „Testmodus", während der Party: „Live".',
+  'Simulations-Tempo im Testmodus (Faktor)': 'Im Testmodus laufen simulierte Songs so viel schneller – praktisch, um Übergänge zu testen.',
+  // VPN
+  'Hinter diesem Gerät liegen weitere Geräte': 'Für den Pi mit X32: Die Adressen 10.8.0.192–255 werden zu diesem Gerät geleitet. Das X32 ist dann von zu Hause unter 10.8.0.200 erreichbar.',
+  // SSO
+  'SSO aktivieren': 'Zeigt auf der Login-Seite „Mit SSO anmelden". Codes und Passkeys funktionieren weiter.',
+  'Issuer-URL': 'Bei Authentik: die „OpenID-Konfigurations-Aussteller"-URL des Providers, z. B. https://auth.example.de/application/o/schulhausparty/.',
+  'Client-ID': 'Aus dem Provider deines Identity-Providers.',
+  'Client-Secret': 'Aus dem Provider. Wird verschlüsselt gespeichert und nie wieder angezeigt.',
+  'Beschriftung des Anmelde-Knopfs': 'Text des SSO-Knopfs auf der Login-Seite.',
+  'Scopes': 'Welche Angaben die App anfragt. Standard: openid profile email.',
+  'Name des Gruppen-Felds': 'In welchem Feld der Anbieter die Gruppen liefert. Bei Authentik: groups.',
+  'Wer in keiner dieser Gruppen ist, bekommt': 'Rolle für Personen ohne passende Gruppe – oder kein Zugang.',
+  'Neue Konten automatisch anlegen': 'An: Wer per Gruppe eine Rolle bekommt, erhält automatisch ein Konto. Aus: Nur wer schon mit einem bestehenden Zugang verbunden ist, kommt per SSO hinein.',
+  'Bestehende Zugänge per E-Mail verbinden': 'Hat ein Zugang unter Codes eine E-Mail (Symbol ✉) und meldet sich jemand mit genau dieser bestätigten E-Mail per SSO an, wird er automatisch verbunden.',
+  'Admin-Rolle per SSO erlauben': 'Sonst werden Admin-Gruppen ignoriert. SSO-Admins sind nicht der Head-Admin (z. B. kein VPN, kein Passwort ändern).',
+  // Schutz vor Ueberlastung
+  'Schutz aktiv': 'Begrenzt Anfragen pro Adresse und Gerät und sperrt Dauerfeuer automatisch.',
+  '🚨 Angriffsmodus': 'Setzt alle Grenzen auf 20 %. Bei einem laufenden Angriff einschalten, danach wieder aus.',
+  'Seiten & Team pro Adresse/Min.': 'Seitenaufrufe und Team-Anfragen pro Absender-Adresse und Minute.',
+  'Dateien pro Adresse/Min.': 'Abrufe von Skripten, Styles und Logo pro Adresse. Jeder Gast lädt beim Öffnen ca. 6 Dateien.',
+  'Gäste-Anfragen pro Adresse/Min.': 'Alle Gäste-Aktionen (Suche, Wunsch, Status) pro Adresse. Im Schul-WLAN teilen sich oft alle Gäste eine Adresse – dann hoch genug wählen!',
+  'Schreibende Anfragen pro Adresse/Min.': 'Wünsche, Votes, Entscheidungen usw. pro Adresse.',
+  'Anfragen pro Gäste-Gerät/Min.': 'Grenze pro Handy, unabhängig von der Adresse. Damit bremst man einzelne Störer, ohne alle im WLAN zu treffen.',
+  'Wünsche pro Adresse/15 Min.': 'Zusätzlich zum Limit pro Gerät: Wünsche von einer Adresse insgesamt.',
+  'Neue Geräte pro Adresse/Min.': 'Verhindert, dass jemand durch Löschen der Cookies immer wieder neue Wunsch-Kontingente bekommt.',
+  'Live-Verbindungen pro Adresse': 'Jeder Gast hält eine Live-Verbindung. Im Schul-WLAN: mindestens so viele wie erwartete Gäste.',
+  'Live-Verbindungen insgesamt': 'Obergrenze aller Live-Verbindungen zusammen.',
+  'Gleichzeitige Anfragen (Gäste)': 'Werden es mehr, bekommen Gäste kurz „gleich nochmal versuchen". Das angemeldete Team ist ausgenommen.',
+  'Max. offene Wünsche': 'Sind so viele Wünsche offen, nimmt die App vorübergehend keine neuen an.',
+  'Sperre nach … Abweisungen/Min.': 'Wer so oft pro Minute abgewiesen wird, wird für die Sperrdauer komplett gesperrt.',
+  'Sperrdauer (Minuten)': 'Wie lange eine automatische Sperre dauert. Im Admin kann man vorher entsperren.',
+  // Passkeys/Sicherheit
+  'Admin-Login nur mit Passkey': 'Das Admin-Passwort funktioniert dann nicht mehr. Erst einschalten, wenn ein Passkey sicher funktioniert. Notfall: Server mit ADMIN_RECOVERY=1 starten.',
+  'Admin nur von diesen Adressen': 'Admin-Bereich nur von diesen IP-Adressen/Netzen (z. B. 192.168.1.0/24). Leer = überall. Vorsicht: Du kannst dich aussperren.',
+  // Generalprobe
+  'Gäste': 'So viele simulierte Gäste machen mit.',
+  'Dauer (Minuten)': 'Wie lange die Probe läuft. Abbrechen geht jederzeit.',
+  'Anlaufzeit (Sekunden)': 'In dieser Zeit kommen die Gäste nach und nach dazu (wie beim Einlass). 0 = alle sofort.',
+  'Aktivität': 'Wie viel die Gäste tun. „Normal" entspricht einer lebhaften Party, „Extrem" ist ein Härtetest.',
+  'Adressen': 'Verschiedene Adressen = Gäste mit mobilen Daten. Eine Adresse = alle im selben WLAN (z. B. Schul-WLAN) – damit prüfst du die Grenzen „pro Adresse".',
+  'Moderation nimmt an (%)': 'Der Moderations-Bot nimmt so viel Prozent der Wünsche an und lehnt den Rest ab.',
+  'Moderation entscheidet nach (Sekunden)': 'So lange wartet der Bot, bevor er einen Wunsch entscheidet.',
+  'Wiedergabe-Tempo': 'Simulierte Songs laufen so viel schneller, damit in kurzer Zeit viele Übergänge passieren.',
+  'Seitenaufrufe mitsimulieren': 'Jeder Gast lädt beim Beitritt die Gäste-Seite mit allen Dateien.',
+  'Live-Verbindungen mitsimulieren': 'Jeder Gast hält eine Live-Verbindung offen, wie ein echtes Handy.',
+  'Umfrage mitsimulieren': 'In der Mitte startet eine Umfrage, die Gäste stimmen ab.',
+  'Testdaten danach zurücksetzen': 'Nach der Probe werden Wünsche und Setlist des Testmodus gelöscht. Die Live-Party wird nie angefasst.',
+};
+autoHelp(document.getElementById('app'), HELP);

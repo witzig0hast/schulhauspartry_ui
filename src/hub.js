@@ -69,7 +69,7 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   return out;
 }
 
-const openingText = (engine) => settings().opening.message.replace('{zeit}', settings().opening.at);
+const openingText = (engine) => (engine.state.openAtTs ? settings().opening.message.replace('{zeit}', settings().opening.at) : 'Die Wünsche werden gleich freigeschaltet – bis dahin läuft schon Musik!');
 
 export function guestState(engine, deviceId) {
   const g = guestSettings();
@@ -104,7 +104,7 @@ export function createHub(server, engines, { shield, testPrefix, testEnabled, al
   const claim = (env, id, label, by) => { claims.set(`${env}:${id}`, { label, until: Date.now() + 8000, by }); };
   const release = (env, id, by) => { const c = claims.get(`${env}:${id}`); if (c && c.by === by) claims.delete(`${env}:${id}`); };
   const claimsOf = (env) => { const now = Date.now(); const out = []; for (const [k, v] of claims) { if (v.until < now) { claims.delete(k); continue; } if (k.startsWith(`${env}:`)) out.push({ id: Number(k.split(':')[1]), label: v.label, by: v.by }); } return out; };
-  const onlineOf = (env) => [...new Set([...clients].filter((c) => c.env === env && c.session && ['admin', 'tech', 'mod', 'orga'].includes(c.session.role)).map((c) => c.session.label))];
+  const onlineOf = (env) => [...new Set([...clients].filter((c) => c.env === env && c.session && ['admin', 'tech', 'mod', 'dj', 'orga'].includes(c.session.role)).map((c) => c.session.label))];
   const extraFor = (env) => ({ ...staffExtra(env), claims: claimsOf(env), online: onlineOf(env) });
 
   server.on('upgrade', (req, socket, head) => {

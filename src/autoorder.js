@@ -46,7 +46,9 @@ export function applyAutoOrder(env, currentPlayer, date = new Date()) {
   const out = [];
   for (let i = 0; i < up.length; i++) {
     if (up[i].prioritizedAt) { out.push(up[i]); seq.push(primary(up[i])); continue; }
-    const cands = free.slice(0, cfg.window);
+    const win = free.slice(0, cfg.window);
+    const wishes = win.filter((c) => c.deviceId !== 'auto');
+    const cands = wishes.length ? wishes : win;   // automatisch eingereihte Songs nie vor Wuensche ziehen
     let best = null, bestScore = -Infinity;
     cands.forEach((c, idx) => {
       const fam = primary(c);

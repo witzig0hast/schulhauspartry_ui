@@ -116,7 +116,7 @@ const NAV = [
   { label: 'Moderation', path: '/mod', roles: ['admin', 'tech', 'mod', 'orga'], main: true },
   { label: 'Admin', path: '/admin', roles: ['admin'], main: true },
   { label: 'Vorbereitung', path: '/prep', roles: ['admin', 'tech'], f: 'viewPrep', hint: 'Alles vor der Party prüfen & testen' },
-  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
+  { label: 'Fokus-Modus', path: '/focus', roles: ['admin', 'tech', 'mod', 'dj'], f: 'viewFocus', hint: 'Schwarz, bis ein Wunsch kommt' },
   { label: 'Live-Wünsche', path: '/ticker', roles: ['admin', 'tech', 'orga', 'display'], f: 'viewTicker', hint: 'Neue Wünsche & Entscheidungen live' },
   { label: 'Analytics', path: '/analytics', roles: STAFF, f: 'viewAnalytics', hint: 'Genres, Interpreten, Zeitverlauf …' },
   { label: 'Board', path: '/board', roles: STAFF, f: 'viewBoard', hint: 'Eigene Ansicht aus Bausteinen' },

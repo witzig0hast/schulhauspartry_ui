@@ -18,7 +18,7 @@ const mounted = new Map();
 
 const post = (path, body = {}) => safe(async () => { await api(path, { method: 'POST', body }); })();
 const can = {
-  moderate: () => ['admin', 'tech', 'mod'].includes(role),
+  moderate: () => ['admin', 'tech', 'mod', 'dj'].includes(role),
 };
 const memos = new WeakMap();
 const memo = (box, key, build) => { if (memos.get(box) === key) return; memos.set(box, key); clear(box).append(build()); };

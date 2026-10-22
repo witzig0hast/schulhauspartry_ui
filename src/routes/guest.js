@@ -47,6 +47,7 @@ export function guestRouter(env, engine, hub) {
   r.get('/public', (req, res) => res.json(publicData(env, engine, req.deviceId)));
 
   r.post('/vote', express.json({ limit: '1kb' }), (req, res) => {
+    if (engine.wishMode !== 'open' || engine.state.ended) return res.status(423).json({ error: 'Abstimmen ist gerade nicht möglich.' });
     const out = castVote(env, Number(req.body?.id), req.deviceId);
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     hub.pushEnv(env, { guests: true });

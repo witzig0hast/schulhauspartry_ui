@@ -89,12 +89,12 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const before = settings().test.realEnv;
     const beforeEnabled = settings().test.enabled;
     const modeBefore = settings().operation.mode;
-    const gateBefore = settings().opening.enabled, atBefore = settings().opening.at;
+    const gateBefore = settings().opening.enabled, atBefore = settings().opening.at, autoBefore = settings().opening.auto;
     applyPatch(req.body || {}, { allow });
     const gate = settings().opening;
     if (gate.enabled && !gateBefore) for (const e of Object.values(engines)) e.armOpening();
     else if (!gate.enabled && gateBefore) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.openWishes(); }
-    else if (gate.enabled && gate.at !== atBefore) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.armOpening(); }
+    else if (gate.enabled && (gate.at !== atBefore || gate.auto !== autoBefore)) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.armOpening(); }
     if (settings().operation.mode !== modeBefore) {
       audit('mode.change', req.session.label, clientIp(req), `${modeBefore} -> ${settings().operation.mode}`);
       // beim Wechsel in den Wunschlisten-Modus laufende Player anhalten (die App steuert sie danach nicht mehr)

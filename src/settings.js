@@ -168,8 +168,8 @@ export function applyPatch(patch, { allow }) {
     if (q.clearSecret) o.clientSecret = '';
     if ('scopes' in q) o.scopes = str(q.scopes, 200).trim().replace(/[^\w .:-]/g, '') || 'openid profile email';
     if ('groupsClaim' in q) o.groupsClaim = str(q.groupsClaim, 60).trim().replace(/[^\w.:-]/g, '') || 'groups';
-    if (Array.isArray(q.roleMap)) o.roleMap = q.roleMap.slice(0, 40).map((r) => ({ group: str(r?.group, 120).trim(), role: String(r?.role) })).filter((r) => r.group && ['admin', 'tech', 'mod', 'orga', 'display', 'light'].includes(r.role));
-    if ('defaultRole' in q) o.defaultRole = ['tech', 'mod', 'orga', 'display', 'light', 'admin'].includes(q.defaultRole) ? q.defaultRole : '';
+    if (Array.isArray(q.roleMap)) o.roleMap = q.roleMap.slice(0, 40).map((r) => ({ group: str(r?.group, 120).trim(), role: String(r?.role) })).filter((r) => r.group && ['admin', 'tech', 'mod', 'dj', 'orga', 'display', 'light'].includes(r.role));
+    if ('defaultRole' in q) o.defaultRole = ['tech', 'mod', 'dj', 'orga', 'display', 'light', 'admin'].includes(q.defaultRole) ? q.defaultRole : '';
     if ('allowAdmin' in q) o.allowAdmin = !!q.allowAdmin;
     if ('autoCreate' in q) o.autoCreate = !!q.autoCreate;
     if ('autoLinkEmail' in q) o.autoLinkEmail = !!q.autoLinkEmail;

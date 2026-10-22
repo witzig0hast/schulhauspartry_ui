@@ -119,19 +119,25 @@ export function decide(env, id, { action, reason, player, accountId }, currentPl
         .run(String(reason || '').slice(0, 80) || null, accountId ?? null, now, id);
     } else {
       const p = settings().operation.mode === 'wishlist' ? null : (player === 1 || player === 2 ? player : assignPlayer(env, currentPlayer));
-      const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
-      // Wuensche kommen vor die automatisch eingereihten Fuelltitel (Start-Playlist/Luckenfueller), aber hinter fruehere Wuensche
-      const firstAuto = db().prepare("SELECT MIN(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id = 'auto'").get(env).m;
-      let pos = (max ?? 0) + 1;
-      if (firstAuto != null) {
-        const lastWish = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id != 'auto' AND queue_pos < ?").get(env, firstAuto).m;
-        pos = lastWish == null ? firstAuto - 1 : (lastWish + firstAuto) / 2;
-      }
+      const pos = wishSlot(env);
       db().prepare("UPDATE requests SET status='approved', player=?, queue_pos=?, decided_by=?, decided_at=? WHERE id=? AND status IN ('pending','later')")
         .run(p, pos, accountId ?? null, now, id);
     }
     return { ok: true, request: getRequest(id) };
   });
+}
+
+// Platz fuer einen neuen Wunsch: hinter allen Wuenschen, vor die automatisch eingereihten Fuelltitel
+// (Start-Playlist/Lueckenfueller). Die Fuelltitel dahinter ruecken einen Platz auf, so bleiben die Abstaende ganzzahlig.
+function wishSlot(env) {
+  const lastWish = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id != 'auto'").get(env).m;
+  const nextAuto = db().prepare("SELECT MIN(queue_pos) AS m FROM requests WHERE env = ? AND status='approved' AND device_id = 'auto' AND queue_pos > ?").get(env, lastWish ?? -1e9).m;
+  if (nextAuto == null) {
+    const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+    return (max ?? 0) + 1;
+  }
+  db().prepare("UPDATE requests SET queue_pos = queue_pos + 1 WHERE env = ? AND status='approved' AND device_id = 'auto' AND queue_pos >= ?").run(env, nextAuto);
+  return nextAuto;
 }
 
 export function removeFromQueue(env, id, accountId, now = Date.now()) {
@@ -162,11 +168,22 @@ export function prioritize(env, id, accountId, currentPlayer, now = Date.now()) 
 // ---------- Engine ----------
 
 export function markPlaying(env, requestId, player, now = Date.now()) {
-  transaction(() => {
+  return transaction(() => {
+    const prev = db().prepare("SELECT id FROM requests WHERE env = ? AND status='playing'").all(env).map((x) => x.id);
     db().prepare("UPDATE requests SET status='played' WHERE env = ? AND status='playing'").run(env);
     const r = db().prepare('SELECT * FROM requests WHERE id = ?').get(requestId);
     db().prepare("UPDATE requests SET status='playing', player=?, played_at=? WHERE id=?").run(player, now, requestId);
     db().prepare('INSERT INTO plays(env, ts, player, title, artist, request_id) VALUES(?,?,?,?,?,?)').run(env, now, player, r.title, r.artist, requestId);
+    return prev;
+  });
+}
+// Start ist gescheitert (z. B. Spotify nicht erreichbar): Song zurueck an den Anfang der Warteschlange, vorheriger Song laeuft weiter
+export function undoPlaying(env, requestId, prev = []) {
+  transaction(() => {
+    const min = db().prepare("SELECT MIN(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+    db().prepare("UPDATE requests SET status='approved', played_at=NULL, queue_pos=? WHERE id=? AND status='playing'").run((min ?? 1) - 1, requestId);
+    db().prepare('DELETE FROM plays WHERE env = ? AND request_id = ? AND id = (SELECT MAX(id) FROM plays WHERE env = ? AND request_id = ?)').run(env, requestId, env, requestId);
+    for (const id of prev) db().prepare("UPDATE requests SET status='playing' WHERE id=? AND status='played'").run(id);
   });
 }
 
@@ -217,7 +234,8 @@ export function counts(env) {
 export function resetEnv(env) {
   transaction(() => {
     db().prepare('DELETE FROM votes WHERE request_id IN (SELECT id FROM requests WHERE env = ?)').run(env);
-    for (const t of ['requests', 'guest_actions', 'plays', 'events', 'block_attempts', 'chat']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
+    db().prepare('DELETE FROM poll_votes WHERE poll_id IN (SELECT id FROM polls WHERE env = ?)').run(env);
+    for (const t of ['requests', 'guest_actions', 'vote_actions', 'polls', 'plays', 'events', 'block_attempts', 'chat']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
   });
   logEvent(env, 'reset', {});
 }
@@ -255,13 +273,13 @@ export function requeue(env, id, accountId, currentPlayer, now = Date.now()) {
   return transaction(() => {
     const r = db().prepare('SELECT * FROM requests WHERE id = ? AND env = ?').get(id, env);
     if (!r) return { ok: false, status: 404, error: 'Song nicht gefunden' };
-    if (['pending', 'approved'].includes(r.status)) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange.' };
-    const inQueue = db().prepare("SELECT 1 FROM requests WHERE env = ? AND track_id = ? AND status IN ('pending','approved')").get(env, r.track_id);
-    if (inQueue) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange.' };
-    const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
+    if (['pending', 'later', 'approved', 'playing'].includes(r.status)) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange.' };
+    const inQueue = db().prepare("SELECT 1 FROM requests WHERE env = ? AND track_id = ? AND status IN ('pending','later','approved','playing')").get(env, r.track_id);
+    if (inQueue) return { ok: false, status: 409, error: 'Der Song ist schon in der Warteschlange oder läuft gerade.' };
+    const pos = wishSlot(env);
     const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_by, decided_at, player, queue_pos, artist_ids, genres, year, popularity)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, r.track_id, r.uri, r.title, r.artist, r.album, r.explicit, r.duration_ms, 'staff', now, 'approved', accountId ?? null, now,
-      assignPlayer(env, currentPlayer), (max ?? 0) + 1, r.artist_ids, r.genres, r.year, r.popularity);
+      settings().operation.mode === 'wishlist' ? null : assignPlayer(env, currentPlayer), pos, r.artist_ids, r.genres, r.year, r.popularity);
     return { ok: true, request: getRequest(Number(info.lastInsertRowid)) };
   });
 }
@@ -290,5 +308,6 @@ export function recentTrackIds(env, sinceMs) {
 // Neue Reihenfolge der Warteschlange schreiben (ids in gewuenschter Reihenfolge, Spielerzuordnung abwechselnd)
 export function writeOrder(env, ids, players) {
   const slots = db().prepare("SELECT queue_pos FROM requests WHERE env = ? AND status='approved' ORDER BY queue_pos ASC").all(env).map((r) => r.queue_pos);
-  transaction(() => ids.forEach((id, i) => db().prepare("UPDATE requests SET queue_pos = ?, player = COALESCE(?, player) WHERE id = ? AND env = ? AND status='approved'").run(slots[i], players?.[i] ?? null, id, env)));
+  transaction(() => ids.forEach((id, i) => db().prepare("UPDATE requests SET queue_pos = ? WHERE id = ? AND env = ? AND status='approved'").run(slots[i], id, env)));
+  void players;
 }

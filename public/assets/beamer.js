@@ -13,7 +13,7 @@ let state = null;
 let pub = null;
 const extraBox = h('div', { class: 'bm-extra' });
 
-qrElement(url, { size: 300, cls: 'qr' }).then((el) => { clear(qrBox).append(el, h('div', { class: 'bm-url' }, url.replace(/^https?:\/\//, ''))); });
+qrElement(url, { size: 300, cls: 'qr' }).then((el) => { clear(qrBox).append(el, h('div', { class: 'bm-url' }, url.replace(/^https?:\/\//, '').replace(/\/+$/, ''))); });
 
 function renderExtra() {
   const parts = [];

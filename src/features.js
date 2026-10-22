@@ -60,6 +60,7 @@ export const FEATURES = [
   { id: 'passkeys', group: 'safety', label: 'Passkeys (Anmeldung per Fingerabdruck/Gesicht/PIN)', desc: 'Geräte können sich ohne Code-Eintippen anmelden. Der Admin verwaltet sie.', def: true },
   { id: 'vpnAdmin', group: 'safety', label: 'VPN-Verwaltung im Admin', desc: 'Geräte (Pi, PC, Handy) für den WireGuard-Server anlegen und entfernen.', def: true },
   { id: 'sso', group: 'safety', label: 'Single Sign-On (SSO, z. B. Authentik)', desc: 'Anmeldung über deinen Identity-Provider (OpenID Connect) mit Rollen aus Gruppen.', def: true },
+  { id: 'rehearsal', group: 'safety', label: 'Generalprobe (Lasttest)', desc: 'Simuliert im Testmodus eine komplette Party mit vielen Gästen und misst, ob alles hält.', def: true },
   { id: 'testMode', group: 'safety', label: 'Testmodus', desc: 'Geheime Test-Umgebung.', def: true },
   // --- Effekte ---
   { id: 'animations', group: 'visual', label: 'Animationen', desc: 'Übergänge, Einblendungen und Bewegung. Aus = alles ruhig.', def: true },

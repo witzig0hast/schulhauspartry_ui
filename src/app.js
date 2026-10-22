@@ -20,6 +20,8 @@ import { vpnRouter } from './routes/vpn.js';
 import { ssoRouter } from './routes/sso.js';
 import { djRouter } from './routes/dj.js';
 import { shield } from './shield.js';
+import { createRehearsal } from './rehearsal.js';
+import { rehearsalRouter } from './routes/rehearsal.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -92,6 +94,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   const allowedOrigin = (origin, req) => {
     try { return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host); } catch { return false; }
   };
+  const rehearsal = createRehearsal({ server, engines });
   const hub = createHub(server, engines, { shield, testPrefix: () => settings().test.prefix, testEnabled: () => settings().test.enabled, allowedOrigin });
 
   app.use(shield.middleware);
@@ -170,7 +173,8 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     router.use('/api', extrasRouter(env, engines[env], hub));
     router.use('/api', djRouter(env, engines[env], hub));
     router.use('/api', vpnRouter());
-    if (env === 'live') router.use('/api', ssoRouter());   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
+    if (env === 'live') router.use('/api', ssoRouter());
+    if (env === 'live') router.use('/api', rehearsalRouter(rehearsal));   // Rueckkehr-Adresse beim Anbieter ist fest: PUBLIC_URL/api/sso/callback
     router.use('/api', staffRouter(env, engines[env], hub));
     router.use('/api', adminRouter(env, engines[env], hub, { engines, setRealEnv }));
     router.use('/api', opsRouter(env, engines[env], hub, { engines }));
@@ -233,6 +237,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   return {
     app, server, engines, hub,
     monitor,
-    async close() { timers.forEach(clearInterval); monitor.stop(); stopBackup(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
+    rehearsal,
+    async close() { if (rehearsal.isRunning()) rehearsal.stop('Server beendet'); timers.forEach(clearInterval); monitor.stop(); stopBackup(); for (const e of Object.values(engines)) e.stop(); hub.close(); await new Promise((r) => server.close(r)); },
   };
 }

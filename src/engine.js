@@ -14,6 +14,7 @@ import { isOn } from './features.js';
 import { getDb } from './db.js';
 
 const TICK_MS = 100;
+const localDay = (tz = settings().timezone) => new Intl.DateTimeFormat('sv-SE', { timeZone: tz }).format(new Date());   // JJJJ-MM-TT
 const BROADCAST_MS = 250;
 const other = (p) => (p === 1 ? 2 : 1);
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -143,10 +144,16 @@ export class Engine extends EventEmitter {
     if (this.state.awaitOpen && this.state.openAtTs && now >= this.state.openAtTs) { this.openWishes(); logEvent(this.env, 'wishmode', { auto: 'open' }); }
     // Start-Playlist automatisch starten (einmal pro Abend, in den 6 Stunden nach der Startzeit)
     const st = cfg.start;
-    if (st.autoStart && isOn('startPlaylist') && !this.wishlist && !this.state.started && now - (this.lastStartTry || 0) > 30000) {
+    if (st.autoStart && isOn('startPlaylist') && this.realConnections && !this.wishlist && !this.state.started && now >= (this.nextStartTry || 0)) {
       const [h, m] = st.startAt.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
       const since = (nh * 60 + nm) - (h * 60 + m);
-      if (since >= 0 && since < 360) { this.lastStartTry = now; this.startEvening().catch((e) => this.fail('start', e)); }
+      const day = localDay();
+      if (since >= 0 && since < 360 && getSetting(`autostart:${this.env}`) !== day) {
+        this.nextStartTry = now + 30000;
+        this.startEvening()
+          .then(() => setSetting(`autostart:${this.env}`, day))     // pro Tag nur einmal, auch nach "Zuruecksetzen"
+          .catch((e) => { this.nextStartTry = Date.now() + 10 * 60000; this.fail('start', e); });
+      }
     }
   }
 
@@ -156,8 +163,10 @@ export class Engine extends EventEmitter {
     this.state.awaitOpen = true; this.state.wishMode = 'closed'; this.state.openAtTs = null;
     if (o.auto && o.at) {
       const [h, m] = o.at.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
-      const d = (h * 60 + m) - (nh * 60 + nm);
-      if (d > 0) this.state.openAtTs = Date.now() + d * 60000 - new Date().getSeconds() * 1000;   // nur wenn die Uhrzeit heute noch bevorsteht
+      let d = (h * 60 + m) - (nh * 60 + nm);
+      if (d <= -360) d += 1440;   // z. B. um 23:00 eingestellt fuer 00:30 -> naechster Tag
+      // liegt die Uhrzeit gerade erst zurueck, gibt es keinen Termin: dann nur per Knopf (der Hinweis nennt keine Uhrzeit)
+      if (d > 0) this.state.openAtTs = Date.now() + d * 60000 - new Date().getSeconds() * 1000;
     }
     this.persist(); this.emit('change');
   }
@@ -173,10 +182,12 @@ export class Engine extends EventEmitter {
     const sp = settings().start;
     if (!sp.playlist && this.spotify.kind === 'real') throw new Error('Keine Start-Playlist eingetragen (Admin → Automatik → Abend-Start).');
     this.state.started = true; this.persist();
-    const n = await fillStart(this, Math.max(2, sp.minQueue));
-    if (!n) { this.state.started = false; this.persist(); throw new Error('Die Start-Playlist liefert keine passenden Songs.'); }
-    const playing = [1, 2].some((p) => this.players[p].status().playing);
-    if (!playing) await this.fadeIn(1, 4);
+    try {
+      const n = await fillStart(this, Math.max(2, sp.minQueue));
+      if (!n) throw new Error('Die Start-Playlist liefert keine passenden Songs.');
+      const playing = [1, 2].some((p) => this.players[p].status().playing);
+      if (!playing) await this.fadeIn(1, 4);
+    } catch (e) { this.state.started = false; this.persist(); this.emit('change'); throw e; }
     logEvent(this.env, 'start', {});
     this.emit('change');
   }
@@ -252,7 +263,7 @@ export class Engine extends EventEmitter {
   }
 
   maybeAutoCrossfade(now, cfg) {
-    if (!cfg.auto.enabled || this.crossfade || this.state.panic || this.state.ended || !this.current) return;
+    if (!cfg.auto.enabled || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
@@ -269,9 +280,11 @@ export class Engine extends EventEmitter {
   async startCrossfade(durSec, curve = settings().auto.curve, { auto = false } = {}) {
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     if (this.state.ended) throw new Error('Ende-Modus ist aktiv.');
-    if (this.crossfade) throw new Error('Es läuft bereits ein Crossfade.');
+    if (this.crossfade || this.starting || this.pendingStart.length) throw new Error('Es läuft bereits ein Crossfade.');
     const next = rq.upcoming(this.env)[0];
     if (!next) throw new Error('Die Warteschlange ist leer.');
+    this.starting = true;   // bis der Uebergang wirklich laeuft, kein zweiter Start (Tick laeuft alle 100 ms weiter)
+    try {
 
     const curPlaying = this.current && this.players[this.current].status().playing;
     let target = next.player || (this.current ? other(this.current) : 1);
@@ -280,11 +293,13 @@ export class Engine extends EventEmitter {
     this.expectedUri[target] = next.uri;
     this.gain[target] = 0;
     delete this.ramps[target];
-    rq.markPlaying(this.env, next.id, target);
+    const prev = rq.markPlaying(this.env, next.id, target);
+    const prevTrack = this.trackIdOf[target];
     this.trackIdOf[target] = next.trackId;
-    logEvent(this.env, 'play', { player: target, title: next.title, auto });
     const track = { uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs };
-    await this.players[target].play(track);
+    try { await this.players[target].play(track); }
+    catch (e) { rq.undoPlaying(this.env, next.id, prev); this.trackIdOf[target] = prevTrack; this.expectedUri[target] = null; this.emit('change'); throw e; }
+    logEvent(this.env, 'play', { player: target, title: next.title, auto });
     this.players[this.current ?? target]?.boost?.(20000); this.players[target].boost?.(20000);
 
     this.afterTrackStart(target);
@@ -300,6 +315,7 @@ export class Engine extends EventEmitter {
     };
     if (this.players[target].kind === 'real') this.pendingStart.push({ at: Date.now() + 600, fn: begin }); else begin();
     return { player: target, title: next.title };
+    } finally { this.starting = false; }
   }
 
   // Nach jeder Aenderung der Warteschlange: automatisch sortieren (Genre-Balance/Stimmung) und Meta des naechsten Songs holen
@@ -321,17 +337,21 @@ export class Engine extends EventEmitter {
 
   async play(player, { startGain = 1 } = {}) {
     const st = this.players[player].status();
-    if (st.uri && !st.ended) { await this.players[player].resume(); if (!this.current) this.current = player; }
+    const np = rq.nowPlayingRequest(this.env);
+    const ours = st.uri && !st.ended && this.trackIdOf[player] && np && np.trackId === this.trackIdOf[player] && np.player === player;
+    if (ours) { await this.players[player].resume(); if (!this.current) this.current = player; }
     else {
       const next = rq.upcoming(this.env).find((u) => !u.player || u.player === player) || rq.upcoming(this.env)[0];
       if (!next) throw new Error('Keine Songs in der Warteschlange.');
       rq.reassignPlayer(next.id, player); // gezielt auf diesem Player starten
       this.gain[player] = startGain; delete this.ramps[player];
       this.expectedUri[player] = next.uri;
-      rq.markPlaying(this.env, next.id, player);
+      const prev = rq.markPlaying(this.env, next.id, player);
+      const prevTrack = this.trackIdOf[player];
       this.trackIdOf[player] = next.trackId;
+      try { await this.players[player].play({ uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs }); }
+      catch (e) { rq.undoPlaying(this.env, next.id, prev); this.trackIdOf[player] = prevTrack; this.expectedUri[player] = null; this.emit('change'); throw e; }
       this.afterTrackStart(player);
-      await this.players[player].play({ uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs });
       if (!this.current) this.current = player;
     }
     this.emit('change');

@@ -10,7 +10,7 @@ const db = () => getDb();
 // ---------- Wunsch-Voting ----------
 export function votingList(env, deviceId, limit = 20) {
   if (!isOn('voting')) return [];
-  const rows = db().prepare("SELECT r.id, r.title, r.artist, r.votes, r.created_at, (SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.device_id = ?) AS mine FROM requests r WHERE r.env = ? AND r.status = 'pending'").all(deviceId, env);
+  const rows = db().prepare("SELECT r.id, r.title, r.artist, r.votes, r.created_at, (SELECT 1 FROM votes v WHERE v.request_id = r.id AND v.device_id = ?) AS mine FROM requests r WHERE r.env = ? AND r.status IN ('pending','later')").all(deviceId, env);
   if (settings().voting.sortByVotes) rows.sort((a, b) => b.votes - a.votes || a.created_at - b.created_at);
   else rows.sort((a, b) => a.created_at - b.created_at);
   return rows.slice(0, limit).map((r) => ({ id: r.id, title: r.title, artist: r.artist, votes: r.votes, mine: !!r.mine }));
@@ -26,7 +26,7 @@ export function castVote(env, requestId, deviceId, now = Date.now()) {
   if (!isOn('voting')) return { status: 404, error: 'Voting ist ausgeschaltet.' };
   if (isBlocked(env, deviceId)) return { status: 403, error: 'Dieses Gerät ist gesperrt.' };
   return transaction(() => {
-    const row = db().prepare("SELECT * FROM requests WHERE id = ? AND env = ? AND status = 'pending'").get(requestId, env);
+    const row = db().prepare("SELECT * FROM requests WHERE id = ? AND env = ? AND status IN ('pending','later')").get(requestId, env);
     if (!row) return { status: 404, error: 'Dieser Wunsch ist nicht mehr offen.' };
     if (db().prepare('SELECT 1 FROM votes WHERE request_id = ? AND device_id = ?').get(row.id, deviceId)) return { status: 409, error: 'Du hast hier schon ein +1 gegeben.' };
     const vs = voteState(env, deviceId, now);

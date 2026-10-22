@@ -598,3 +598,15 @@ html.no-confetti .confetti-cv { display: none !important; }
 .mode-opt b { display: block; font-size: 1.05rem; }
 .mode-opt span { display: block; color: var(--muted); font-size: .88rem; line-height: 1.35; white-space: normal; }
 .mode-opt.on { border-color: var(--ink); box-shadow: var(--shadow-2); }
+
+/* ⓘ-Erklaerungen */
+.info-i { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0 2px; border-radius: 50%; border: 1.5px solid var(--line-2); background: transparent; color: var(--muted); font: italic 700 11px/1 Georgia, serif; cursor: help; vertical-align: middle; flex: none; }
+.info-i:hover, .info-i[aria-expanded="true"] { border-color: var(--ink); color: var(--text); }
+.info-bubble { position: fixed; z-index: 10000; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--ink-text); font-size: .86rem; line-height: 1.45; box-shadow: var(--shadow-2); animation: popin .18s ease-out both; }
+/* Admin: Tabs in Gruppen */
+.tabs .tab-group { display: inline-flex; align-items: center; gap: 2px; }
+.tabs .tab-group + .tab-group { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line); }
+.tabs .tab-group-l { font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 700; margin-right: 4px; }
+.tab-intro { margin: 0 0 4px; color: var(--muted); font-size: .9rem; }
+.help-l { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tabs { flex-wrap: wrap; row-gap: 4px; }

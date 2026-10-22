@@ -95,7 +95,7 @@ export function pendingList(state, { canAct, assign, onAfter, list = 'pending', 
         const body = { id: r.id, action, reason };
         if (action === 'approve' && assign() !== 'auto') body.player = Number(assign());
         const out = await api('/mod/decide', { method: 'POST', body });
-        toast(action === 'approve' ? `Hinzugefügt zu ${playerName(out.request.player)}` : action === 'later' ? 'Zurückgestellt' : 'Abgelehnt');
+        toast(action === 'approve' ? (out.request.player ? `Hinzugefügt zu ${playerName(out.request.player)}` : 'Angenommen') : action === 'later' ? 'Zurückgestellt' : 'Abgelehnt');
       } catch (e) { if (e.status === 409) toast(e.message, true); else throw e; }
       onAfter?.();
     })();

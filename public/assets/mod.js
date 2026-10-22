@@ -42,7 +42,7 @@ function renderTabs() {
 
 function render() {
   if (!state) return;
-  const canAct = ['admin', 'tech', 'mod'].includes(state.role);
+  const canAct = ['admin', 'tech', 'mod', 'dj'].includes(state.role);
   roleBadge.textContent = state.role === 'orga' ? 'Nur lesen' : 'Moderation';
   assignRow.classList.toggle('hidden', !canAct || state.mode === 'wishlist');
   onlineEl.textContent = state.online?.length ? `● ${state.online.length} online: ${state.online.join(', ')}` : '';
@@ -73,11 +73,11 @@ function render() {
 
 // ---- Tastenkuerzel: wirken auf den obersten Wunsch ----
 const decide = async (id, action, reason) => {
-  try { const out = await api('/mod/decide', { method: 'POST', body: { id, action, reason, ...(action === 'approve' && assignMode !== 'auto' ? { player: Number(assignMode) } : {}) } }); toast(action === 'approve' ? `✓ Player ${out.request.player}` : action === 'later' ? '⏳ Später' : '✕ Abgelehnt'); }
+  try { const out = await api('/mod/decide', { method: 'POST', body: { id, action, reason, ...(action === 'approve' && assignMode !== 'auto' ? { player: Number(assignMode) } : {}) } }); toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? '⏳ Später' : '✕ Abgelehnt'); }
   catch (e) { toast(e.message, true); }
 };
 addEventListener('keydown', (e) => {
-  if (!state || !['admin', 'tech', 'mod'].includes(state.role) || !['wuensche', 'spaeter'].includes(tab)) return;
+  if (!state || !['admin', 'tech', 'mod', 'dj'].includes(state.role) || !['wuensche', 'spaeter'].includes(tab)) return;
   const act = actionFor(e); if (!act) return;
   const first = (tab === 'spaeter' ? state.later : state.pending)?.[0]; if (!first) return;
   if (act === 'approve') decide(first.id, 'approve');
