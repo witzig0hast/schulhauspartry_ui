@@ -158,7 +158,11 @@ function viewConnections() {
   const x32Host = h('input', { value: s.x32.host || '', placeholder: 'leer = Adresse aus der .env des Pi', inputmode: 'decimal', maxlength: 15, 'aria-label': 'IP-Adresse des X32' });
   const x32Port = num(s.x32.port || 10023, { min: 1, max: 65535, class: 'num', 'aria-label': 'OSC-Port des X32' });
   const x32Info = h('div', { class: 'stack', style: 'gap:6px' });
+  // Eingetippte, noch nicht gespeicherte Adresse zuerst speichern (sonst prueft man die alte)
+  const x32Dirty = () => x32Host.value.trim() !== (s.x32.host || '') || Number(x32Port.value || 10023) !== (s.x32.port || 10023);
+  const x32Save = () => save({ x32: { host: x32Host.value.trim(), port: Number(x32Port.value) || 10023 } }, x32Host.value.trim() ? `X32-Adresse ${x32Host.value.trim()} gespeichert – der Pi nutzt sie sofort` : 'X32-Adresse zurückgesetzt (gilt wieder die vom Pi)');
   const x32Status = safe(async () => {
+    if (x32Dirty()) { await api('/admin/settings', { method: 'POST', body: { x32: { host: x32Host.value.trim(), port: Number(x32Port.value) || 10023 } } }); s.x32.host = x32Host.value.trim(); s.x32.port = Number(x32Port.value) || 10023; toast('X32-Adresse gespeichert'); }
     clear(x32Info).append(h('div', { class: 'small muted' }, 'Frage den Pi …'));
     const st = await api('/admin/x32/status');
     clear(x32Info).append(h('div', { class: 'row small' },
@@ -202,7 +206,7 @@ function viewConnections() {
       h('div', { class: 'eyebrow' }, 'Adresse des X32 im Veranstaltungsnetz'),
       h('p', { class: 'small muted' }, 'Der Pi spricht mit dem Pult über diese IP-Adresse (Setup → Network am X32). Sie gilt sofort, ohne die .env des Pi zu ändern, und bleibt auch nach einem Neustart des Pi erhalten. Leer lassen = die Adresse aus der .env des Pi. „Im Netz suchen“ findet Pulte im selben Netz wie der Pi.'),
       h('div', { class: 'row' }, field('IP-Adresse', x32Host), field('Port', x32Port),
-        h('button', { class: 'small', onclick: x32Search }, 'Im Netz suchen'), h('button', { class: 'small', onclick: x32Status }, 'Verbindung prüfen')),
+        h('button', { class: 'small primary', onclick: x32Save }, 'Adresse speichern'), h('button', { class: 'small', onclick: x32Search }, 'Im Netz suchen'), h('button', { class: 'small', onclick: x32Status }, 'Verbindung prüfen')),
       x32Info,
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
       h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
