@@ -603,6 +603,7 @@ function viewAi() {
   const model = h('select', {}, h('option', { value: a.model }, a.model || '– erst Modelle laden –'));
   const enabled = chk(a.enabled), autoLight = chk(a.autoLight), autoFiller = chk(a.autoFiller), autoMix = chk(a.autoMix !== false);
   const mixCut = num(a.mixMaxCutDb ?? 6, { min: 0, max: 12, class: 'num' });
+  const mixLead = num(a.mixMinLeadSec ?? 20, { min: 0, max: 60, class: 'num' }), mixFade = num(a.mixMinFadeSec ?? 10, { min: 1, max: 30, class: 'num' });
   const timeout = num(a.timeoutSec, { min: 10, max: 600, class: 'num' });
   const info = h('div', { class: 'small muted' });
   const loadModels = safe(async () => {
@@ -626,9 +627,10 @@ function viewAi() {
       h('label', { class: 'check' }, autoFiller, 'Leere Warteschlange automatisch per KI auffüllen'),
       h('label', { class: 'check' }, autoMix, 'Songs analysieren: Auto-Crossfades planen und Lautstärke angleichen'),
       h('div', { class: 'row' }, h('span', { class: 'small' }, 'Laute Songs höchstens leiser machen um'), mixCut, h('span', { class: 'small' }, 'dB')),
+      h('div', { class: 'row' }, h('span', { class: 'small' }, 'KI-Übergang beginnt mindestens'), mixLead, h('span', { class: 'small' }, 's vor Songende und blendet mindestens'), mixFade, h('span', { class: 'small' }, 's lang')),
       field('Maximale Wartezeit (Sekunden)', timeout),
       h('div', { class: 'row' },
-        h('button', { class: 'primary', onclick: () => save({ ai: { url: url.value, token: token.value || undefined, model: model.value, enabled: enabled.checked, autoLight: autoLight.checked, autoFiller: autoFiller.checked, autoMix: autoMix.checked, mixMaxCutDb: Number(mixCut.value), timeoutSec: Number(timeout.value) } }) }, 'Speichern'),
+        h('button', { class: 'primary', onclick: () => save({ ai: { url: url.value, token: token.value || undefined, model: model.value, enabled: enabled.checked, autoLight: autoLight.checked, autoFiller: autoFiller.checked, autoMix: autoMix.checked, mixMaxCutDb: Number(mixCut.value), mixMinLeadSec: Number(mixLead.value), mixMinFadeSec: Number(mixFade.value), timeoutSec: Number(timeout.value) } }) }, 'Speichern'),
         h('button', { onclick: safe(async () => { const r = await api('/admin/ai/test', { method: 'POST', body: {} }); toast(`✓ Antwort nach ${(r.ms / 1000).toFixed(1)} s: „${r.reply}“`); }) }, 'Verbindung testen'),
         a.token ? h('button', { class: 'ghost small', onclick: () => save({ ai: { clearToken: true } }, 'Token entfernt') }, 'Token entfernen') : null),
       status),

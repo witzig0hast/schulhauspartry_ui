@@ -38,10 +38,19 @@ test('KI-Uebergaenge: Analyse, Pegel-Ausgleich, Plan, automatischer Crossfade da
     await admin.post('/api/admin/settings', { ai: { mixMaxCutDb: 6 } });
     // Plan: A blendet aus, B hat deutlich mehr Energie -> zuegig
     const plan = mixPlan({ curId: a.id, nextId: b.id, durationMs: a.durationMs, baseSec: 8 });
-    assert.equal(plan.durSec, 5); assert.match(plan.why, /blendet aus.*Energie/);
-    assert.ok(plan.leadMs >= 5500 && plan.leadMs <= 7000, String(plan.leadMs));
-    // ohne naechsten Song: Laenge aus dem Ausblenden
-    assert.equal(mixPlan({ curId: a.id, nextId: null, durationMs: a.durationMs, baseSec: 8 }).durSec, 12);
+    // Mindestwerte: mindestens 10 s Überblendung, Start mindestens 20 s vor Ende
+    assert.equal(plan.durSec, 10); assert.match(plan.why, /blendet aus.*Energie/);
+    assert.equal(plan.leadMs, 20000);
+    // ohne naechsten Song: Laenge aus dem Ausblenden (12 s), Start mindestens 20 s vor Ende
+    const p2 = mixPlan({ curId: a.id, nextId: null, durationMs: a.durationMs, baseSec: 8 });
+    assert.equal(p2.durSec, 12); assert.ok(p2.leadMs >= 20000);
+    // hartes Ende: sonst 4 s, jetzt mindestens 10 s
+    assert.equal(mixPlan({ curId: b.id, nextId: null, durationMs: b.durationMs, baseSec: 8 }).durSec, 10);
+    // Mindestwerte einstellbar
+    await admin.post('/api/admin/settings', { ai: { mixMinLeadSec: 30, mixMinFadeSec: 15 } });
+    const p3 = mixPlan({ curId: a.id, nextId: b.id, durationMs: a.durationMs, baseSec: 8 });
+    assert.equal(p3.durSec, 15); assert.equal(p3.leadMs, 30000);
+    await admin.post('/api/admin/settings', { ai: { mixMinLeadSec: 20, mixMinFadeSec: 10 } });
 
     // Engine: A spielt mit KI-Pegel, Auto-Crossfade startet zum geplanten Zeitpunkt mit geplanter Laenge
     rq.addAuto('live', a, null); rq.addAuto('live', b, null);
@@ -49,16 +58,16 @@ test('KI-Uebergaenge: Analyse, Pegel-Ausgleich, Plan, automatischer Crossfade da
     assert.ok(Math.abs(e.trackMul[1] - Math.pow(10, -3 / 20)) < 1e-6, 'KI-Pegel-Ausgleich angewendet');
     assert.equal(e.snapshot().mix.trim[1], -3);
     const dur = e.players[1].status().durationMs;
-    e.players[1].seekTo(dur - 9000);
+    e.players[1].seekTo(dur - 25000);
     await e.tick();
     assert.equal(e.crossfade, null, 'noch zu früh');
-    e.players[1].seekTo(dur - 6000);
+    e.players[1].seekTo(dur - 19500);
     await e.tick();
     await new Promise((r) => setTimeout(r, 50));
     assert.ok(e.crossfade, 'Crossfade gestartet');
-    assert.equal(e.crossfade.dur, 5);
+    assert.equal(e.crossfade.dur, 10, 'mindestens 10 s');
     const logs = (await admin.get('/api/logs?cats=wiedergabe')).json.logs;
-    assert.ok(logs.some((x) => x.event === 'crossfade.ai' && /KI-Übergang: 5 s/.test(x.msg)));
+    assert.ok(logs.some((x) => x.event === 'crossfade.ai' && /KI-Übergang: 10 s/.test(x.msg)));
 
     // Standard-Fade-Zeit gilt fuer die Knoepfe ohne Angabe
     assert.equal((await admin.get('/api/state')).json.auto.fadeSec, 3);

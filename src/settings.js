@@ -68,7 +68,7 @@ export const DEFAULTS = {
   // Hardware-Knoepfe ueber Bitfocus Companion (Token nur als Hash)
   companion: { enabled: false, tokenHash: '' },
   // KI ueber einen eigenen Ollama-Server: ein Modell fuer alles. token = optional (z. B. hinter einem Reverse-Proxy)
-  ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false, autoMix: true, mixMaxCutDb: 6 },
+  ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false, autoMix: true, mixMaxCutDb: 6, mixMinLeadSec: 20, mixMinFadeSec: 10 },
   // Grundpegel (Pegel-Fenster): Player-Fader am X32 bei 100 %, Spotify-Lautstaerke, optional Mic-Fader
   levels: { playerDb: { 1: 0, 2: 0 }, spotifyVol: { 1: 100, 2: 100 }, micControl: false, micDb: [0, 0, 0], confirmedAt: 0, confirmedBy: '' },
 };
@@ -386,6 +386,8 @@ export function applyPatch(patch, { allow }) {
     if ('autoLight' in q) o.autoLight = !!q.autoLight;
     if ('autoFiller' in q) o.autoFiller = !!q.autoFiller;
     if ('autoMix' in q) o.autoMix = !!q.autoMix;
+    if ('mixMinLeadSec' in q) o.mixMinLeadSec = Math.round(clamp(q.mixMinLeadSec, 0, 60, o.mixMinLeadSec ?? 20));
+    if ('mixMinFadeSec' in q) o.mixMinFadeSec = Math.round(clamp(q.mixMinFadeSec, 1, 30, o.mixMinFadeSec ?? 10));
     if ('mixMaxCutDb' in q) o.mixMaxCutDb = Math.round(clamp(q.mixMaxCutDb, 0, 12, o.mixMaxCutDb ?? 6));
   }
   if (has('levels')) {

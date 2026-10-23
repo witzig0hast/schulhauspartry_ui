@@ -527,9 +527,14 @@ export function mixPlan({ curId, nextId, durationMs, spotifyOutroMs, baseSec }) 
   if (cur.ending === 'hart') { dur = clampN(Math.min(baseSec, 4), 1.5, 4); lead = dur + 0.5; curve = 'linear'; why = 'hartes Ende – kurzer Übergang kurz vor Schluss'; }
   else if (cur.ending === 'fade') { dur = clampN(outro || baseSec * 1.5, 6, 16); lead = Math.max(dur, outro) + 1; why = `Song blendet aus (ca. ${Math.round(outro || dur)} s)`; }
   else { dur = clampN(outro || baseSec, 4, 12); lead = Math.max(dur, outro * 0.6) + 1; why = 'Song klingt aus'; }
-  if (next && next.energy - cur.energy >= 3) { dur = Math.min(dur, 5); lead = Math.min(lead, dur + 2); why += ', danach deutlich mehr Energie – zügiger Wechsel'; }
+  if (next && next.energy - cur.energy >= 3) { dur = Math.min(dur, 6); lead = Math.min(lead, dur + 2); why += ', danach deutlich mehr Energie – zügiger Wechsel'; }
   else if (next && next.introSec >= 8 && cur.ending !== 'hart') { dur = Math.max(dur, Math.min(12, next.introSec)); lead = Math.max(lead, dur + 1); why += `, nächster Song hat ein ruhiges Intro (ca. ${next.introSec} s)`; }
-  lead = clampN(lead, dur + 0.5, 45);
+  // Mindestwerte (Admin → KI): Uebergang beginnt mindestens X s vor Songende und blendet mindestens Y s lang,
+  // ist also fruehestens Y s nach dem Start des naechsten Songs fertig
+  const minLead = settings().ai.mixMinLeadSec ?? 20, minDur = settings().ai.mixMinFadeSec ?? 10;
+  if (dur < minDur) dur = minDur;
+  lead = clampN(Math.max(lead, minLead), dur + 0.5, Math.max(45, minLead + 1));
+  if (lead * 1000 > durationMs * 0.6) lead = Math.max(dur + 0.5, durationMs * 0.6 / 1000);   // sehr kurze Songs nicht halb abschneiden
   return { durSec: Math.round(dur * 10) / 10, leadMs: Math.round(lead * 1000), curve, why, src: spotifyOutroMs ? 'spotify+ki' : 'ki' };
 }
 
