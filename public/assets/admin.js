@@ -28,7 +28,7 @@ const TAB_INTRO = {
   vpn: 'Geräte für den WireGuard-Server (Pi, PC, Handy).',
   ki: 'Eigener Ollama-Server mit einem Modell: Energie-Kurve, Songvorschläge, Licht-Vorschläge, Fehler-Assistent und Rückblick.',
   livetest: 'Vor der Party jede Funktion mit dem echten Setup durchspielen: Player, Pult, Mics, Handy, Beamer, Not-Aus.',
-  probe: 'Simulierte Party im Testmodus: Hält das System viele Gäste aus?',
+  probe: 'Simulierte Party, live vor der Party oder im Testmodus: Hält das System viele Gäste aus?',
   bericht: 'Zahlen zur Party, Setlist als PDF und CSV.',
 };
 let tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'start';
@@ -832,19 +832,40 @@ function viewProbe() {
   const intensity = h('select', {}, ...[['ruhig', 'Ruhig'], ['normal', 'Normal (lebhafte Party)'], ['hoch', 'Hoch'], ['extrem', 'Extrem (Härtetest)']].map(([v, l]) => h('option', { value: v, selected: v === 'normal' }, l)));
   const ipMode = h('select', {}, h('option', { value: 'many' }, 'Verschiedene (mobile Daten)'), h('option', { value: 'one' }, 'Eine gemeinsame (Schul-WLAN)'));
   const pages = chk(true), live = chk(true), poll = chk(true), reset = chk(true);
+  const target = h('select', { onchange: () => drawTarget() }, h('option', { value: 'live', selected: true }, 'Live-Adresse (vor der Party)'), h('option', { value: 'test' }, 'Testmodus'));
+  const targetInfo = h('div');
+  const resetLabel = h('label', { class: 'check' }, reset, 'Testdaten danach zurücksetzen');
+  const startBtn = h('button', { class: 'primary' }, 'Generalprobe starten');
+  const drawTarget = () => {
+    const isLive = target.value === 'live';
+    resetLabel.classList.toggle('hidden', isLive);
+    startBtn.disabled = !isLive && !testOn;
+    clear(targetInfo).append(isLive
+      ? h('div', { class: 'banner-pause stack', style: 'gap:6px;text-align:left' },
+        h('b', {}, 'Generalprobe live: prüft die echte Party-Adresse mit allem, was Gäste dort nutzen.'),
+        h('div', { class: 'small' }, 'Nur vor der Party: Live darf noch keine Wünsche haben. Vorher wird ein Backup gemacht. Spotify und Pult bleiben während der Probe simuliert (keine echten Spotify-Anfragen, kein Fader bewegt sich), Alarme aufs Handy sind aus. Danach wird alles gelöscht, was die Probe in Live erzeugt hat (auch Umfragen und Chat), und Verbindungen sowie Freischaltung der Wünsche sind wie vorher. Wer während der Probe die Gäste-Seite öffnet, sieht die simulierten Wünsche.'))
+      : !testOn ? h('div', { class: 'banner-pause' }, 'Der Testmodus ist aus. ', h('button', { class: 'small', onclick: () => save({ test: { enabled: true } }, 'Testmodus an') }, 'Testmodus einschalten')) : h('div', { class: 'small muted' }, 'Läuft im Testmodus, die Live-Party wird nicht berührt.'));
+  };
+  startBtn.onclick = safe(async () => {
+    const body = Object.fromEntries(Object.entries(o).map(([k, i]) => [k, Number(i.value)]));
+    Object.assign(body, { target: target.value, intensity: intensity.value, ipMode: ipMode.value, pages: pages.checked, live: live.checked, poll: poll.checked, resetAfter: reset.checked });
+    if (target.value === 'live') {
+      const c = prompt('Generalprobe auf der LIVE-Adresse starten? Zum Bestätigen LIVE eintippen:');
+      if (c == null) return;
+      body.confirm = c.trim();
+    }
+    paint(await api('/admin/rehearsal/start', { method: 'POST', body }));
+  });
+  drawTarget();
   const form = h('div', { class: 'card stack' }, h('h2', {}, 'Neue Generalprobe'),
-    h('p', { class: 'small muted' }, 'Simuliert eine komplette Party im Testmodus: Gäste öffnen die Seite, suchen, wünschen, voten und halten Live-Verbindungen; ein Moderations-Bot nimmt an und lehnt ab; die Wiedergabe läuft mit Crossfades. Alles geht über die echten Schnittstellen inklusive Schutzgrenzen. Die Live-Party wird nicht angefasst.'),
-    !testOn ? h('div', { class: 'banner-pause' }, 'Der Testmodus ist aus. ', h('button', { class: 'small', onclick: () => save({ test: { enabled: true } }, 'Testmodus an') }, 'Testmodus einschalten')) : null,
+    h('p', { class: 'small muted' }, 'Simuliert eine komplette Party: Gäste öffnen die Seite, suchen, wünschen, voten und halten Live-Verbindungen; ein Moderations-Bot nimmt an und lehnt ab; die Wiedergabe läuft mit Crossfades. Alles geht über die echten Schnittstellen inklusive Schutzgrenzen.'),
+    field('Wo?', target), targetInfo,
     h('div', { class: 'grid three' }, field('Gäste', o.guests), field('Dauer (Minuten)', o.durationMin), field('Anlaufzeit (Sekunden)', o.rampSec),
       field('Aktivität', intensity), field('Adressen', ipMode), field('Wiedergabe-Tempo', o.speed),
       field('Moderation nimmt an (%)', o.approvePct), field('Moderation entscheidet nach (Sekunden)', o.modDelaySec)),
     h('div', { class: 'grid two' }, h('label', { class: 'check' }, pages, 'Seitenaufrufe mitsimulieren'), h('label', { class: 'check' }, live, 'Live-Verbindungen mitsimulieren'),
-      h('label', { class: 'check' }, poll, 'Umfrage mitsimulieren'), h('label', { class: 'check' }, reset, 'Testdaten danach zurücksetzen')),
-    h('div', { class: 'row' }, h('button', { class: 'primary', disabled: !testOn, onclick: safe(async () => {
-      const body = Object.fromEntries(Object.entries(o).map(([k, i]) => [k, Number(i.value)]));
-      Object.assign(body, { intensity: intensity.value, ipMode: ipMode.value, pages: pages.checked, live: live.checked, poll: poll.checked, resetAfter: reset.checked });
-      paint(await api('/admin/rehearsal/start', { method: 'POST', body }));
-    }) }, 'Generalprobe starten'), h('span', { class: 'small muted' }, 'Tipp: zuerst mit der erwarteten Gästezahl und „Normal", dann einmal „Eine gemeinsame Adresse" probieren.')));
+      h('label', { class: 'check' }, poll, 'Umfrage mitsimulieren'), resetLabel),
+    h('div', { class: 'row' }, startBtn, h('span', { class: 'small muted' }, 'Tipp: zuerst mit der erwarteten Gästezahl und „Normal", dann einmal „Eine gemeinsame Adresse" probieren.')));
   const live2 = h('div', { class: 'stack', style: 'gap:16px' });
   const LV = { ok: ['ok', '✓'], info: ['', 'i'], warn: ['warn', '!'], bad: ['bad', '✕'] };
   const ms = (v) => (v == null ? '–' : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
@@ -858,14 +879,14 @@ function viewProbe() {
           running ? h('button', { class: 'bad', onclick: safe(async () => paint(await api('/admin/rehearsal/stop', { method: 'POST', body: {} }))) }, '■ Abbrechen')
             : h('span', { class: `badge ${c.verdict === 'ok' ? 'ok' : c.verdict === 'warn' ? 'warn' : 'bad'}` }, c.verdict === 'ok' ? 'bestanden' : c.verdict === 'warn' ? 'mit Hinweisen' : 'Probleme')),
         running ? h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, Math.round(100 * el / dur))}%` })) : h('span'),
-        h('div', { class: 'small muted' }, `${c.guests.joined} von ${c.guests.target} Gästen · ${Math.round(el)} s von ${dur} s · Aktivität ${c.opt.intensity} · ${c.opt.ipMode === 'one' ? 'eine Adresse' : 'verschiedene Adressen'}`),
+        h('div', { class: 'small muted' }, `${c.opt.target === 'live' ? 'Live-Adresse · ' : 'Testmodus · '}${c.guests.joined} von ${c.guests.target} Gästen · ${Math.round(el)} s von ${dur} s · Aktivität ${c.opt.intensity} · ${c.opt.ipMode === 'one' ? 'eine Adresse' : 'verschiedene Adressen'}`),
         h('div', { class: 'kpis' }, tile('Anfragen', t.n, `${t.rps}/s, Spitze ${t.peakRps}/s`), tile('Fehler', t.err, 'Server/Verbindung'), tile('Vom Schutz abgewiesen', t.shield),
           tile('Live-Verbindungen', c.ws.open ?? c.ws.opened, `${c.ws.failed} fehlgeschlagen`), tile('Entscheidungen', c.decisions.approved + c.decisions.denied, `${c.decisions.approved} angenommen`), tile('Server-CPU max.', `${c.server.cpuMax} %`, `RAM ${c.server.rss ?? '–'} MB`)),
         h('div', { class: 'grid two' }, h('div', {}, h('div', { class: 'eyebrow' }, 'Anfragen pro Sekunde'), spark(c.timeline.map((x) => x.req), 'Anfragen/s')), h('div', {}, h('div', { class: 'eyebrow' }, 'Server-Verzögerung (ms)'), spark(c.server.lag, 'Verzögerung')))),
       h('div', { class: 'card stack' }, h('h2', {}, 'Bewertung'), h('div', { class: 'list' }, ...c.findings.map((f) => h('div', { class: 'item stack', style: 'gap:4px' }, h('div', { class: 'row nowrap' }, h('span', { class: `badge ${LV[f.level][0]}` }, LV[f.level][1]), h('b', {}, f.text)), f.hint ? h('div', { class: 'small muted' }, f.hint) : h('span'))))),
       h('div', { class: 'card', style: 'overflow-x:auto' }, h('h2', {}, 'Antwortzeiten'), h('table', {}, h('thead', {}, h('tr', {}, ...['Bereich', 'Anfragen', 'ok', 'Limit (gewollt)', 'Schutz', 'Fehler', 'Median', '95 %', 'Max'].map((x) => h('th', {}, x)))),
         h('tbody', {}, ...Object.entries(c.cats).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v.n), h('td', {}, v.ok), h('td', {}, v.appLimit + v.closed + v.other4xx), h('td', {}, v.shield), h('td', {}, v.err5xx + v.neterr), h('td', {}, ms(v.p50)), h('td', {}, ms(v.p95)), h('td', {}, ms(v.max))))))),
-      h('div', { class: 'small muted' }, `Testmodus jetzt: ${c.app.pending} offen, ${c.app.queue} in der Warteschlange, ${c.app.played} gespielt · ${c.crossfades} Crossfades durch den Technik-Bot.`),
+      h('div', { class: 'small muted' }, `${c.opt.target === 'live' ? 'Live' : 'Testmodus'} jetzt: ${c.app.pending} offen, ${c.app.queue} in der Warteschlange, ${c.app.played} gespielt · ${c.crossfades} Crossfades durch den Technik-Bot.`),
     ];
   }
   function paint(st) {

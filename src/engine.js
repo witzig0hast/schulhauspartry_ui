@@ -72,7 +72,7 @@ export class Engine extends EventEmitter {
 
   // ----- Adapter -----
   buildAdapters() {
-    const speed = () => (this.env === 'test' ? settings().test.mockSpeed : 1);
+    const speed = () => (this.env === 'test' ? settings().test.mockSpeed : (this.probeSpeed || 1));   // Generalprobe live: schneller abspielen
     const real = this.realConnections;
     const hasCreds = spotifyApps(config).length > 0;
     this.spotify = real && hasCreds ? new RealSpotify() : new MockSpotify();
@@ -83,6 +83,7 @@ export class Engine extends EventEmitter {
   }
 
   setReal(flag, force = false) {
+    if (this.probeHold && flag) return;   // Generalprobe live laeuft: bleibt simuliert, bis sie vorbei ist
     if (!force && flag === this.realConnections) return;
     this.realConnections = flag;
     this.buildAdapters();

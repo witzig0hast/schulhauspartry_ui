@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { settings } from './settings.js';
-import { getDb } from './db.js';
+import { getDb, getSetting, setSetting } from './db.js';
 import { newSession } from './auth.js';
 import { shield } from './shield.js';
 import { isOn } from './features.js';
@@ -10,10 +10,16 @@ import { sha256, randomToken } from './security.js';
 import * as rq from './requests.js';
 import * as L from './log.js';
 import { setQuietEnv } from './log.js';
+import { muteNotify } from './notify.js';
+import { backupNow } from './backup.js';
 
-// Generalprobe: simuliert eine komplette Party gegen den TESTMODUS -- viele Gaeste (Seite laden, suchen, wuenschen, abstimmen,
+// Generalprobe: simuliert eine komplette Party -- viele Gaeste (Seite laden, suchen, wuenschen, abstimmen,
 // Live-Verbindung), eine Moderation, die annimmt/ablehnt, und Wiedergabe mit Crossfades. Alles laeuft ueber die echten
-// Schnittstellen (HTTP + WebSocket inkl. Schutzgrenzen). Die Live-Party wird nicht beruehrt.
+// Schnittstellen (HTTP + WebSocket inkl. Schutzgrenzen).
+//  * Ziel Testmodus: die Live-Party wird nicht beruehrt.
+//  * Ziel Live (vor der Party): prueft die echte Live-Adresse. Nur auf leerer Live-Umgebung, mit Backup vorher; Spotify und Pult
+//    bleiben waehrenddessen simuliert (keine echten Spotify-Anfragen, kein Fader bewegt sich), keine Alarme aufs Handy,
+//    danach wird alles geloescht und der vorherige Zustand (echte Verbindungen, Freischaltung der Wuensche) wiederhergestellt.
 // Gemessen werden Antwortzeiten, Fehler, Abweisungen durch Grenzen, Live-Verbindungen und die Auslastung des Servers.
 
 const INTENSITY = {          // Aktionen pro Gast und Minute
@@ -29,8 +35,13 @@ const SIM_NET = '198.18.';    // Adressbereich fuer Messungen (RFC 2544), kommt 
 const clampN = (v, lo, hi, d) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d; };
 const pct = (arr, p) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
 
-export function createRehearsal({ server, engines }) {
+export function createRehearsal({ server, engines, setRealEnv = () => {}, pushEnv = () => {}, isBusy = () => null }) {
   let run = null, last = null;
+  // Server ist waehrend einer Generalprobe live neu gestartet: Probedaten aus Live entfernen
+  if (getSetting('rehearsalLive')) {
+    rq.resetEnv('live'); engines.live.resetAll(); setSetting('rehearsalLive', null);
+    L.warn('system', 'rehearsal.recovered', 'Generalprobe live war beim Neustart des Servers noch nicht beendet – die Probedaten wurden aus Live entfernt.', { env: 'live' });
+  }
 
   function options(o = {}) {
     return {
@@ -47,35 +58,52 @@ export function createRehearsal({ server, engines }) {
       poll: o.poll !== false,
       resetBefore: o.resetBefore !== false,
       resetAfter: o.resetAfter !== false,
+      target: o.target === 'live' ? 'live' : 'test',
     };
   }
 
   function start(raw, who) {
     if (run) throw new Error('Es läuft bereits eine Generalprobe.');
-    if (!settings().test.enabled || !isOn('testMode')) throw new Error('Die Generalprobe läuft im Testmodus. Bitte zuerst den Testmodus einschalten (Admin → Start & Links).');
-    const eng = engines.test;
-    if (eng.realConnections || eng.spotify.kind !== 'mock') throw new Error('Im Testmodus sind gerade echte Verbindungen (Spotify/Pi) aktiv. Für die Generalprobe unter Testmodus-Optionen „Echte Verbindungen nutzt: Live" einstellen.');
-    const port = server.address()?.port;
-    if (!port) throw new Error('Server-Port unbekannt.');
+    const busy = isBusy(); if (busy) throw new Error(busy);
     const opt = options(raw);
-    const prefix = `/${settings().test.prefix}`;
+    const env = opt.target, eng = engines[env];
+    let liveBefore = null;
+    if (env === 'test') {
+      if (!settings().test.enabled || !isOn('testMode')) throw new Error('Die Generalprobe läuft im Testmodus. Bitte zuerst den Testmodus einschalten (Admin → Start & Links) – oder die Generalprobe live machen.');
+      if (eng.realConnections || eng.spotify.kind !== 'mock') throw new Error('Im Testmodus sind gerade echte Verbindungen (Spotify/Pi) aktiv. Für die Generalprobe unter Testmodus-Optionen „Echte Verbindungen nutzt: Live" einstellen.');
+    } else {
+      if (String(raw.confirm || '') !== 'LIVE') throw new Error('Bestätigung fehlt: Für die Generalprobe live bitte LIVE eintippen.');
+      if (getDb().prepare("SELECT COUNT(*) AS c FROM requests WHERE env = 'live'").get().c > 0) throw new Error('Live hat schon Wünsche oder eine Setlist. Die Generalprobe live läuft nur vor der Party auf leerer Live-Umgebung – danach wird alles gelöscht. Vorher Admin → Bericht → Live zurücksetzen (mit Backup) oder die Probe im Testmodus machen.');
+      if ([1, 2].some((n) => eng.players[n].status().playing)) throw new Error('Auf Live läuft gerade Musik – erst stoppen.');
+      if (eng.state.panic) throw new Error('Not-Aus ist aktiv – erst aufheben.');
+      try { backupNow('vor-generalprobe'); } catch { /* ohne Backup-Ordner (Tests) */ }
+      liveBefore = { wishMode: eng.state.wishMode, awaitOpen: !!eng.state.awaitOpen, real: eng.realConnections };
+      eng.probeHold = true; eng.probeSpeed = opt.speed;
+      if (eng.realConnections) eng.setReal(false, true);   // keine echten Spotify-Anfragen, kein Fader am Pult
+      muteNotify('live');
+      setSetting('rehearsalLive', String(Date.now()));   // falls der Server mitten in der Probe neu startet: beim Start aufraeumen
+      opt.resetBefore = false; opt.resetAfter = true;     // live bleibt nie Probedaten zurueck
+    }
+    const port = server.address()?.port;
+    if (!port) { if (env === 'live') restoreLive(eng, liveBefore); throw new Error('Server-Port unbekannt.'); }
+    const prefix = env === 'test' ? `/${settings().test.prefix}` : '';
     const base = `http://127.0.0.1:${port}${prefix}`;
     const catalog = (eng.spotify.catalog?.() || []).flatMap((t) => t.title.split(/\s+/)).filter((w) => w.length > 2);
 
-    if (opt.resetBefore) { rq.resetEnv('test'); eng.resetAll(); }
+    if (opt.resetBefore) { rq.resetEnv(env); eng.resetAll(); }
     eng.openWishes();
     const oldSpeed = settings().test.mockSpeed;
-    settings().test.mockSpeed = opt.speed;          // nur der Testmodus spielt schneller
+    if (env === 'test') settings().test.mockSpeed = opt.speed;          // nur der Testmodus spielt schneller (live: eng.probeSpeed)
 
     // Moderations-Bot mit eigenem, voruebergehendem Zugang
     const db = getDb();
     const acc = Number(db.prepare('INSERT INTO accounts(role, label, code_hash, created_at) VALUES(?,?,?,?)').run('mod', 'Generalprobe-Bot', `probe:${sha256(randomToken(16))}`, Date.now()).lastInsertRowid);
     const botCookie = `sid=${newSession(acc, 'mod', '127.0.0.1', 'Generalprobe')}`;
 
-    L.info('system', 'rehearsal.started', `Generalprobe gestartet: ${opt.guests} Gäste, ${opt.durationMin} Min., Aktivität ${opt.intensity}`, { env: 'test', data: opt });
-    setQuietEnv('test');   // tausende Gaeste-Aktionen: nur im Speicher protokollieren
+    L.info('system', 'rehearsal.started', `Generalprobe gestartet: ${opt.guests} Gäste, ${opt.durationMin} Min., Aktivität ${opt.intensity}`, { env, data: opt });
+    setQuietEnv(env);   // tausende Gaeste-Aktionen: nur im Speicher protokollieren
     const r = run = {
-      opt, startedAt: Date.now(), endsAt: Date.now() + opt.durationMin * 60000, who, base, prefix, acc, oldSpeed, stopping: false,
+      opt, startedAt: Date.now(), endsAt: Date.now() + opt.durationMin * 60000, who, base, prefix, acc, oldSpeed, stopping: false, env, eng, liveBefore,
       guests: [], timers: [], inflight: 0, skipped: 0,
       cats: Object.fromEntries(CATS.map((c) => [c, { n: 0, ok: 0, appLimit: 0, shield: 0, closed: 0, other4xx: 0, err5xx: 0, neterr: 0, lat: [] }])),
       ws: { opened: 0, failed: 0, closed: 0, msgs: 0, open: 0 },
@@ -199,7 +227,7 @@ export function createRehearsal({ server, engines }) {
       if (r.stopping) return;
       const p1 = eng.players[1].status(), p2 = eng.players[2].status();
       const playing = p1.playing || p2.playing;
-      const up = rq.upcoming('test');
+      const up = rq.upcoming(env);
       if (!playing && up.length && !eng.crossfade) eng.fadeIn(1, 2).catch(() => {});
       else if (playing && !eng.crossfade && !settings().auto.enabled && eng.current) {
         const st = eng.players[eng.current].status();
@@ -207,8 +235,8 @@ export function createRehearsal({ server, engines }) {
       }
       // Umfrage in der Mitte der Probe
       const el = (Date.now() - r.startedAt) / total;
-      if (opt.poll && isOn('polls') && !r.pollId && el > 0.3) { try { r.pollId = createPoll('test', 'Generalprobe: Welcher Stil als Nächstes?', ['Pop', 'Hip-Hop', 'Rock', 'Schlager']); } catch { r.pollId = -1; } }
-      if (r.pollId > 0 && el > 0.75) { closePoll('test'); r.pollId = -2; }
+      if (opt.poll && isOn('polls') && !r.pollId && el > 0.3) { try { r.pollId = createPoll(env, 'Generalprobe: Welcher Stil als Nächstes?', ['Pop', 'Hip-Hop', 'Rock', 'Schlager']); } catch { r.pollId = -1; } }
+      if (r.pollId > 0 && el > 0.75) { closePoll(env); r.pollId = -2; }
     }, 1000));
     r.timers.push(setInterval(() => {                // Messwerte pro Sekunde
       const now = Date.now();
@@ -230,7 +258,7 @@ export function createRehearsal({ server, engines }) {
     const secs = Math.max(1, ((r.endedAt || Date.now()) - r.startedAt) / 1000);
     const peakRps = Math.max(0, ...r.seconds.map((s) => s.req));
     const lagMax = Math.max(0, ...r.server.lag), cpuMax = Math.max(0, ...r.server.cpu), rssMax = Math.max(0, ...r.server.rss);
-    const counts = rq.counts('test');
+    const counts = rq.counts(r.env);
     const findings = [];
     const add = (level, text, hint) => findings.push({ level, text, hint });
     if (all.err) add('bad', `${all.err} Anfragen sind mit Serverfehler oder Verbindungsabbruch gescheitert.`, 'Server-Log prüfen (docker compose logs app). Bei Verbindungsabbrüchen: weniger Gäste oder stärkeren Server testen.');
@@ -240,7 +268,7 @@ export function createRehearsal({ server, engines }) {
     if (lagMax > 300) add(lagMax > 1000 ? 'bad' : 'warn', `Der Server war zeitweise ausgelastet (Verzögerung bis ${lagMax} ms).`, 'Kurze Spitzen sind unkritisch; dauerhaft hohe Werte bedeuten, dass der Server an seine Grenze kommt.');
     if (r.ws.failed) add('warn', `${r.ws.failed} Live-Verbindungen konnten nicht aufgebaut werden.`, 'Grenze „Live-Verbindungen pro Adresse/insgesamt" prüfen.');
     if (r.skipped) add('info', `Der Simulator war zeitweise selbst voll (${r.skipped} Aktionen übersprungen).`, 'Das betrifft die Probe, nicht die App. Für härtere Tests die Intensität senken oder die Gästezahl erhöhen.');
-    if (!r.decisions.approved && r.opt.approvePct > 0 && secs > 60) add('warn', 'Die Moderation hat keine Wünsche angenommen.', 'Prüfen, ob Wünsche ankamen (Testmodus offen? Freischaltung?).');
+    if (!r.decisions.approved && r.opt.approvePct > 0 && secs > 60) add('warn', 'Die Moderation hat keine Wünsche angenommen.', 'Prüfen, ob Wünsche ankamen (Umgebung offen? Freischaltung?).');
     if (all.appLimit) add('info', `${all.appLimit} Mal griff ein normales Gäste-Limit (z. B. Wünsche pro Gerät, Suchen pro Gerät).`, 'Das ist gewollt und kein Fehler.');
     if (!findings.some((f) => f.level !== 'info')) add('ok', 'Keine Probleme gefunden – das System hat die simulierte Party gut verkraftet.', null);
     const verdict = findings.some((f) => f.level === 'bad') ? 'bad' : findings.some((f) => f.level === 'warn') ? 'warn' : 'ok';
@@ -271,11 +299,23 @@ export function createRehearsal({ server, engines }) {
     db.prepare('DELETE FROM sessions WHERE account_id = ?').run(r.acc);
     db.prepare('DELETE FROM accounts WHERE id = ?').run(r.acc);
     shield.unbanWhere((ip) => ip.startsWith(SIM_NET) || ip === '127.0.0.1');
-    if (r.opt.resetAfter) { rq.resetEnv('test'); engines.test.resetAll(); }
+    if (r.opt.resetAfter) { rq.resetEnv(r.env); r.eng.resetAll(); }
+    if (r.env === 'live') restoreLive(r.eng, r.liveBefore);
     run = null;
     setQuietEnv(null);   // vor dem Abschluss-Eintrag, damit er gespeichert wird
-    L.info('system', 'rehearsal.ended', `Generalprobe beendet (${reason}): ${last.verdict === 'ok' ? 'bestanden' : last.verdict === 'warn' ? 'mit Hinweisen' : 'Probleme'}`, { env: 'test', data: { reason, verdict: last.verdict, totals: last.totals } });
+    L.info('system', 'rehearsal.ended', `Generalprobe beendet (${reason}): ${last.verdict === 'ok' ? 'bestanden' : last.verdict === 'warn' ? 'mit Hinweisen' : 'Probleme'}`, { env: r.env, data: { reason, verdict: last.verdict, totals: last.totals } });
     return status();
+  }
+
+  // Live nach der Probe: echte Verbindungen wie vorher, Freischaltung der Wuensche wie vorher, Gaeste-Seiten neu laden
+  function restoreLive(eng, before) {
+    eng.probeHold = false; eng.probeSpeed = null;
+    muteNotify(null);
+    setSetting('rehearsalLive', null);
+    setRealEnv();
+    if (before?.awaitOpen && settings().opening.enabled && isOn('openingGate')) eng.armOpening();
+    else if (before) eng.setWishMode(before.wishMode);
+    pushEnv('live');
   }
 
   function status() { return { running: !!run, current: run ? summarize(run) : null, last, intensities: Object.keys(INTENSITY) }; }

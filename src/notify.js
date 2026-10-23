@@ -4,9 +4,13 @@ import { isOn } from './features.js';
 
 // Push-Benachrichtigungen ueber ntfy (https://ntfy.sh oder eigener Server). Per JSON-Publish, damit Umlaute/Emojis unproblematisch sind.
 const lastSent = new Map();
+// Waehrend der Generalprobe live: keine Alarme fuer die Live-Umgebung (die simulierten Gaeste wuerden sonst z. B. den Flut-Alarm ausloesen)
+let mutedEnv = null;
+export const muteNotify = (env) => { mutedEnv = env; };
 
 export async function sendNotify({ title, message, priority = 3, tags = [], key = null, force = false, env = 'live' }) {
   const n = settings().notify;
+  if (!force && mutedEnv && env === mutedEnv) return { sent: false, reason: 'Generalprobe läuft' };
   if (!force && (!n.enabled || !isOn('notify'))) return { sent: false, reason: 'ausgeschaltet' };
   if (!n.topic) return { sent: false, reason: 'Kein Topic eingetragen' };
   if (key && !force) { // gleiche Meldung nicht mehr als einmal pro Minute

@@ -108,9 +108,10 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   const allowedOrigin = (origin, req) => {
     try { return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host); } catch { return false; }
   };
-  const rehearsal = createRehearsal({ server, engines });
-  const hub = createHub(server, engines, { shield, testPrefix: () => settings().test.prefix, testEnabled: () => settings().test.enabled, allowedOrigin });
-  const liveTest = createLiveTest({ engines, hub, setRealEnv, isBusy: () => (rehearsal.isRunning() ? 'Die Generalprobe läuft gerade – erst beenden.' : null) });
+  let liveTest = null, hub = null;
+  const rehearsal = createRehearsal({ server, engines, setRealEnv, pushEnv: (env) => hub?.pushEnv(env, { guests: true }), isBusy: () => (liveTest?.isRunning() ? 'Der Live-Test läuft gerade – erst beenden.' : null) });
+  hub = createHub(server, engines, { shield, testPrefix: () => settings().test.prefix, testEnabled: () => settings().test.enabled, allowedOrigin });
+  liveTest = createLiveTest({ engines, hub, setRealEnv, isBusy: () => (rehearsal.isRunning() ? 'Die Generalprobe läuft gerade – erst beenden.' : null) });
   liveTest.recover();
 
   app.use(shield.middleware);

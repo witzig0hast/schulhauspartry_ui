@@ -11,7 +11,7 @@ export function rehearsalRouter(rehearsal) {
   r.get('/admin/rehearsal', ...guard, (req, res) => res.json(rehearsal.status()));
   r.post('/admin/rehearsal/start', express.json({ limit: '2kb' }), ...guard, wrap((req, res) => {
     const out = rehearsal.start(req.body || {}, req.session.label);
-    audit('rehearsal.start', req.session.label, clientIp(req), `${out.current.opt.guests} Gäste, ${out.current.opt.durationMin} Min.`);
+    audit('rehearsal.start', req.session.label, clientIp(req), `${out.current.opt.target === 'live' ? 'LIVE' : 'Testmodus'}: ${out.current.opt.guests} Gäste, ${out.current.opt.durationMin} Min.`);
     res.json(out);
   }));
   r.post('/admin/rehearsal/stop', ...guard, wrap((req, res) => res.json(rehearsal.stop('abgebrochen'))));

@@ -81,6 +81,13 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
+### Generalprobe (Admin → Generalprobe)
+
+Simuliert viele Gäste (Seite, Suche, Wünsche, Votes, Live-Verbindungen), einen Moderations-Bot und die Wiedergabe mit Crossfades – über die echten Schnittstellen inklusive Schutzgrenzen. **Wo?**
+
+- **Live-Adresse (vor der Party):** prüft die echte Party-Adresse. Nur wenn Live noch keine Wünsche hat und nach Eintippen von `LIVE`. Vorher wird ein Backup gemacht; Spotify und Pult bleiben währenddessen simuliert, Alarme aufs Handy sind aus. Danach wird alles gelöscht, was die Probe in Live erzeugt hat (auch Umfragen und Chat), und echte Verbindungen sowie die Freischaltung der Wünsche sind wie vorher. Startet der Server mitten in der Probe neu, räumt er Live beim Start auf.
+- **Testmodus:** die Live-Party wird nicht berührt.
+
 ### Pegel-Fenster (Technik → Pegel)
 
 Zuerst Fader und Lautstärken einstellen: Grundpegel der Player-Fader am X32 (Stellung bei voller Lautstärke, in dB), Spotify-Lautstärke je Player,

@@ -57,3 +57,59 @@ test('Generalprobe ueber eine Adresse zeigt Grenzen des Schutzes', async () => {
     assert.ok(done.findings.some((f) => /Schutz vor Überlastung/.test(f.text) && /Schul-WLAN/.test(f.hint)));
   } finally { await ctx.close(); shield.reset(); }
 });
+
+test('Generalprobe live: nur leer und bestaetigt, simuliert Spotify/Pult, keine Alarme, raeumt komplett auf', async () => {
+  shield.reset();
+  const { sendNotify } = await import('../src/notify.js');
+  const { createRehearsal } = await import('../src/rehearsal.js');
+  const { getSetting, setSetting } = await import('../src/db.js');
+  const rq = await import('../src/requests.js');
+  const ctx = await startTestApp();
+  try {
+    const admin = new Client(ctx.base); await admin.post('/api/login', { secret: 'super-geheimes-passwort-123' });
+    await admin.post('/api/admin/settings', { limit: { count: 5, windowMin: 15 }, notify: { enabled: true, topic: 'probe-test', url: 'http://127.0.0.1:9' } });
+    for (const e of Object.values(ctx.engines)) e.start();
+    const live = ctx.engines.live;
+    live.setWishMode('paused');
+    assert.equal(live.realConnections, true, 'Live hat in Tests die echten Verbindungen (ohne Zugangsdaten simuliert)');
+
+    let r = await admin.post('/api/admin/rehearsal/start', { target: 'live', guests: 20, durationMin: 1 });
+    assert.equal(r.status, 400); assert.match(r.json.error, /LIVE eintippen/);
+    const t = (await live.spotify.search('uptown', 1))[0];
+    rq.submitWish('live', t, 'echter-gast');
+    r = await admin.post('/api/admin/rehearsal/start', { target: 'live', confirm: 'LIVE', guests: 20, durationMin: 1 });
+    assert.equal(r.status, 400); assert.match(r.json.error, /leerer Live-Umgebung/);
+    rq.resetEnv('live');
+
+    r = await admin.post('/api/admin/rehearsal/start', { target: 'live', confirm: 'LIVE', guests: 20, durationMin: 1, rampSec: 1, intensity: 'extrem', modDelaySec: 1, speed: 30 });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal(live.realConnections, false, 'waehrend der Probe simuliert');
+    await admin.post('/api/admin/settings', { test: { realEnv: 'live' } });
+    live.setReal(true);
+    assert.equal(live.realConnections, false, 'bleibt simuliert, auch wenn jemand umschaltet');
+    assert.ok(getSetting('rehearsalLive'));
+    assert.equal((await sendNotify({ title: 'x', message: 'y', env: 'live' })).reason, 'Generalprobe läuft', 'keine Alarme fuer Live');
+    await sleep(8000);
+    const c = (await admin.get('/api/admin/rehearsal')).json.current;
+    assert.equal(c.opt.target, 'live');
+    assert.ok(c.cats.Wunsch.n > 0 && c.cats.Seite.ok >= 20, JSON.stringify(c.cats));
+    assert.ok(c.app.pending + c.app.queue + c.app.played > 0, 'Wünsche sind in Live angekommen');
+    assert.equal(c.totals.err, 0);
+
+    const done = (await admin.post('/api/admin/rehearsal/stop')).json;
+    assert.equal(done.running, false);
+    assert.equal(rq.counts('live').pending + rq.counts('live').approved + rq.counts('live').played, 0, 'Live wieder leer');
+    assert.equal(live.realConnections, true, 'echte Verbindungen wie vorher');
+    assert.equal(live.state.wishMode, 'paused', 'Freischaltung wie vorher');
+    assert.equal(getSetting('rehearsalLive'), null);
+    assert.notEqual((await sendNotify({ title: 'x', message: 'y', env: 'live' })).reason, 'Generalprobe läuft');
+    assert.ok(!(await admin.get('/api/admin/accounts')).json.accounts.some((a) => a.label === 'Generalprobe-Bot'));
+
+    // Server-Neustart mitten in der Probe: beim Start wird Live aufgeraeumt
+    rq.submitWish('live', t, 'probe-gast');
+    setSetting('rehearsalLive', Date.now());
+    createRehearsal({ server: ctx.server, engines: ctx.engines });
+    assert.equal(rq.counts('live').pending, 0);
+    assert.equal(getSetting('rehearsalLive'), null);
+  } finally { await ctx.close(); shield.reset(); }
+});
