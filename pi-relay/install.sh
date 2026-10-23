@@ -52,7 +52,7 @@ grep -q '^PersistentKeepalive' "$CONF" || sed -i '/^\[Peer\]/a PersistentKeepali
 chmod 600 "$CONF"
 
 echo "==> Relay und Erkennung 'zu Hause'"
-ask X32_HOST "IP-Adresse des X32 im Netz (wird am Veranstaltungsort ggf. in der .env angepasst)" "192.168.1.50"
+ask X32_HOST "IP-Adresse des X32 im Netz (Startwert; am Veranstaltungsort im Admin aenderbar)" "192.168.1.50"
 [ -n "${SERVER_LAN_IP:-}" ] || ask SERVER_LAN_IP "LAN-IP des Heimservers (fuer die Erkennung, leer = nur Router-Erkennung)" ""
 # Heimrouter merken: ist der Pi gerade zu Hause, wird die MAC-Adresse des Routers als "Heim" gespeichert
 PHYS_IF="$(ip -4 route show default | awk '{for(i=1;i<NF;i++) if($i=="dev") print $(i+1)}' | head -1)"
@@ -86,6 +86,7 @@ EXTRA_DEVICES=${EXTRA_DEVICES:-}
 ENV
 chmod 600 "$HERE/.env"; chown "$RUN_USER" "$HERE/.env" 2>/dev/null || true
 chmod +x "$HERE/autonet.sh"
+install -d -o 1000 -g 1000 "$HERE/state"   # hier merkt sich das Relay die im Admin eingestellte X32-Adresse
 ( cd "$HERE" && docker compose up -d --build )
 
 echo "==> Autostart (Netz-Pruefung beim Start und alle 30 s)"

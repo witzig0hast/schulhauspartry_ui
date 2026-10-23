@@ -12,7 +12,7 @@ App-Container (Heimserver) ──WireGuard──► Pi 5 (10.8.0.2:8080, Relay) 
 - **Eigener WireGuard-Server auf dem Heimserver** (Container `wg`, `docker-compose.vpn.yml`). Peers: `pi` (der Veranstaltungs-Pi) und `pc` (dein Rechner). Kein Tailscale/Twingate nötig; es werden keine DNS-Server verändert.
 - **Auf dem Pi läuft WireGuard direkt auf dem System**, aber mit schmalen Routen: nur das Tunnelnetz `10.8.0.0/24` geht durch den Tunnel, kein DNS, keine Standardroute. SSH, X32 und Internet des Pi bleiben normal. So erreichst du den Pi mit **allem, was darauf läuft** (SSH, Bitfocus Companion, n8n …): `ssh pi@10.8.0.2`, `http://10.8.0.2:8000` usw.
 - **Zu Hause aus, woanders an:** `autonet.sh` (läuft beim Start und alle 30 s) erkennt deinen Heimrouter an seiner MAC-Adresse. Zu Hause ist der Tunnel aus, bei einer Veranstaltung geht er von selbst an und wird per Ping überwacht (bei Ausfall neu gestartet). Die Subdomain des VPN-Servers wird dabei alle 30 s neu aufgelöst und immer die **IPv4-Adresse** genommen – so stört weder eine wechselnde IP (DynDNS) noch ein kaputter IPv6-Weg (`WG_PREFER_IPV4=0` in `.env` schaltet das ab). Das funktioniert auch, wenn der Veranstaltungsort zufällig dieselben Adressen wie dein Heimnetz hat.
-- **Das X32 von zu Hause erreichen:** Das X32 bekommt im Tunnel die feste, virtuelle Adresse **`10.8.0.200`**. Der Pi leitet sie auf die echte (wechselnde) X32-IP um. Von deinem PC (WireGuard an) öffnest du X32-Edit/Companion mit `10.8.0.200`. Weitere Geräte: in `pi-relay/.env` `EXTRA_DEVICES=10.8.0.201=192.168.1.20,10.8.0.202=…` (Adressen aus `10.8.0.192–255`). Ändert sich die X32-IP am Veranstaltungsort: `X32_HOST` in der `.env` ändern, der Rest passt sich innerhalb 30 s an.
+- **Das X32 von zu Hause erreichen:** Das X32 bekommt im Tunnel die feste, virtuelle Adresse **`10.8.0.200`**. Der Pi leitet sie auf die echte (wechselnde) X32-IP um. Von deinem PC (WireGuard an) öffnest du X32-Edit/Companion mit `10.8.0.200`. Weitere Geräte: in `pi-relay/.env` `EXTRA_DEVICES=10.8.0.201=192.168.1.20,10.8.0.202=…` (Adressen aus `10.8.0.192–255`). Ändert sich die X32-IP am Veranstaltungsort: im **Admin → Verbindungen → X32 / Pi 5** die neue Adresse eintragen oder per „Im Netz suchen“ übernehmen. Sie gilt sofort, bleibt nach einem Neustart des Pi erhalten (`pi-relay/state/x32.json`) und die Umleitung auf `10.8.0.200` folgt innerhalb von 30 s. Leer lassen = `X32_HOST` aus der `.env`.
 - **Pi → Heimnetz:** Der Pi erreicht im Tunnel den Server (`10.8.0.1`) und deinen PC (`10.8.0.3`, wenn WireGuard dort läuft).
 
 ## Schnellweg (empfohlen)
@@ -103,7 +103,7 @@ Fader in der Technik-Ansicht bewegen → am X32 müssen sich die Fader der Playe
 | Symptom | Prüfen |
 |---|---|
 | Pi bleibt rot | `curl http://10.8.0.2:8080/healthz` vom Server-Container (`docker compose exec app wget -qO- http://10.8.0.2:8080/healthz`); VPN: `sudo wg show` (Handshake?) |
-| X32 rot, Pi grün | `X32_HOST` falsch/andere IP; Pi und X32 im selben Netz? Firewall: UDP 10023 |
+| X32 rot, Pi grün | X32-Adresse falsch: Admin → Verbindungen → „Verbindung prüfen“ / „Im Netz suchen“ (sonst `X32_HOST`); Pi und X32 im selben Netz? Firewall: UDP 10023 |
 | Fader bewegen sich nicht | falsche Kanalnummern; X32 „Remote“ nicht durch anderes Gerät belegt (max. wenige Remote-Clients) |
 | Mics immer „stumm“ | Mic-Kanäle in Relay-`.env` und Admin gleich? Kanal am X32 nicht gemutet? |
 | Meter/Ducking spinnt | Schwelle `MIC_THRESHOLD` (Standard 0.03) anpassen |

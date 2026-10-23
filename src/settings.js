@@ -50,6 +50,8 @@ export const DEFAULTS = {
     adapter: 'mock', // mock | http
     piUrl: '',
     piToken: '',
+    host: '',      // IP des X32 im Veranstaltungsnetz; leer = Wert aus der .env des Pi
+    port: 10023,
     channels: { p1: [1, 2], p2: [3, 4], mics: [5, 6, 7] },
     micNames: ['Mic 1', 'Mic 2', 'Mic 3'],
   },
@@ -103,6 +105,14 @@ function saveSettings() { setSetting('app', cache); }
 
 export const settings = () => cache || loadSettings();
 
+// X32-Adresse: nur IPv4 im lokalen Netz (gleiche Regel wie im Relay auf dem Pi)
+export function validX32Host(h) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(h || ''));
+  if (!m) return false;
+  const [a, b, c, d] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((x) => x > 255) || d === 0 || d === 255) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a === 127;
+}
 const clamp = (n, lo, hi, d) => { n = Number(n); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const str = (s, max) => String(s ?? '').slice(0, max);
 
@@ -274,6 +284,12 @@ export function applyPatch(patch, { allow }) {
     if (['mock', 'http'].includes(x.adapter)) s.x32.adapter = x.adapter;
     if ('piUrl' in x) s.x32.piUrl = str(x.piUrl, 400).trim();
     if (x.piToken) s.x32.piToken = encrypt(str(x.piToken, 200));
+    if ('host' in x) {
+      const h = str(x.host, 40).trim();
+      if (h && !validX32Host(h)) throw new Error('X32-Adresse: bitte eine IPv4-Adresse aus dem lokalen Netz (z. B. 192.168.1.50).');
+      s.x32.host = h;
+    }
+    if ('port' in x) s.x32.port = Math.round(clamp(x.port, 1, 65535, 10023));
     if (x.channels) {
       // leere Felder = nicht benutzt; mindestens ein Kanal bleibt, ungueltige Werte werden ignoriert
       const ch = (arr, n) => {

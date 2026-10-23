@@ -141,3 +141,57 @@ test('App-Adapter: mehrere Pi-URLs, nimmt die erreichbare', async () => {
     assert.equal(a.health().ok, true);
   } finally { await relay.stop(); x32.close(); }
 });
+
+test('X32-Adresse aus dem Admin: nur lokales Netz, wird ans Relay gegeben, ueberlebt Neustart, Suche per /xinfo', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { HttpX32 } = await import('../src/adapters/x32.js');
+  const { loadSettings, applyPatch, settings } = await import('../src/settings.js');
+  const { openDb } = await import('../src/db.js');
+  const { config } = await import('../src/config.js');
+  config.secret = 'test-secret-test-secret-test-secret-1234';
+  openDb(':memory:'); loadSettings();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-'));
+  const stateFile = path.join(dir, 'x32.json');
+  const a32 = await fakeX32(), b32 = await fakeX32();
+  // b32 antwortet auf /xinfo wie ein echtes Pult
+  b32.sock.on('message', (msg, rinfo) => { if (decode(msg).address === '/xinfo') b32.sock.send(encode('/xinfo', [{ t: 's', v: '127.0.0.1' }, { t: 's', v: 'Aula-X32' }, { t: 's', v: 'X32' }, { t: 's', v: '4.06' }]), rinfo.port, rinfo.address); });
+  let relay = createRelay({ x32Host: '127.0.0.1', x32Port: a32.port, token: TOKEN, bind: '127.0.0.1', port: 0, stateFile, discoverTargets: ['127.0.0.1'], discoverPort: b32.port });
+  let port = await relay.start();
+  try {
+    // Einstellungen: nur IPv4 im lokalen Netz
+    assert.throws(() => applyPatch({ x32: { host: '8.8.8.8' } }, { allow: ['x32'] }), /lokalen Netz/);
+    assert.throws(() => applyPatch({ x32: { host: 'x32.local; rm -rf /' } }, { allow: ['x32'] }));
+    const base = `http://127.0.0.1:${port}`, auth = { Authorization: `Bearer ${TOKEN}` };
+    assert.equal((await fetch(`${base}/x32/config`, { method: 'POST', headers: auth, body: JSON.stringify({ host: '1.1.1.1' }) })).status, 400, 'Relay prueft selbst');
+    assert.equal((await fetch(`${base}/x32/config`, { method: 'POST', headers: auth, body: JSON.stringify({ host: '192.168.1.5', port: 99999 }) })).status, 400);
+
+    applyPatch({ x32: { adapter: 'http', piUrl: base, piToken: TOKEN, host: '127.0.0.1', port: b32.port } }, { allow: ['x32'] });
+    const a = new HttpX32();
+    await a.readState();
+    assert.equal(relay.cfg.x32Port, b32.port); assert.equal(relay.cfg.hostSource, 'admin');
+    await a.setPlayerLevel(1, 1);
+    await sleep(100);
+    assert.ok(b32.received.some((m) => /\/mix\/fader$/.test(m.address)), 'Fader geht ans neue Pult');
+    assert.deepEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')), { host: '127.0.0.1', port: b32.port });
+    const st = await a.readState();
+    assert.equal(a.desk.source, 'admin'); assert.equal(a.desk.port, b32.port); assert.ok(st);
+
+    // Suche
+    const found = await a.discover();
+    assert.deepEqual(found.map((f) => [f.host, f.name, f.model, f.version]), [['127.0.0.1', 'Aula-X32', 'X32', '4.06']]);
+
+    // Neustart des Relays: Adresse aus der Datei
+    await relay.stop();
+    relay = createRelay({ x32Host: '127.0.0.1', x32Port: a32.port, token: TOKEN, bind: '127.0.0.1', port: 0, stateFile });
+    assert.equal(relay.cfg.x32Port, b32.port);
+    port = await relay.start();
+    // Zuruecksetzen: leer = .env-Wert, Datei weg
+    applyPatch({ x32: { piUrl: `http://127.0.0.1:${port}`, host: '' } }, { allow: ['x32'] });
+    await new HttpX32().readState();
+    assert.equal(relay.cfg.x32Port, a32.port); assert.equal(relay.cfg.hostSource, 'pi');
+    assert.equal(fs.existsSync(stateFile), false);
+    assert.equal(settings().x32.host, '');
+  } finally { await relay.stop(); a32.close(); b32.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

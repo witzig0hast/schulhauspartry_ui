@@ -155,6 +155,25 @@ function viewConnections() {
   const adapter = h('select', {}, h('option', { value: 'mock', selected: s.x32.adapter === 'mock' }, 'Simuliert (kein Pi nötig)'), h('option', { value: 'http', selected: s.x32.adapter === 'http' }, 'Pi 5 / X32 über HTTP-Relay'));
   const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://192.168.178.177:8080, http://192.168.178.207:8080' });
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
+  const x32Host = h('input', { value: s.x32.host || '', placeholder: 'leer = Adresse aus der .env des Pi', inputmode: 'decimal', maxlength: 15, 'aria-label': 'IP-Adresse des X32' });
+  const x32Port = num(s.x32.port || 10023, { min: 1, max: 65535, class: 'num', 'aria-label': 'OSC-Port des X32' });
+  const x32Info = h('div', { class: 'stack', style: 'gap:6px' });
+  const x32Status = safe(async () => {
+    clear(x32Info).append(h('div', { class: 'small muted' }, 'Frage den Pi …'));
+    const st = await api('/admin/x32/status');
+    clear(x32Info).append(h('div', { class: 'row small' },
+      h('span', { class: st.deskOk ? 'badge ok' : 'badge warn' }, st.deskOk ? 'Pult antwortet' : 'Pult antwortet nicht'),
+      h('span', {}, st.host ? `Pi spricht mit ${st.host}:${st.port} (${st.source === 'admin' ? 'hier eingestellt' : 'aus der .env des Pi'})` : 'Das Relay auf dem Pi ist zu alt und meldet keine Adresse – auf dem Pi aktualisieren.')));
+  });
+  const x32Search = safe(async () => {
+    clear(x32Info).append(h('div', { class: 'small muted' }, 'Suche im Netz des Pi (ca. 2 s) …'));
+    const { found } = await api('/admin/x32/discover', { method: 'POST', body: {} });
+    clear(x32Info).append(found.length
+      ? h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small muted' }, `${found.length} Pult${found.length > 1 ? 'e' : ''} gefunden:`),
+        ...found.map((f) => h('div', { class: 'row between' }, h('span', {}, h('strong', {}, f.name || 'X32'), ` ${f.model || ''} · ${f.host}${f.version ? ` · Firmware ${f.version}` : ''}`),
+          h('button', { class: 'small primary', onclick: () => save({ x32: { host: f.host, port: 10023 } }, `X32-Adresse ${f.host} übernommen – der Pi nutzt sie in wenigen Sekunden`) }, 'Übernehmen'))))
+      : h('div', { class: 'small' }, 'Kein Pult gefunden. Ist das X32 eingeschaltet und per Netzwerkkabel im selben Netz wie der Pi? Dann die Adresse am Pult nachsehen (Setup → Network) und hier eintragen.'));
+  });
   const ch = s.x32.channels;
   const chIn = (v, i) => num(v[i] ?? '', { min: 1, max: 32, class: 'num', placeholder: '–' });
   const p1 = [chIn(ch.p1, 0), chIn(ch.p1, 1)], p2 = [chIn(ch.p2, 0), chIn(ch.p2, 1)], mics = [0, 1, 2].map((i) => chIn(ch.mics, i));
@@ -180,11 +199,16 @@ function viewConnections() {
     companionCard(),
     h('div', { class: 'card stack' }, h('h2', {}, 'X32 / Pi 5'),
       field('Anbindung', adapter), field('Pi-URL(s) des Relays', piUrl), field('Token', piToken),
+      h('div', { class: 'eyebrow' }, 'Adresse des X32 im Veranstaltungsnetz'),
+      h('p', { class: 'small muted' }, 'Der Pi spricht mit dem Pult über diese IP-Adresse (Setup → Network am X32). Sie gilt sofort, ohne die .env des Pi zu ändern, und bleibt auch nach einem Neustart des Pi erhalten. Leer lassen = die Adresse aus der .env des Pi. „Im Netz suchen“ findet Pulte im selben Netz wie der Pi.'),
+      h('div', { class: 'row' }, field('IP-Adresse', x32Host), field('Port', x32Port),
+        h('button', { class: 'small', onclick: x32Search }, 'Im Netz suchen'), h('button', { class: 'small', onclick: x32Status }, 'Verbindung prüfen')),
+      x32Info,
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
       h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
-      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
+      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, host: x32Host.value.trim(), port: Number(x32Port.value) || 10023, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
 

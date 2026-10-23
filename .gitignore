@@ -4,3 +4,4 @@ data/
 *.log
 pi-relay/.env
 pi-relay/wg/
+pi-relay/state/

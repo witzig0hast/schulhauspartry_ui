@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     network_mode: host
     env_file: .env
+    volumes:
+      - ./state:/app/state   # im Admin eingestellte X32-Adresse (ueberlebt Neustarts, autonet liest sie fuer die Umleitung)
     environment:
       BIND: 0.0.0.0
     healthcheck:

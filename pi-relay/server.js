@@ -9,6 +9,7 @@ const relay = createRelay({
   mics: parseList(process.env.MIC_CHANNELS, [5, 6, 7]),
   players: { 1: parseList(process.env.P1_CHANNELS, [1, 2]), 2: parseList(process.env.P2_CHANNELS, [3, 4]) },
   micThreshold: Number(process.env.MIC_THRESHOLD || 0.03),
+  stateFile: process.env.STATE_FILE || '/app/state/x32.json',
 });
 relay.start().then((p) => console.log(`[relay] HTTP ${relay.cfg.bind}:${p} -> X32 ${relay.cfg.x32Host}:${relay.cfg.x32Port}`)).catch((e) => { console.error(e.message); process.exit(1); });
 process.on('SIGTERM', () => relay.stop().finally(() => process.exit(0)));

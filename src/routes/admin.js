@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { authorizeUrl, exchangeCode, explainSpotifyError } from '../adapters/spotify-real.js';
 import * as L from '../log.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
+import { HttpX32 } from '../adapters/x32.js';
 import { audit } from '../audit.js';
 import { testConnection, unlinkFor } from '../sso.js';
 import { backupNow } from '../backup.js';
@@ -96,7 +97,12 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const modeBefore = settings().operation.mode;
     const appsBefore = JSON.stringify([settings().spotify.apps, [1, 2].map((p) => settings().spotify.players[p].appId)]);
     const gateBefore = settings().opening.enabled, atBefore = settings().opening.at, autoBefore = settings().opening.auto;
+    const x32Before = `${settings().x32.host}:${settings().x32.port}`;
     applyPatch(req.body || {}, { allow });
+    if (`${settings().x32.host}:${settings().x32.port}` !== x32Before) {
+      const x = settings().x32;
+      L.info('verbindung', 'x32.host', x.host ? `X32-Adresse auf ${x.host}:${x.port} gesetzt` : 'X32-Adresse zurückgesetzt (gilt wieder die vom Pi)', { env: 'system', actor: { kind: 'staff', label: req.session.label }, data: { before: x32Before, host: x.host, port: x.port } });
+    }
     const gate = settings().opening;
     if (gate.enabled && !gateBefore) for (const e of Object.values(engines)) e.armOpening();
     else if (!gate.enabled && gateBefore) for (const e of Object.values(engines)) { if (e.state.awaitOpen) e.openWishes(); }
@@ -185,6 +191,24 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const p = Number(req.params.player);
     const probe = new RealPlayer(p);
     res.json({ devices: (await probe.devices()).map((d) => ({ id: d.id, name: d.name, type: d.type, active: d.is_active })) });
+  }));
+
+  // ----- X32: aktuelle Adresse am Relay und Suche im Netz des Pi -----
+  const relay = () => {
+    if (settings().x32.adapter !== 'http' || !settings().x32.piUrl) throw new Error('Erst die Anbindung „Pi 5 / X32 über HTTP-Relay“ mit Pi-URL und Token speichern.');
+    return new HttpX32();
+  };
+  r.get('/admin/x32/status', wrap(async (req, res) => {
+    const a = relay();
+    await a._pushConfig(true);
+    await a.readState();
+    const d = a.desk || {};
+    res.json({ host: d.host || null, port: d.port || null, source: d.source || null, envHost: d.envHost || null, deskOk: !!d.ok, lastSeenMs: d.lastSeenMs ?? null });
+  }));
+  r.post('/admin/x32/discover', wrap(async (req, res) => {
+    const found = await relay().discover();
+    L.info('verbindung', 'x32.discover', `X32-Suche im Netz des Pi: ${found.length ? found.map((f) => `${f.name || f.model || 'X32'} (${f.host})`).join(', ') : 'nichts gefunden'}`, { env: 'system', actor: { kind: 'staff', label: req.session.label }, data: { found } });
+    res.json({ found });
   }));
 
   // ----- Bericht / Export / Reset -----

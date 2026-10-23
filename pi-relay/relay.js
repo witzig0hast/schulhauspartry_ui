@@ -1,13 +1,28 @@
 // HTTP-Relay: App (ueber VPN) <-> X32 (OSC ueber UDP, Port 10023)
 //   POST /x32/level  {player, channels:[..], fader}  -> setzt /ch/NN/mix/fader
 //   GET  /x32/state  -> {mics:[{open,level}], meters:{1,2}, x32:{ok,lastSeenMs}}
+//   POST /x32/config {p1, p2, mics, host, port} -> Kanalzuordnung und X32-Adresse aus dem Admin (host '' = Wert aus der .env)
+//   POST /x32/discover -> sucht X32/M32 im Netz (OSC /xinfo per Broadcast)
 //   GET  /healthz    -> ohne Token, nur {ok:true}
 import dgram from 'node:dgram';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { encode, decode, decodeMeters } from './osc.js';
 
 const ch2 = (n) => String(n).padStart(2, '0');
+// Nur Adressen im lokalen Netz: das Relay soll nie Pakete ins Internet schicken koennen
+export function validX32Host(h) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(h || ''));
+  if (!m) return false;
+  const [a, b, c, d] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((x) => x > 255) || d === 0 || d === 255) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a === 127;
+}
+const validPort = (p) => Number.isInteger(p) && p >= 1 && p <= 65535;
+
 const parseList = (s, d) => (s ? String(s).split(',').map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n >= 1 && n <= 32) : d);
 
 export function createRelay(opts = {}) {
@@ -16,7 +31,17 @@ export function createRelay(opts = {}) {
     token: opts.token, bind: opts.bind ?? '0.0.0.0', port: opts.port ?? 8080,
     mics: opts.mics ?? [5, 6, 7], players: opts.players ?? { 1: [1, 2], 2: [3, 4] },
     micThreshold: opts.micThreshold ?? 0.03, micHoldMs: opts.micHoldMs ?? 600,
+    stateFile: opts.stateFile ?? null,
   };
+  const envHost = { host: cfg.x32Host, port: cfg.x32Port };
+  cfg.hostSource = 'pi';
+  // Im Admin gesetzte Adresse ueberlebt einen Neustart des Relays (Datei im gemounteten state-Ordner)
+  if (cfg.stateFile) {
+    try {
+      const j = JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8'));
+      if (validX32Host(j.host)) { cfg.x32Host = j.host; cfg.x32Port = validPort(j.port) ? j.port : 10023; cfg.hostSource = 'admin'; }
+    } catch { /* keine oder kaputte Datei: Wert aus der .env */ }
+  }
   if (!cfg.x32Host) throw new Error('X32_HOST fehlt');
   if (!cfg.token || cfg.token.length < 16) throw new Error('RELAY_TOKEN fehlt oder ist zu kurz (min. 16 Zeichen)');
 
@@ -52,6 +77,53 @@ export function createRelay(opts = {}) {
     });
   }
 
+  function setHost(host, port) {
+    const before = `${cfg.x32Host}:${cfg.x32Port}`;
+    if (!host) { cfg.x32Host = envHost.host; cfg.x32Port = envHost.port; cfg.hostSource = 'pi'; }
+    else { cfg.x32Host = host; cfg.x32Port = port || 10023; cfg.hostSource = 'admin'; }
+    if (before === `${cfg.x32Host}:${cfg.x32Port}`) return;
+    state.lastSeen = 0; state.lastMeters = 0; state.micOn = {};
+    console.log(`[relay] X32-Adresse jetzt ${cfg.x32Host}:${cfg.x32Port} (${cfg.hostSource === 'admin' ? 'aus dem Admin' : 'aus der .env'})`);
+    if (cfg.stateFile) {
+      try {
+        if (host) fs.writeFileSync(cfg.stateFile, JSON.stringify({ host: cfg.x32Host, port: cfg.x32Port }) + '\n', { mode: 0o644 });
+        else fs.rmSync(cfg.stateFile, { force: true });
+      } catch (e) { console.error(`[relay] X32-Adresse konnte nicht gespeichert werden (${e.code || e.message}) – gilt bis zum Neustart`); }
+    }
+    keepAlive(); pollMics();
+  }
+
+  // X32/M32 im lokalen Netz finden: /xinfo an alle Broadcast-Adressen (ausser VPN), Antwort: ip, name, model, version
+  async function discover(ms = 1200) {
+    const targets = new Set(['255.255.255.255']);
+    for (const [name, list] of Object.entries(os.networkInterfaces())) {
+      if (/^(wg|docker|br-|veth)/.test(name)) continue;
+      for (const a of list || []) {
+        if (a.family !== 'IPv4' || a.internal || !a.netmask) continue;
+        const ip = a.address.split('.').map(Number), mask = a.netmask.split('.').map(Number);
+        targets.add(ip.map((o, i) => (o | (~mask[i] & 255))).join('.'));
+      }
+    }
+    if (opts.discoverTargets) { targets.clear(); for (const t of opts.discoverTargets) targets.add(t); }
+    const found = new Map();
+    const ds = dgram.createSocket('udp4');
+    ds.on('message', (msg, rinfo) => {
+      let m; try { m = decode(msg); } catch { return; }
+      if (m.address !== '/xinfo' || found.size >= 20) return;
+      const [ip, name, model, version] = m.args.map((x) => String(x ?? '').slice(0, 40));
+      const host = validX32Host(ip) ? ip : rinfo.address;
+      if (validX32Host(host)) found.set(host, { host, port: rinfo.port, name, model, version });
+    });
+    ds.on('error', () => {});
+    await new Promise((r) => ds.bind(0, r));
+    ds.setBroadcast(true);
+    const port = opts.discoverPort ?? 10023;
+    for (const t of targets) ds.send(encode('/xinfo', []), port, t, () => {});
+    await new Promise((r) => setTimeout(r, ms));
+    ds.close();
+    return [...found.values()];
+  }
+
   const playerMeter = (p) => Math.min(1, Math.max(0, ...(cfg.players[p] || []).map((c) => state.meters[c - 1] || 0)));
 
   const authOk = (req) => {
@@ -68,7 +140,7 @@ export function createRelay(opts = {}) {
     if (req.method === 'GET' && req.url === '/x32/state') {
       return json(200, {
         mics: micState(), meters: { 1: playerMeter(1), 2: playerMeter(2) },
-        x32: { ok: Date.now() - state.lastSeen < 5000, lastSeenMs: state.lastSeen ? Date.now() - state.lastSeen : null },
+        x32: { ok: Date.now() - state.lastSeen < 5000, lastSeenMs: state.lastSeen ? Date.now() - state.lastSeen : null, host: cfg.x32Host, port: cfg.x32Port, source: cfg.hostSource, envHost: envHost.host },
       });
     }
     if (req.method === 'POST' && req.url === '/x32/config') {
@@ -79,11 +151,20 @@ export function createRelay(opts = {}) {
         const list = (a, max) => (Array.isArray(a) && a.length && a.length <= max && a.every((c) => Number.isInteger(c) && c >= 1 && c <= 32) ? a : null);
         const p1 = list(j.p1, 2), p2 = list(j.p2, 2), mics = list(j.mics, 3);
         if (j.p1 !== undefined && !p1 || j.p2 !== undefined && !p2 || j.mics !== undefined && !mics) return json(400, { error: 'channels' });
+        if (j.host !== undefined && j.host !== '' && !validX32Host(j.host)) return json(400, { error: 'host' });
+        if (j.port !== undefined && j.port !== null && !validPort(j.port)) return json(400, { error: 'port' });
         if (p1) cfg.players[1] = p1;
         if (p2) cfg.players[2] = p2;
         if (mics) { cfg.mics = mics; pollMics(); }
-        json(200, { ok: true, p1: cfg.players[1], p2: cfg.players[2], mics: cfg.mics });
+        if (j.host !== undefined) setHost(j.host, j.port);
+        json(200, { ok: true, p1: cfg.players[1], p2: cfg.players[2], mics: cfg.mics, host: cfg.x32Host, port: cfg.x32Port, source: cfg.hostSource });
       });
+      return undefined;
+    }
+    if (req.method === 'POST' && req.url === '/x32/discover') {
+      if (state.discovering) return json(429, { error: 'busy' });
+      state.discovering = true;
+      discover().then((list) => json(200, { found: list }), () => json(500, { error: 'discover' })).finally(() => { state.discovering = false; });
       return undefined;
     }
     if (req.method === 'POST' && req.url === '/x32/level') {
@@ -105,7 +186,7 @@ export function createRelay(opts = {}) {
   });
 
   return {
-    cfg, state, micState,
+    cfg, state, micState, discover,
     async start() {
       await new Promise((r) => sock.bind(0, r));
       keepAlive(); pollMics();

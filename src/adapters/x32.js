@@ -50,7 +50,7 @@ export class HttpX32 {
     let last;
     for (let k = 0; k < urls.length; k++) {
       const i = (this.idx + k) % urls.length;
-      try { const res = await fetch(urls[i] + path, { ...init, signal: AbortSignal.timeout(1500) }); this.idx = i; return res; } catch (e) { last = e; }
+      try { const res = await fetch(urls[i] + path, { signal: AbortSignal.timeout(1500), ...init }); this.idx = i; return res; } catch (e) { last = e; }
     }
     throw last;
   }
@@ -71,12 +71,23 @@ export class HttpX32 {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
   // Kanalzuordnung kommt aus dem Admin und wird dem Relay mitgeteilt (Relay-.env ist nur der Startwert)
-  async _pushConfig() {
-    const c = settings().x32.channels;
-    const key = JSON.stringify(c);
-    if (key === this.sentKey && Date.now() - this.sentAt < 30000) return;
-    const res = await this._fetch('/x32/config', { method: 'POST', headers: this._headers(), body: JSON.stringify({ p1: c.p1, p2: c.p2, mics: c.mics }) });
+  // Ebenso die X32-Adresse: leer = das Relay nimmt wieder die aus seiner .env
+  async _pushConfig(force = false) {
+    const x = settings().x32, c = x.channels;
+    const body = { p1: c.p1, p2: c.p2, mics: c.mics, host: x.host || '', port: x.port || 10023 };
+    const key = JSON.stringify(body);
+    if (!force && key === this.sentKey && Date.now() - this.sentAt < 30000) return;
+    const res = await this._fetch('/x32/config', { method: 'POST', headers: this._headers(), body: key });
     if (res.ok) { this.sentKey = key; this.sentAt = Date.now(); }
+    else if (res.status === 400) throw new Error('Das Relay hat die X32-Einstellungen abgelehnt (Adresse/Kanäle prüfen).');
+  }
+  // X32/M32 im Netz des Pi suchen (das Relay schickt /xinfo per Broadcast)
+  async discover() {
+    const res = await this._fetch('/x32/discover', { method: 'POST', headers: this._headers(), signal: AbortSignal.timeout(5000) });
+    if (res.status === 404) throw new Error('Das Relay auf dem Pi ist zu alt für die Suche – auf dem Pi aktualisieren (git pull, docker compose up -d --build).');
+    if (res.status === 429) throw new Error('Die Suche läuft schon.');
+    if (!res.ok) throw new Error(`Relay antwortet mit ${res.status}`);
+    return (await res.json()).found || [];
   }
   async readState() {
     try {

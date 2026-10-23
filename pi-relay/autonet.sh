@@ -9,6 +9,12 @@ set -u
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "autonet: .env fehlt"; exit 1; }
 set -a; . ./.env; set +a
+# Im Admin eingestellte X32-Adresse (vom Relay gespeichert) gilt vor der aus der .env
+mkdir -p state && chown 1000:1000 state 2>/dev/null
+if [ -r state/x32.json ]; then
+  h="$(sed -n 's/.*"host":"\([0-9.]*\)".*/\1/p' state/x32.json | head -1)"
+  [ -n "$h" ] && X32_HOST="$h"
+fi
 STATE=/run/x32-relay-net
 tunnel_up() { ip link show wg0 >/dev/null 2>&1; }
 WG_CONF="${WG_CONF:-/etc/wireguard/wg0.conf}"
