@@ -2,6 +2,7 @@ import { h, api, BASE, topbar, clear, safe, toast, modal, qrElement, $, fmtClock
 import { ampel } from '/assets/staff-ui.js';
 import { autoHelp } from '/assets/help.js';
 import { openLevels } from '/assets/levels.js';
+import { x32AddressBox, openX32Setup } from '/assets/x32setup.js';
 
 const app = $('#app');
 let data = null;
@@ -108,7 +109,7 @@ function viewCodes() {
         h('td', {}, a.approved), h('td', {}, a.denied), h('td', {}, a.prioritized), h('td', {}, a.last_seen ? fmtClock(a.last_seen) : '–'),
         h('td', {}, h('div', { class: 'row' },
           h('button', { class: 'small', onclick: safe(async () => { const { decisions } = await api(`/admin/accounts/${a.id}/decisions`); showDecisions(a, decisions); }) }, 'Entscheidungen'),
-          !a.sso ? h('button', { class: 'small ghost', title: 'E-Mail für die automatische SSO-Zuordnung', onclick: safe(async () => { const e = prompt('E-Mail-Adresse dieser Person im SSO (leer = entfernen):', a.email || ''); if (e == null) return; await api(`/admin/accounts/${a.id}/email`, { method: 'POST', body: { email: e } }); refresh(); }) }, '✉') : null,
+          !a.sso ? h('button', { class: 'small ghost', title: 'E-Mail für die automatische SSO-Zuordnung', onclick: safe(async () => { const e = prompt('E-Mail-Adresse dieser Person im SSO (leer = entfernen):', a.email || ''); if (e == null) return; await api(`/admin/accounts/${a.id}/email`, { method: 'POST', body: { email: e } }); refresh(); }) }, 'E-Mail') : null,
           a.ssoLinked ? h('button', { class: 'small', onclick: safe(async () => { if (!confirm(`SSO-Verbindung von „${a.label}“ lösen?`)) return; await api(`/admin/accounts/${a.id}/sso`, { method: 'DELETE' }); refresh(); }) }, 'SSO lösen') : null,
           !a.revoked ? h('button', { class: 'small', onclick: safe(async () => { await api(`/admin/accounts/${a.id}/revoke`, { method: 'POST', body: {} }); refresh(); }) }, 'Sperren') : null,
           h('button', { class: 'small bad', onclick: safe(async () => { if (!confirm(`Code "${a.label}" endgültig löschen?`)) return; await api(`/admin/accounts/${a.id}`, { method: 'DELETE' }); refresh(); }) }, 'Löschen'))))))));
@@ -155,29 +156,8 @@ function viewConnections() {
   const adapter = h('select', {}, h('option', { value: 'mock', selected: s.x32.adapter === 'mock' }, 'Simuliert (kein Pi nötig)'), h('option', { value: 'http', selected: s.x32.adapter === 'http' }, 'Pi 5 / X32 über HTTP-Relay'));
   const piUrl = h('input', { value: s.x32.piUrl, placeholder: 'http://192.168.178.177:8080, http://192.168.178.207:8080' });
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
-  const x32Host = h('input', { value: s.x32.host || '', placeholder: 'leer = Adresse aus der .env des Pi', inputmode: 'decimal', maxlength: 15, 'aria-label': 'IP-Adresse des X32' });
-  const x32Port = num(s.x32.port || 10023, { min: 1, max: 65535, class: 'num', 'aria-label': 'OSC-Port des X32' });
-  const x32Info = h('div', { class: 'stack', style: 'gap:6px' });
-  // Eingetippte, noch nicht gespeicherte Adresse zuerst speichern (sonst prueft man die alte)
-  const x32Dirty = () => x32Host.value.trim() !== (s.x32.host || '') || Number(x32Port.value || 10023) !== (s.x32.port || 10023);
-  const x32Save = () => save({ x32: { host: x32Host.value.trim(), port: Number(x32Port.value) || 10023 } }, x32Host.value.trim() ? `X32-Adresse ${x32Host.value.trim()} gespeichert – der Pi nutzt sie sofort` : 'X32-Adresse zurückgesetzt (gilt wieder die vom Pi)');
-  const x32Status = safe(async () => {
-    if (x32Dirty()) { await api('/admin/settings', { method: 'POST', body: { x32: { host: x32Host.value.trim(), port: Number(x32Port.value) || 10023 } } }); s.x32.host = x32Host.value.trim(); s.x32.port = Number(x32Port.value) || 10023; toast('X32-Adresse gespeichert'); }
-    clear(x32Info).append(h('div', { class: 'small muted' }, 'Frage den Pi …'));
-    const st = await api('/admin/x32/status');
-    clear(x32Info).append(h('div', { class: 'row small' },
-      h('span', { class: st.deskOk ? 'badge ok' : 'badge warn' }, st.deskOk ? 'Pult antwortet' : 'Pult antwortet nicht'),
-      h('span', {}, st.host ? `Pi spricht mit ${st.host}:${st.port} (${st.source === 'admin' ? 'hier eingestellt' : 'aus der .env des Pi'})` : 'Das Relay auf dem Pi ist zu alt und meldet keine Adresse – auf dem Pi aktualisieren.')));
-  });
-  const x32Search = safe(async () => {
-    clear(x32Info).append(h('div', { class: 'small muted' }, 'Suche im Netz des Pi (ca. 2 s) …'));
-    const { found } = await api('/admin/x32/discover', { method: 'POST', body: {} });
-    clear(x32Info).append(found.length
-      ? h('div', { class: 'stack', style: 'gap:6px' }, h('div', { class: 'small muted' }, `${found.length} Pult${found.length > 1 ? 'e' : ''} gefunden:`),
-        ...found.map((f) => h('div', { class: 'row between' }, h('span', {}, h('strong', {}, f.name || 'X32'), ` ${f.model || ''} · ${f.host}${f.version ? ` · Firmware ${f.version}` : ''}`),
-          h('button', { class: 'small primary', onclick: () => save({ x32: { host: f.host, port: 10023 } }, `X32-Adresse ${f.host} übernommen – der Pi nutzt sie in wenigen Sekunden`) }, 'Übernehmen'))))
-      : h('div', { class: 'small' }, 'Kein Pult gefunden. Ist das X32 eingeschaltet und per Netzwerkkabel im selben Netz wie der Pi? Dann die Adresse am Pult nachsehen (Setup → Network) und hier eintragen.'));
-  });
+  const x32Addr = x32AddressBox(s, save);
+  const faderSpeed = h('select', {}, ...[['sanft', 'Sanft (schont den Motor am meisten)'], ['normal', 'Normal (empfohlen)'], ['schnell', 'Schnell (folgt kurzen Blenden genau)']].map(([v, t]) => h('option', { value: v, selected: (s.x32.faderSpeed || 'normal') === v }, t)));
   const ch = s.x32.channels;
   const chIn = (v, i) => num(v[i] ?? '', { min: 1, max: 32, class: 'num', placeholder: '–' });
   const p1 = [chIn(ch.p1, 0), chIn(ch.p1, 1)], p2 = [chIn(ch.p2, 0), chIn(ch.p2, 1)], mics = [0, 1, 2].map((i) => chIn(ch.mics, i));
@@ -205,14 +185,14 @@ function viewConnections() {
       field('Anbindung', adapter), field('Pi-URL(s) des Relays', piUrl), field('Token', piToken),
       h('div', { class: 'eyebrow' }, 'Adresse des X32 im Veranstaltungsnetz'),
       h('p', { class: 'small muted' }, 'Der Pi spricht mit dem Pult über diese IP-Adresse (Setup → Network am X32). Sie gilt sofort, ohne die .env des Pi zu ändern, und bleibt auch nach einem Neustart des Pi erhalten. Leer lassen = die Adresse aus der .env des Pi. „Im Netz suchen“ findet Pulte im selben Netz wie der Pi.'),
-      h('div', { class: 'row' }, field('IP-Adresse', x32Host), field('Port', x32Port),
-        h('button', { class: 'small primary', onclick: x32Save }, 'Adresse speichern'), h('button', { class: 'small', onclick: x32Search }, 'Im Netz suchen'), h('button', { class: 'small', onclick: x32Status }, 'Verbindung prüfen')),
-      x32Info,
+      x32Addr.el,
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => openX32Setup({ settings: s, save }) }, 'X32 einrichten (Assistent)'), h('span', { class: 'small muted' }, 'Kanäle per Pegel erkennen, Namen vom Pult, Fader-Tempo, sanfter Fader-Test')),
       h('div', { class: 'eyebrow' }, 'Kanalzuordnung am X32 (Eingangskanäle 1–32)'),
       h('p', { class: 'small muted' }, 'Hier legst du fest, auf welchen X32-Kanälen die Player und Mikrofone liegen. Das gilt sofort und wird automatisch an den Pi weitergegeben – die Relay-.env musst du dafür nicht ändern. Ein Player hat 1 Kanal (Mono) oder 2 (Stereo links/rechts); leer lassen = nicht benutzt.'),
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
-      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, host: x32Host.value.trim(), port: Number(x32Port.value) || 10023, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
+      field('Tempo der Motorfader', faderSpeed),
+      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, ...x32Addr.want(), faderSpeed: faderSpeed.value, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
 
@@ -228,7 +208,7 @@ function companionCard() {
   const tokenBox = h('div');
   const copy = (t) => () => navigator.clipboard.writeText(t).then(() => toast('Kopiert'), () => toast(t));
   const urlRow = (label, url) => h('div', { class: 'linkrow' }, h('div', { class: 'lbl' }, label), h('div', { class: 'url' }, url), h('button', { class: 'small', onclick: copy(url) }, 'Kopieren'));
-  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🎛 Companion / Stream Deck'), h('span', { class: `badge ${c.enabled && c.hasToken ? 'ok' : ''}` }, c.enabled && c.hasToken ? 'aktiv' : 'aus')),
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Companion / Stream Deck'), h('span', { class: `badge ${c.enabled && c.hasToken ? 'ok' : ''}` }, c.enabled && c.hasToken ? 'aktiv' : 'aus')),
     h('p', { class: 'small muted' }, 'Echte Tasten für die Technik: In Bitfocus Companion das Modul „Generic HTTP“ hinzufügen. Pro Taste eine Aktion „POST“ mit der Adresse unten und dem Header ', h('code', {}, '{"Authorization": "Bearer <Token>"}'), '. Für Anzeigen auf den Tasten (Titel, Countdown, Not-Aus) die Status-Adresse per GET abfragen und als Variablen nutzen.'),
     h('div', { class: 'row' },
       h('button', { class: 'primary', onclick: safe(async () => {
@@ -336,8 +316,8 @@ function viewStart() {
   const evCard = h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Abend-Start'),
     h('span', { class: `badge ${ev.awaiting ? 'warn' : 'ok'}` }, ev.awaiting ? `Wünsche zu${ev.opensAt ? ` · öffnen ${new Date(ev.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : ''}` : 'Wünsche offen')),
     h('div', { class: 'row' },
-      ev.awaiting ? h('button', { class: 'primary', onclick: safe(async () => { await api('/control/open-wishes', { method: 'POST', body: {} }); toast('Wünsche freigeschaltet'); await load(); }) }, '🔓 Wünsche jetzt freischalten') : null,
-      data.settings.start.playlist ? h('button', { onclick: safe(async () => { await api('/control/start-evening', { method: 'POST', body: {} }); toast('Start-Playlist läuft'); await load(); }) }, ev.started ? '▶ Start-Playlist erneut auffüllen' : '▶ Start-Playlist starten') : null,
+      ev.awaiting ? h('button', { class: 'primary', onclick: safe(async () => { await api('/control/open-wishes', { method: 'POST', body: {} }); toast('Wünsche freigeschaltet'); await load(); }) }, 'Wünsche jetzt freischalten') : null,
+      data.settings.start.playlist ? h('button', { onclick: safe(async () => { await api('/control/start-evening', { method: 'POST', body: {} }); toast('Start-Playlist läuft'); await load(); }) }, ev.started ? 'Start-Playlist erneut auffüllen' : 'Start-Playlist starten') : null,
       h('a', { class: 'btn', href: '#automatik', onclick: () => { tab = 'automatik'; render(); } }, 'Einstellungen')),
     h('p', { class: 'small muted' }, 'Zeiten und Playlist unter Automatik → Abend-Start.'));
   const mode = data.settings.operation.mode;
@@ -414,7 +394,7 @@ function viewAutomation() {
   const loadBackups = async () => {
     const { backups } = await api('/admin/backups');
     clear(bList).append(...(backups.length ? backups.slice(0, 8).map((b) => h('div', { class: 'row between small' }, h('span', {}, `${new Date(b.ts).toLocaleString('de-DE')} · ${(b.size / 1024).toFixed(0)} KB`),
-      h('a', { class: 'btn small', href: `${BASE}/api/admin/backups/${b.name}`, style: 'height:30px;font-size:.8rem;padding:0 10px' }, '⬇ Laden'))) : [h('div', { class: 'muted small' }, 'Noch keine Backups.')]));
+      h('a', { class: 'btn small', href: `${BASE}/api/admin/backups/${b.name}`, style: 'height:30px;font-size:.8rem;padding:0 10px' }, 'Laden'))) : [h('div', { class: 'muted small' }, 'Noch keine Backups.')]));
   };
   loadBackups().catch(() => {});
 
@@ -447,29 +427,29 @@ function viewAutomation() {
       h('div', { class: 'card stack' }, h('h2', {}, 'Lückenfüller'), row(fOn, 'Bei leerer Warteschlange automatisch Songs einreihen'),
         h('label', { class: 'field' }, 'Playlist (öffentlich oder dein eigenes Konto)', fPl),
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Auffüllen, wenn weniger als'), fMin, h('span', { class: 'small muted' }, 'Songs warten · Wiederholung frühestens nach'), fAvoid, h('span', { class: 'small muted' }, 'Min.')))),
-    h('div', { class: 'card stack' }, h('h2', {}, '🌅 Abend-Start'),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Abend-Start'),
       h('p', { class: 'small muted' }, 'Zum Auftakt läuft eine Start-Playlist, die Wünsche bleiben zu, bis du sie freischaltest oder die Uhrzeit erreicht ist. Sobald Wünsche angenommen werden, kommen sie vor die Songs der Start-Playlist.'),
       h('div', { class: 'eyebrow' }, 'Start-Playlist'),
       h('label', { class: 'field' }, 'Playlist (Link oder ID)', stPl),
       h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Immer mindestens'), stMin, h('span', { class: 'small muted' }, 'Songs in der Warteschlange, solange noch kein Wunsch angenommen wurde')),
       row(stAuto, 'Automatisch starten um'), stAt,
-      h('div', { class: 'small muted' }, 'Startknopf: Technik-Ansicht → „▶ Start-Playlist starten“. Die Playlist wird gemischt, ohne gesperrte oder explizite Songs (je nach Einstellung).'),
+      h('div', { class: 'small muted' }, 'Startknopf: Technik-Ansicht → „Start-Playlist starten“. Die Playlist wird gemischt, ohne gesperrte oder explizite Songs (je nach Einstellung).'),
       h('hr'),
       h('div', { class: 'eyebrow' }, 'Wünsche freischalten'),
       row(opOn, 'Wünsche sind zu, bis sie freigeschaltet werden'),
       h('div', { class: 'row' }, row(opAuto, 'Automatisch freischalten um'), opAt),
       h('label', { class: 'field' }, 'Hinweis für Gäste', opMsg),
       h('div', { class: 'small muted' }, 'Beim Einschalten werden die Wünsche sofort geschlossen. Freischalten geht jederzeit von Hand (Technik/Admin) – dann zählt die Uhrzeit nicht mehr.')),
-    h('div', { class: 'card stack' }, h('h2', {}, '🆘 Notfall-Playlist'), h('p', { class: 'small muted' }, 'Ein Knopf in der Technik stoppt alles und startet diese Playlist (gemischt) – falls etwas ausfällt.'),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Notfall-Playlist'), h('p', { class: 'small muted' }, 'Ein Knopf in der Technik stoppt alles und startet diese Playlist (gemischt) – falls etwas ausfällt.'),
       h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Playlist', ePl), h('label', { class: 'field' }, 'Auf Player', ePlayer)), row(eShuf, 'Gemischt abspielen')),
-    h('div', { class: 'card stack' }, h('h2', {}, '🔔 Alarm aufs Handy (ntfy)'),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Alarm aufs Handy (ntfy)'),
       h('p', { class: 'small muted' }, 'Die App meldet Probleme per ntfy – auf ntfy.sh oder deinem eigenen ntfy-Server. In der ntfy-App denselben Topic abonnieren (am besten einen schwer zu erratenden Namen wählen).'),
       row(nOn, 'Benachrichtigungen an'),
       h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Server', nUrl), h('label', { class: 'field' }, 'Topic', nTopic), h('label', { class: 'field' }, 'Zugriffstoken (nur bei geschütztem Server)', nTok),
         h('label', { class: 'field' }, 'Alarm erst nach … Sekunden Störung', nDown)),
       h('div', { class: 'stack', style: 'gap:8px' }, h('div', { class: 'eyebrow' }, 'Wann alarmieren?'), ...Object.keys(evs).map((k) => row(evs[k], EVLABEL[k] || k))),
       h('div', { class: 'row' }, h('button', { onclick: safe(async () => { await saveAll(); await api('/admin/notify/test', { method: 'POST', body: {} }); toast('Test gesendet – schau aufs Handy'); }) }, 'Speichern & Test senden'))),
-    h('div', { class: 'card stack' }, h('h2', {}, '💾 Automatische Backups'),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Automatische Backups'),
       row(bOn, 'Datenbank regelmäßig sichern'),
       h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'alle'), bEvery, h('span', { class: 'small muted' }, 'Minuten · behalte die letzten'), bKeep),
       bList,
@@ -531,7 +511,7 @@ function viewPoster() {
     h('div', { class: 'card stack no-print' }, h('h2', {}, 'QR-Code & Poster'), h('p', { class: 'small muted' }, 'Zum Ausdrucken (A4). Der Code führt auf die Gäste-Seite.'),
       h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Ziel', target), h('label', { class: 'field' }, 'Überschrift', head)),
       h('label', { class: 'field' }, 'Untertitel', sub),
-      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => window.print() }, '🖨  Drucken / als PDF speichern'), h('a', { class: 'btn', href: `${BASE}/beamer`, target: '_blank', rel: 'noopener' }, 'Beamer-Ansicht öffnen'))),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => window.print() }, 'Drucken / als PDF speichern'), h('a', { class: 'btn', href: `${BASE}/beamer`, target: '_blank', rel: 'noopener' }, 'Beamer-Ansicht öffnen'))),
     out);
 }
 
@@ -539,8 +519,8 @@ function viewPoster() {
 function viewReport() {
   const envSel = h('select', {}, h('option', { value: 'live' }, 'Live'), h('option', { value: 'test' }, 'Testmodus'));
   const out = h('div', { class: 'stack' });
-  const csv = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.csv?env=live` }, '⬇ Setlist als CSV');
-  const pdf = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.pdf?env=live` }, '⬇ Setlist als PDF');
+  const csv = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.csv?env=live` }, 'Setlist als CSV');
+  const pdf = h('a', { class: 'btn', href: `${BASE}/api/admin/setlist.pdf?env=live` }, 'Setlist als PDF');
   async function run() {
     csv.href = `${BASE}/api/admin/setlist.csv?env=${envSel.value}`; pdf.href = `${BASE}/api/admin/setlist.pdf?env=${envSel.value}`;
     const r = await api(`/admin/report?env=${envSel.value}`);
@@ -570,7 +550,7 @@ function recapCard(envSel) {
     h('div', { class: 'tiny muted' }, `Geschrieben ${new Date(r.ts).toLocaleString('de-DE')} von ${r.model} – vor dem Veröffentlichen bitte lesen.`)));
   const load = () => api(`/admin/ai/recap?env=${envSel.value}`).then((x) => show(x.recap)).catch(() => {});
   envSel.addEventListener('change', load); load();
-  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🤖 Rückblick'),
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Rückblick'),
     h('button', { class: 'primary', onclick: async (e) => {
       e.target.disabled = true; clear(box).append(h('div', { class: 'small muted' }, 'Die KI schreibt … (kann bei großen Modellen eine Minute dauern)'));
       try { show((await api('/admin/ai/recap', { method: 'POST', body: { env: envSel.value } })).recap); } catch (er) { toast(er.message, true); load(); } finally { e.target.disabled = false; }
@@ -617,7 +597,7 @@ function viewAi() {
       feat('aiLight', 'Licht-Vorschläge: Farben, Tempo, Intensität, Strobo im Licht-Dashboard'),
       feat('aiHelp', 'Fehler-Assistent: „Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard'),
       feat('aiRecap', 'Rückblick: Bericht & Export → „Rückblick schreiben“'),
-      feat('aiGenres', 'Genres nachtragen: wenn Spotify keine liefert (im Licht-Dashboard mit „🤖 KI“ markiert)'),
+      feat('aiGenres', 'Genres nachtragen: wenn Spotify keine liefert (im Licht-Dashboard mit „KI“ markiert)'),
       feat('aiSummary', 'Wunsch-Zusammenfassung: Moderation → „Zusammenfassen“'),
       h('div', { class: 'row' }, feat('aiMood', 'Stimmungs-Warnung: alle 10 Minuten, Meldung nur per ntfy (Automatik → Alarm aufs Handy)'),
         h('button', { class: 'small', onclick: safe(async () => { const r = await api('/ai/mood', { method: 'POST', body: {} }); toast(r.drop ? `Kippt (${r.severity}): ${r.reason}` : `In Ordnung: ${r.reason}`); }) }, 'Jetzt einmal prüfen')),
@@ -681,7 +661,7 @@ function viewVpn() {
     const close = modal([h('h2', {}, `Konfiguration: ${name}`),
       h('p', { class: 'small muted' }, 'Enthält den privaten Schlüssel. Nur für das Gerät „' + name + '“ verwenden. Mit dem Handy den QR-Code in der WireGuard-App scannen, oder als Datei importieren.'),
       qr, h('textarea', { rows: 9, readonly: true, style: 'font-family:ui-monospace,monospace;font-size:.78rem' }, text),
-      h('div', { class: 'row' }, h('a', { class: 'btn', href: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`, download: `${name}.conf` }, '⬇ Als Datei'), h('button', { class: 'primary', onclick: () => close() }, 'Fertig'))]);
+      h('div', { class: 'row' }, h('a', { class: 'btn', href: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`, download: `${name}.conf` }, 'Als Datei'), h('button', { class: 'primary', onclick: () => close() }, 'Fertig'))]);
   };
   async function paint() {
     let d;
@@ -727,7 +707,7 @@ function ssoCard() {
   paint();
   const result = h('div', { class: 'small' });
   const saveSso = () => save({ sso: { enabled: on.checked, issuer: issuer.value, clientId: cid.value, clientSecret: sec.value, scopes: scopes.value, groupsClaim: gclaim.value, buttonLabel: label.value, defaultRole: def.value, allowAdmin: allowAdmin.checked, autoCreate: autoCreate.checked, autoLinkEmail: autoLinkEmail.checked, roleMap: map } }, 'SSO gespeichert');
-  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, '🔐 Single Sign-On (SSO)'), h('span', { class: `badge ${o.enabled ? 'ok' : ''}` }, o.enabled ? 'an' : 'aus')),
+  return h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Single Sign-On (SSO)'), h('span', { class: `badge ${o.enabled ? 'ok' : ''}` }, o.enabled ? 'an' : 'aus')),
     h('p', { class: 'small muted' }, 'Mitarbeitende melden sich über deinen Identity-Provider an (Authentik, Keycloak, Authelia … per OpenID Connect). Die Rolle in der App kommt aus den Gruppen des Anbieters. Codes und Passkeys funktionieren weiter.'),
     h('label', { class: 'check' }, on, 'SSO aktivieren'),
     h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Issuer-URL', issuer), h('label', { class: 'field' }, 'Client-ID', cid),
@@ -738,7 +718,7 @@ function ssoCard() {
     h('div', { class: 'grid two' }, h('label', { class: 'field' }, 'Wer in keiner dieser Gruppen ist, bekommt', def)),
     h('label', { class: 'check' }, autoCreate, 'Neue Konten automatisch anlegen'),
     h('label', { class: 'check' }, autoLinkEmail, 'Bestehende Zugänge per E-Mail verbinden'),
-    h('p', { class: 'small muted' }, 'Verbinden kann sich auch jede Person selbst: eingeloggt auf das 🔑-Symbol oben → „Mit SSO verbinden“. Der Head-Admin verbindet seinen Zugang genauso.'),
+    h('p', { class: 'small muted' }, 'Verbinden kann sich auch jede Person selbst: eingeloggt oben auf den Schlüssel-Knopf → „Mit SSO verbinden“. Der Head-Admin verbindet seinen Zugang genauso.'),
     h('label', { class: 'check' }, allowAdmin, 'Admin-Rolle per SSO erlauben'),
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSso }, 'Speichern'),
       h('button', { onclick: safe(async () => { await saveSso(); try { const r = await api('/admin/sso/test', { method: 'POST', body: {} }); clear(result).append(h('span', { class: 'badge ok' }, 'Verbindung ok'), ` ${r.keys} Schlüssel, Aussteller ${r.issuer}`); } catch (e) { clear(result).append(h('span', { class: 'badge bad' }, 'Fehler'), ` ${e.message}`); } }) }, 'Speichern & Verbindung testen')), result,
@@ -765,14 +745,14 @@ function shieldCard() {
     const on = chk(c.enabled), attack = chk(c.attackMode);
     const bars = d.blocked.last60, mx = Math.max(1, ...bars);
     clear(box).append(
-      h('div', { class: 'row between' }, h('h2', {}, '🛡️ Schutz vor Überlastung'), h('span', { class: `badge ${c.attackMode ? 'bad' : c.enabled ? 'ok' : ''}` }, c.attackMode ? 'ANGRIFFSMODUS' : c.enabled ? 'aktiv' : 'aus')),
+      h('div', { class: 'row between' }, h('h2', {}, 'Schutz vor Überlastung'), h('span', { class: `badge ${c.attackMode ? 'bad' : c.enabled ? 'ok' : ''}` }, c.attackMode ? 'ANGRIFFSMODUS' : c.enabled ? 'aktiv' : 'aus')),
       h('p', { class: 'small muted' }, 'Begrenzt Anfragen pro Absender-Adresse, Gäste-Gerät, neue Geräte, Wünsche und Live-Verbindungen und sperrt Dauerfeuer automatisch. Wichtig: Gäste im selben WLAN teilen sich oft eine Adresse – die Standardwerte sind deshalb großzügig. Gegen echte Datenfluten schützt Cloudflare (siehe docs/SECURITY.md).'),
       h('div', { class: 'small' }, `Live-Verbindungen: ${d.ws.total} von ${c.wsTotal} · gleichzeitige Anfragen: ${d.inflight} · abgewiesen seit Start: ${d.blocked.total}`),
       h('div', { class: 'spark', title: 'Abgewiesene Anfragen pro Minute (letzte 60 Min.)', style: 'display:flex;align-items:flex-end;gap:2px;height:36px' }, ...bars.map((n) => h('i', { style: `flex:1;background:var(--ink);opacity:.7;border-radius:2px;height:${Math.max(2, Math.round(36 * n / mx))}px` }))),
       d.bans.length ? h('div', { class: 'list' }, ...d.bans.map((b) => h('div', { class: 'item row between' }, h('div', {}, h('b', { class: 'mono' }, b.ip), h('div', { class: 'tiny muted' }, `${b.reason} · noch ${Math.ceil(b.untilSec / 60)} Min.`)), h('button', { class: 'small', onclick: safe(async () => { await api('/admin/shield/unban', { method: 'POST', body: { ip: b.ip } }); paint(); }) }, 'Entsperren')))) : h('div', { class: 'small muted' }, 'Keine Sperren.'),
       d.offenders.length ? h('details', { class: 'more' }, h('summary', {}, 'Auffälligste Absender'), h('div', { class: 'stack', style: 'margin-top:8px;gap:4px' }, ...d.offenders.map((o) => h('div', { class: 'row between small' }, h('span', { class: 'mono' }, o.ip), h('span', {}, `${o.n} Abweisungen${o.banned ? ' · gesperrt' : ''}`))))) : h('span'),
       h('label', { class: 'check' }, on, 'Schutz aktiv'),
-      h('label', { class: 'check' }, attack, '🚨 Angriffsmodus'),
+      h('label', { class: 'check' }, attack, 'Angriffsmodus'),
       h('details', { class: 'more' }, h('summary', {}, 'Grenzen einstellen'), h('div', { class: 'grid three', style: 'margin-top:10px' }, ...fields)),
       h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => {
         const v = { enabled: on.checked, attackMode: attack.checked };
@@ -800,8 +780,8 @@ function viewSecurity() {
       h('button', { class: 'small bad', onclick: safe(async () => { if (confirm(`Passkey „${p.label}“ löschen?`)) { await api(`/passkey/${encodeURIComponent(p.id)}`, { method: 'DELETE' }); paint(); } }) }, 'Löschen'))) : [h('div', { class: 'muted small' }, 'Noch keine Passkeys.')]));
     const label = h('input', { value: (navigator.userAgentData?.platform || 'Dieses Gerät').slice(0, 30), maxlength: 40 });
     clear(box).append(
-      h('div', { class: 'card stack' }, h('h2', {}, '🔑 Passkeys'),
-        h('p', { class: 'small muted' }, 'Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN – nichts zum Abtippen und nicht abfangbar. Mitarbeitende registrieren ihren Passkey selbst (Schlüssel-Symbol 🔑 oben in der Leiste); hier siehst und löschst du alle.'),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Passkeys'),
+        h('p', { class: 'small muted' }, 'Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN – nichts zum Abtippen und nicht abfangbar. Mitarbeitende registrieren ihren Passkey selbst (Schlüssel-Knopf oben in der Leiste); hier siehst und löschst du alle.'),
         passkeysSupported() ? h('div', { class: 'row' }, label, h('button', { class: 'primary', onclick: safe(async () => { await passkeyRegister(label.value); toast('Passkey gespeichert'); paint(); }) }, 'Passkey für dieses Gerät anlegen')) : h('div', { class: 'small muted' }, 'Dieser Browser/diese Adresse unterstützt keine Passkeys (HTTPS nötig) oder die Funktion ist ausgeschaltet.'),
         pkList,
         h('label', { class: 'check' }, only, 'Admin-Login nur mit Passkey'),
@@ -864,9 +844,9 @@ function viewProbe() {
       const body = Object.fromEntries(Object.entries(o).map(([k, i]) => [k, Number(i.value)]));
       Object.assign(body, { intensity: intensity.value, ipMode: ipMode.value, pages: pages.checked, live: live.checked, poll: poll.checked, resetAfter: reset.checked });
       paint(await api('/admin/rehearsal/start', { method: 'POST', body }));
-    }) }, '▶ Generalprobe starten'), h('span', { class: 'small muted' }, 'Tipp: zuerst mit der erwarteten Gästezahl und „Normal", dann einmal „Eine gemeinsame Adresse" probieren.')));
+    }) }, 'Generalprobe starten'), h('span', { class: 'small muted' }, 'Tipp: zuerst mit der erwarteten Gästezahl und „Normal", dann einmal „Eine gemeinsame Adresse" probieren.')));
   const live2 = h('div', { class: 'stack', style: 'gap:16px' });
-  const LV = { ok: ['ok', '✓'], info: ['', 'ℹ'], warn: ['warn', '!'], bad: ['bad', '✕'] };
+  const LV = { ok: ['ok', '✓'], info: ['', 'i'], warn: ['warn', '!'], bad: ['bad', '✕'] };
   const ms = (v) => (v == null ? '–' : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
   const spark = (vals, title) => { const mx = Math.max(1, ...vals); return h('div', { title, style: 'display:flex;align-items:flex-end;gap:1px;height:40px' }, ...vals.map((v) => h('i', { style: `flex:1;min-width:1px;background:var(--ink);opacity:.75;height:${Math.max(1, Math.round(40 * v / mx))}px` }))); };
   function report(c, running) {
@@ -935,7 +915,7 @@ function viewLiveTest() {
     h('div', { class: 'row' }, h('button', { class: 'primary', disabled: !testOn, onclick: safe(async () => {
       const skip = Object.entries(chks).filter(([, c]) => !c.checked).map(([id]) => id);
       paint(await api('/admin/livetest/start', { method: 'POST', body: { skip, resetBefore: resetBefore.checked, resetAfter: resetAfter.checked } }));
-    }) }, '▶ Live-Test starten')));
+    }) }, 'Live-Test starten')));
 
   const linkRow = (l) => {
     const url = `${origin()}${l.path}`;
@@ -988,7 +968,7 @@ function viewLiveTest() {
       ? h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Live-Test läuft …'), h('div', { class: 'row' }, show.simulated ? h('span', { class: 'badge warn' }, 'teilweise simuliert') : h('span', { class: 'badge ok' }, 'echtes Setup'),
         h('button', { class: 'bad', onclick: safe(async () => { if (confirm('Live-Test abbrechen? Die Musik wird ausgeblendet.')) paint(await api('/admin/livetest/stop', { method: 'POST', body: {} })); }) }, '■ Abbrechen'))),
         h('div', { class: 'bar' }, h('i', { style: `width:${Math.round(100 * done / show.steps.length)}%` })), h('div', { class: 'small muted' }, `${done} von ${show.steps.length} Schritten · gestartet ${fmtClock(show.startedAt)} von ${show.by || 'Admin'}`))
-      : h('div', { class: `ready ${fail ? 'fail' : warn || show.simulated || show.verdict === 'abgebrochen' ? 'warn' : 'ok'}` }, h('div', { style: 'font-size:2.2rem' }, fail ? '🛑' : warn || show.simulated ? '⚠️' : '✅'),
+      : h('div', { class: `ready ${fail ? 'fail' : warn || show.simulated || show.verdict === 'abgebrochen' ? 'warn' : 'ok'}` }, h('span', { class: `status-dot ${fail ? 'fail' : warn || show.simulated ? 'warn' : 'ok'}`, 'aria-hidden': 'true' }),
         h('div', {}, h('div', { class: 'big' }, `Letzter Live-Test: ${show.verdict}`), h('div', { class: 'small muted' }, `${fmtClock(show.endedAt || show.startedAt)} · ${cnt('ok')} ok · ${warn} Hinweise · ${fail} Fehler · ${cnt('skipped') + cnt('cancelled')} übersprungen${show.simulated ? ' · nur teilweise mit echten Geräten' : ''}`)));
     clear(runBox).append(head, cur ? currentCard(r, cur) : h('span'), stepList(show.steps));
   }
@@ -1011,7 +991,7 @@ const HELP = {
   'Regel': '„Erlauben": beliebig oft. „Pause": erst nach der Wartezeit wieder. „Sperren": heute gar nicht mehr. Die Moderation kann Songs trotzdem von Hand wieder einreihen.',
   'Moderation': 'Einstellungen, die die Arbeit der Moderation betreffen.',
   'Ablehnungsgründe (eine pro Zeile)': 'Diese Gründe stehen beim Ablehnen als Knöpfe zur Wahl und werden dem Gast angezeigt.',
-  'Priorisierte Songs kommen innerhalb der nächsten … Songs': 'Wenn jemand einen Song mit ★ priorisiert, rückt er auf diesen Platz in der Warteschlange vor (1 = als Nächstes).',
+  'Priorisierte Songs kommen innerhalb der nächsten … Songs': 'Wenn jemand einen Song mit priorisiert, rückt er auf diesen Platz in der Warteschlange vor (1 = als Nächstes).',
   'Fade-Presets': 'Schnellknöpfe für Fade-Zeiten in der Technik-Ansicht.',
   'Wunsch-Voting': 'Gäste sehen offene Wünsche anderer und können „+1" geben. Hier stellst du ein, wie oft.',
   'Beliebteste Wünsche zuerst zeigen': 'Sortiert offene Wünsche nach Stimmen statt nach Eingang – für Gäste und Moderation.',
@@ -1030,23 +1010,23 @@ const HELP = {
   'Lückenfüller': 'Wenn die Warteschlange fast leer ist, legt die App Songs aus einer Playlist nach, damit es keine Stille gibt.',
   'Bei leerer Warteschlange automatisch Songs einreihen': 'Schaltet den Lückenfüller ein. Wünsche kommen immer vor die automatisch eingereihten Songs.',
   'Playlist (öffentlich oder dein eigenes Konto)': 'Link (open.spotify.com/playlist/…) oder ID der Playlist, aus der aufgefüllt wird.',
-  '🌅 Abend-Start': 'Start-Playlist zum Auftakt und die Freischaltung der Wünsche zu einer Uhrzeit.',
+  'Abend-Start': 'Start-Playlist zum Auftakt und die Freischaltung der Wünsche zu einer Uhrzeit.',
   'Playlist (Link oder ID)': 'Diese Playlist läuft zum Auftakt, bis die ersten Wünsche angenommen werden. Danach kommen Wünsche immer vor ihre Songs.',
   'Automatisch starten um': 'Die Start-Playlist startet zu dieser Uhrzeit von selbst (einmal pro Abend). Ohne Haken: Knopf in der Technik.',
   'Wünsche sind zu, bis sie freigeschaltet werden': 'Beim Einschalten werden die Wünsche sofort geschlossen. Gäste sehen den Hinweis mit Countdown.',
   'Automatisch freischalten um': 'Zu dieser Uhrzeit öffnen die Wünsche von selbst. Freischalten von Hand geht immer (Technik/Admin).',
   'Hinweis für Gäste': 'Text auf der Gäste-Seite und dem Beamer, solange die Wünsche zu sind. {zeit} wird durch die Uhrzeit ersetzt.',
-  '🆘 Notfall-Playlist': 'Ein Knopf in der Technik stoppt alles und startet diese Playlist – falls etwas ausfällt.',
+  'Notfall-Playlist': 'Ein Knopf in der Technik stoppt alles und startet diese Playlist – falls etwas ausfällt.',
   'Playlist': 'Link oder ID der Playlist.',
   'Auf Player': 'Auf welchem Spotify-Player die Notfall-Playlist läuft.',
   'Gemischt abspielen': 'Zufällige Reihenfolge.',
-  '🔔 Alarm aufs Handy (ntfy)': 'Die App schickt Meldungen bei Problemen an die ntfy-App auf deinem Handy.',
+  'Alarm aufs Handy (ntfy)': 'Die App schickt Meldungen bei Problemen an die ntfy-App auf deinem Handy.',
   'Benachrichtigungen an': 'Schaltet alle Handy-Meldungen ein oder aus.',
   'Server': 'ntfy-Server: https://ntfy.sh oder dein eigener.',
   'Topic': 'Kanalname in ntfy. Wähle einen schwer zu erratenden Namen – wer ihn kennt, kann mitlesen.',
   'Zugriffstoken (nur bei geschütztem Server)': 'Nur nötig, wenn dein ntfy-Server eine Anmeldung verlangt.',
   'Alarm erst nach … Sekunden Störung': 'Kurzes Ruckeln löst keinen Alarm aus – erst wenn ein Problem so lange anhält.',
-  '💾 Automatische Backups': 'Sicherungen der Datenbank (Wünsche, Codes, Einstellungen).',
+  'Automatische Backups': 'Sicherungen der Datenbank (Wünsche, Codes, Einstellungen).',
   'Datenbank regelmäßig sichern': 'Legt in festen Abständen eine Kopie an und behält die letzten N.',
   // Design / Poster
   'Name der Veranstaltung': 'Erscheint oben in allen Ansichten, auf dem Beamer, Poster und im PDF.',
@@ -1092,11 +1072,11 @@ const HELP = {
   'Name des Gruppen-Felds': 'In welchem Feld der Anbieter die Gruppen liefert. Bei Authentik: groups.',
   'Wer in keiner dieser Gruppen ist, bekommt': 'Rolle für Personen ohne passende Gruppe – oder kein Zugang.',
   'Neue Konten automatisch anlegen': 'An: Wer per Gruppe eine Rolle bekommt, erhält automatisch ein Konto. Aus: Nur wer schon mit einem bestehenden Zugang verbunden ist, kommt per SSO hinein.',
-  'Bestehende Zugänge per E-Mail verbinden': 'Hat ein Zugang unter Codes eine E-Mail (Symbol ✉) und meldet sich jemand mit genau dieser bestätigten E-Mail per SSO an, wird er automatisch verbunden.',
+  'Bestehende Zugänge per E-Mail verbinden': 'Hat ein Zugang unter Codes eine E-Mail (Knopf „E-Mail“) und meldet sich jemand mit genau dieser bestätigten E-Mail per SSO an, wird er automatisch verbunden.',
   'Admin-Rolle per SSO erlauben': 'Sonst werden Admin-Gruppen ignoriert. SSO-Admins sind nicht der Head-Admin (z. B. kein VPN, kein Passwort ändern).',
   // Schutz vor Ueberlastung
   'Schutz aktiv': 'Begrenzt Anfragen pro Adresse und Gerät und sperrt Dauerfeuer automatisch.',
-  '🚨 Angriffsmodus': 'Setzt alle Grenzen auf 20 %. Bei einem laufenden Angriff einschalten, danach wieder aus.',
+  'Angriffsmodus': 'Setzt alle Grenzen auf 20 %. Bei einem laufenden Angriff einschalten, danach wieder aus.',
   'Seiten & Team pro Adresse/Min.': 'Seitenaufrufe und Team-Anfragen pro Absender-Adresse und Minute.',
   'Dateien pro Adresse/Min.': 'Abrufe von Skripten, Styles und Logo pro Adresse. Jeder Gast lädt beim Öffnen ca. 6 Dateien.',
   'Gäste-Anfragen pro Adresse/Min.': 'Alle Gäste-Aktionen (Suche, Wunsch, Status) pro Adresse. Im Schul-WLAN teilen sich oft alle Gäste eine Adresse – dann hoch genug wählen!',

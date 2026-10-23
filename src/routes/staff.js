@@ -84,7 +84,7 @@ export function staffRouter(env, engine, hub) {
 
   r.post('/mod/prioritize', requirePerm('prioritize'), wrap((req, res) => {
     const out = rq.prioritize(env, Number(req.body?.id), req.session.accountId, engine.current);
-    if (out.ok) L.info('moderation', 'request.prioritized', `★ Vorgezogen auf Platz ${out.position}: ${out.request.title}`, { env, actor: staffActor(req), data: { id: out.request.id, position: out.position } });
+    if (out.ok) L.info('moderation', 'request.prioritized', `Vorgezogen auf Platz ${out.position}: ${out.request.title}`, { env, actor: staffActor(req), data: { id: out.request.id, position: out.position } });
     hub.pushEnv(env, { guests: true });
     if (!out.ok) return res.status(out.status).json({ error: out.error });
     res.json({ ok: true, position: out.position });

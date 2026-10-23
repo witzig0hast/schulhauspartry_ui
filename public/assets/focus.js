@@ -16,10 +16,10 @@ try { sound = localStorage.getItem('fx.sound') !== '0'; } catch { /* egal */ }
 const stage = h('div', { class: 'fx-wrap' });
 const dot = h('div', { class: 'fx-dot off' });
 const soundBtn = h('button', { title: 'Ton bei neuem Wunsch', onclick: () => { sound = !sound; try { localStorage.setItem('fx.sound', sound ? '1' : '0'); } catch { /* egal */ } paintCorner(); if (sound) beep(); } });
-const fsBtn = h('button', { title: 'Vollbild', onclick: toggleFs }, '⛶');
-const keysBtn = h('button', { title: 'Tastenkürzel ändern', onclick: () => openHotkeyEditor() }, '⌨');
+const fsBtn = h('button', { title: 'Vollbild', onclick: toggleFs }, 'Vollbild');
+const keysBtn = h('button', { title: 'Tastenkürzel ändern', onclick: () => openHotkeyEditor() }, 'Tasten');
 const corner = h('div', { class: 'fx-corner' }, soundBtn, keysBtn, fsBtn, h('a', { href: `${BASE}/mod`, title: 'Zurück zur Moderation' }, '✕'));
-function paintCorner() { soundBtn.textContent = sound ? '🔔 Ton an' : '🔕 Ton aus'; }
+function paintCorner() { soundBtn.textContent = sound ? 'Ton an' : 'Ton aus'; }
 paintCorner();
 function toggleFs() { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }
 
@@ -42,7 +42,7 @@ async function decide(action, reason) {
   try {
     const body = { id, action, reason };
     const out = await api('/mod/decide', { method: 'POST', body });
-    toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? '⏳ Später' : '✕ Abgelehnt');
+    toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? 'Später' : '✕ Abgelehnt');
   } catch (e) { toast(e.message, true); }
   busy = false; denying = false;
   // optimistisch ausblenden, bis der Server den naechsten Zustand schickt
@@ -82,11 +82,11 @@ function render() {
       denying
         ? h('div', { class: 'stack', style: 'width:100%;gap:18px' },
             h('div', { class: 'fx-reasons' }, ...reasons.map((x, i) => h('button', { onclick: () => decide('deny', x) }, h('kbd', {}, String(i + 1)), x)), h('button', { onclick: () => decide('deny') }, h('kbd', {}, '0'), 'Ohne Grund')),
-            h('div', { class: 'fx-reasons' }, h('button', { class: 'danger-btn', onclick: () => banSong('track') }, h('kbd', {}, 'B'), '⛔ Song sperren'),
-              ...(r.artists || []).map((a) => h('button', { class: 'danger-btn', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren?`)) banSong('artist', a); } }, `⛔ ${a}`)),
+            h('div', { class: 'fx-reasons' }, h('button', { class: 'danger-btn', onclick: () => banSong('track') }, h('kbd', {}, 'B'), 'Song sperren'),
+              ...(r.artists || []).map((a) => h('button', { class: 'danger-btn', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren?`)) banSong('artist', a); } }, `${a}`)),
               h('button', { onclick: () => { denying = false; render(); } }, h('kbd', {}, 'Esc'), 'Zurück')))
         : h('div', { class: 'stack', style: 'width:100%;gap:2vh' }, h('div', { class: 'fx-btns' }, h('button', { class: 'ok', onclick: () => decide('approve') }, '✓  Annehmen'), h('button', { class: 'bad', onclick: () => { denying = true; render(); } }, '✕  Ablehnen')),
-          h('button', { class: 'fx-later', onclick: () => decide('later') }, '⏳  Später entscheiden')),
+          h('button', { class: 'fx-later', onclick: () => decide('later') }, 'Später entscheiden')),
       state.pending.length > 1 ? h('div', { class: 'fx-more' }, `+ ${state.pending.length - 1} weitere warten`) : null));
 }
 

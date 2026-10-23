@@ -46,7 +46,7 @@ export function openHotkeyEditor() {
   };
   addEventListener('keydown', onKey, true);
   paint();
-  const close = modal([h('h2', {}, '⌨ Tastenkürzel'), info, list,
+  const close = modal([h('h2', {}, 'Tastenkürzel'), info, list,
     h('div', { class: 'row between' }, h('button', { class: 'small ghost', onclick: () => { map = Object.fromEntries(ACTIONS.map((a) => [a.id, a.def])); save(map); waiting = null; paint(); } }, 'Auf Standard zurücksetzen'),
       h('button', { class: 'primary', onclick: () => { removeEventListener('keydown', onKey, true); close(); } }, 'Fertig'))]);
   return close;

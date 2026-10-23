@@ -47,7 +47,7 @@ export function startBackupScheduler() {
       if (!last || Date.now() - last.ts >= b.everyMin * 60000) backupNow('auto');
     } catch (e) {
       logEvent('live', 'backup-error', { msg: e.message });
-      if (settings().notify.events.backup) sendNotify({ title: '⚠️ Backup fehlgeschlagen', message: e.message, priority: 3, tags: ['floppy_disk'], key: 'backup-fail' });
+      if (settings().notify.events.backup) sendNotify({ title: 'Backup fehlgeschlagen', message: e.message, priority: 3, tags: ['floppy_disk'], key: 'backup-fail' });
     }
   }, 60000);
   t.unref?.();

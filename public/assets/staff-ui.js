@@ -51,9 +51,9 @@ export async function ban(body, label, onAfter) {
 // Kleines Menue: Song sperren / Interpret sperren (pro Interpret ein Knopf)
 export function banMenu(r, onAfter, reason = '') {
   const menu = h('div', { class: 'reasons hidden' },
-    h('button', { class: 'outline-bad', onclick: () => ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason }, `„${r.title}“`, onAfter) }, '⛔ Song sperren'),
-    ...(r.artists || []).map((a) => h('button', { class: 'outline-bad', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren? Alle Songs von ${a} sind dann nicht mehr wünschbar.`)) ban({ kind: 'artist', artistName: a, reason }, a, onAfter); } }, `⛔ Interpret: ${a}`)),
-    feat('deviceBlock') && r.status === 'pending' ? h('button', { class: 'outline-bad', title: 'Dieses Gast-Handy kann nichts mehr wünschen', onclick: () => { if (confirm('Dieses Gast-Gerät sperren? Offene Wünsche davon werden abgelehnt.')) safe(async () => { await api("/mod/device/block", { method: 'POST', body: { requestId: r.id } }); toast('Gerät gesperrt'); onAfter?.(); })(); } }, '🚫 Gerät sperren') : null);
+    h('button', { class: 'outline-bad', onclick: () => ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason }, `„${r.title}“`, onAfter) }, 'Song sperren'),
+    ...(r.artists || []).map((a) => h('button', { class: 'outline-bad', onclick: () => { if (confirm(`Interpret „${a}“ komplett sperren? Alle Songs von ${a} sind dann nicht mehr wünschbar.`)) ban({ kind: 'artist', artistName: a, reason }, a, onAfter); } }, `Interpret: ${a}`)),
+    feat('deviceBlock') && r.status === 'pending' ? h('button', { class: 'outline-bad', title: 'Dieses Gast-Handy kann nichts mehr wünschen', onclick: () => { if (confirm('Dieses Gast-Gerät sperren? Offene Wünsche davon werden abgelehnt.')) safe(async () => { await api("/mod/device/block", { method: 'POST', body: { requestId: r.id } }); toast('Gerät gesperrt'); onAfter?.(); })(); } }, 'Gerät sperren') : null);
   return menu;
 }
 
@@ -68,14 +68,14 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
         u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
-        u.introMs > 20000 ? h('span', { class: 'badge', title: `Langes Intro (${Math.round(u.introMs / 1000)} s)` }, '♪ Intro') : null,
+        u.introMs > 20000 ? h('span', { class: 'badge', title: `Langes Intro (${Math.round(u.introMs / 1000)} s)` }, 'Intro') : null,
         u.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'E') : null,
         u.votes > 1 ? h('span', { class: 'badge' }, `+${u.votes - 1}`) : null,
-        u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `★ Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
+        u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
         u.player ? h('span', { class: `badge p${u.player}` }, `P${u.player}`) : null,
-        canAct ? h('button', { class: 'small icon ghost', title: 'Priorisieren', 'aria-label': 'Priorisieren', onclick: safe(async () => { const o = await api('/mod/prioritize', { method: 'POST', body: { id: u.id } }); toast(`Priorisiert – kommt auf Platz ${o.position}`); onAfter?.(); }) }, '★') : null,
+        canAct ? h('button', { class: 'small icon ghost', title: 'Priorisieren', 'aria-label': 'Priorisieren', onclick: safe(async () => { const o = await api('/mod/prioritize', { method: 'POST', body: { id: u.id } }); toast(`Priorisiert – kommt auf Platz ${o.position}`); onAfter?.(); }) }, 'Prio') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Entfernen', 'aria-label': 'Entfernen', onclick: safe(async () => { await api('/mod/remove', { method: 'POST', body: { id: u.id } }); onAfter?.(); }) }, '✕') : null,
-        canAct ? h('button', { class: 'small icon ghost', title: 'Song sperren', 'aria-label': 'Song sperren', onclick: () => { if (confirm(`„${u.title}“ sperren und aus der Warteschlange nehmen?`)) ban({ kind: 'track', trackId: u.trackId, title: u.title, artist: u.artist }, `„${u.title}“`, onAfter); } }, '⛔') : null)));
+        canAct ? h('button', { class: 'small icon ghost', title: 'Song sperren', 'aria-label': 'Song sperren', onclick: () => { if (confirm(`„${u.title}“ sperren und aus der Warteschlange nehmen?`)) ban({ kind: 'track', trackId: u.trackId, title: u.title, artist: u.artist }, `„${u.title}“`, onAfter); } }, 'Sperren') : null)));
   });
   return box;
 }
@@ -108,12 +108,12 @@ export function pendingList(state, { canAct, assign, onAfter, list = 'pending', 
           r.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'Explicit') : null,
           r.votes > 1 ? h('span', { class: 'badge ink' }, `+${r.votes - 1}`) : null,
           h('span', { class: 'muted tiny' }, age < 1 ? 'gerade eben' : `vor ${age} Min.`))),
-      claim && claim.by !== me ? h('div', { class: 'claim-tag' }, `✋ ${claim.label} bearbeitet gerade …`) : null,
+      claim && claim.by !== me ? h('div', { class: 'claim-tag' }, `${claim.label} bearbeitet gerade …`) : null,
       canAct ? h('div', { class: 'req-actions' },
         h('button', { class: 'ok', onclick: () => decide('approve') }, '✓  Annehmen'),
         h('button', { class: 'outline-bad', onclick: () => { reasonBox.classList.toggle('hidden'); banBox.classList.add('hidden'); } }, 'Ablehnen'),
-        list !== 'later' ? h('button', { class: 'ghost', title: 'Später entscheiden', onclick: () => decide('later') }, '⏳ Später') : null,
-        h('button', { class: 'ghost', title: 'Song oder Interpret sperren', onclick: () => { banBox.classList.toggle('hidden'); reasonBox.classList.add('hidden'); } }, '⛔ Sperren')) : null,
+        list !== 'later' ? h('button', { class: 'ghost', title: 'Später entscheiden', onclick: () => decide('later') }, 'Später') : null,
+        h('button', { class: 'ghost', title: 'Song oder Interpret sperren', onclick: () => { banBox.classList.toggle('hidden'); reasonBox.classList.add('hidden'); } }, 'Sperren')) : null,
       canAct ? (reasonBox = h('div', { class: 'reasons hidden' },
         ...state.settings.rejectReasons.map((reason) => h('button', { onclick: () => decide('deny', reason) }, reason)),
         h('button', { class: 'ghost', onclick: () => decide('deny') }, 'Ohne Grund'))) : null,
@@ -150,7 +150,7 @@ export function historyList(state, { canAct, onAfter } = {}) {
       h('div', { class: 'grow' }, h('div', { class: 't' }, r.title), h('div', { class: 'a' }, `${r.artist} · ${r.status === 'playing' ? 'läuft jetzt' : ago(r.playedAt)}`)),
       isBlocked ? h('span', { class: 'badge bad' }, 'gesperrt') : null,
       canAct && r.status !== 'playing' && !isBlocked ? h('button', { class: 'small', title: 'Nochmal hinten einreihen', onclick: safe(async () => { const o = await api('/mod/requeue', { method: 'POST', body: { id: r.id } }); toast(`Wieder eingereiht (${playerName(o.player)})`); onAfter?.(); }) }, '↻ Nochmal') : null,
-      canAct && !isBlocked ? h('button', { class: 'small icon ghost', title: 'Song sperren (schon gespielt)', onclick: () => { if (confirm(`„${r.title}“ sperren, weil schon gespielt?`)) ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason: 'Schon gespielt' }, `„${r.title}“`, onAfter); } }, '⛔') : null));
+      canAct && !isBlocked ? h('button', { class: 'small icon ghost', title: 'Song sperren (schon gespielt)', onclick: () => { if (confirm(`„${r.title}“ sperren, weil schon gespielt?`)) ban({ kind: 'track', trackId: r.trackId, title: r.title, artist: r.artist, reason: 'Schon gespielt' }, `„${r.title}“`, onAfter); } }, 'Sperren') : null));
   }
   return box;
 }
@@ -165,7 +165,7 @@ export function blacklistPanel(state, { canAct, onAfter } = {}) {
       const q = input.value.trim(); if (q.length < 2) return clear(results);
       const { tracks } = await api(`/mod/search?q=${encodeURIComponent(q)}`);
       clear(results).append(...tracks.map((x) => h('div', { class: 'item row between nowrap' }, h('div', { class: 'req-main grow' }, cover(x.title, 'sm', x.id), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, x.artist))),
-        h('button', { class: 'small outline-bad', onclick: () => ban({ kind: 'track', trackId: x.id, title: x.title, artist: x.artist }, `„${x.title}“`, () => { input.value = ''; clear(results); onAfter?.(); }) }, '⛔ Sperren'))));
+        h('button', { class: 'small outline-bad', onclick: () => ban({ kind: 'track', trackId: x.id, title: x.title, artist: x.artist }, `„${x.title}“`, () => { input.value = ''; clear(results); onAfter?.(); }) }, 'Sperren'))));
     }), 300); } });
     wrap.append(input, results);
   }

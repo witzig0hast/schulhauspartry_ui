@@ -33,7 +33,7 @@ function render() {
   swap(nowBox, JSON.stringify([cur?.p.title, cur?.p.trackId, next.map((u) => u.id), Math.round((cur?.p.remainingMs ?? 0) / 10000)]), () => h('div', { class: 'stack' },
     cur ? h('div', { class: 'dplayer-main' }, coverOnce(cur.p.title, 'lg', cur.p.trackId), h('div', { class: 'grow', style: 'min-width:0' }, h('div', { class: 'eyebrow' }, 'Jetzt läuft'), h('div', { class: 'dt' }, cur.p.title), h('div', { class: 'da' }, cur.p.artist),
       cur.p.remainingMs ? h('div', { class: 'small muted mono' }, `noch ca. ${mmss(Math.max(0, cur.p.remainingMs - age))}`) : null))
-      : h('div', { class: 'dt muted' }, s.pauseMode ? '⏸ Pause' : 'Gerade läuft nichts'),
+      : h('div', { class: 'dt muted' }, s.pauseMode ? 'Pause' : 'Gerade läuft nichts'),
     next.length ? h('div', {}, h('div', { class: 'eyebrow', style: 'margin-top:8px' }, 'Gleich danach'), ...next.map((u) => h('div', { class: 'q-row' }, coverOnce(u.title, 'sm', u.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist))))) : null));
 
   // Zeitplan
@@ -54,9 +54,9 @@ function render() {
   const mode = { open: ['ok', 'Wünsche offen'], paused: ['warn', 'Wünsche pausiert'], closed: ['bad', 'Wünsche geschlossen'] }[s.wishMode] || ['', s.wishMode];
   const opens = s.opening?.awaiting && s.opening?.opensAt ? new Date(s.opening.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null;
   swap(wishBox, JSON.stringify([s.wishMode, opens, s.opening?.awaiting, s.ended, s.pauseMode, s.notice, s.handover?.ts, s.poll?.id, s.poll?.counts]), () => h('div', { class: 'stack' },
-    h('div', { class: 'row' }, h('span', { class: `badge big ${mode[0]}` }, mode[1]), s.ended ? h('span', { class: 'badge big warn' }, '🏁 Ende-Modus') : null, s.pauseMode ? h('span', { class: 'badge big warn' }, '⏸ Pause') : null),
+    h('div', { class: 'row' }, h('span', { class: `badge big ${mode[0]}` }, mode[1]), s.ended ? h('span', { class: 'badge big warn' }, 'Ende-Modus') : null, s.pauseMode ? h('span', { class: 'badge big warn' }, 'Pause') : null),
     s.opening?.awaiting ? h('div', { class: 'small' }, opens ? `Freischaltung um ${opens} Uhr` : 'Warten auf Freischaltung durch die Technik') : null,
-    s.notice?.enabled && s.notice.text ? h('div', { class: 'banner-pause' }, `📢 ${s.notice.text}`) : null,
+    s.notice?.enabled && s.notice.text ? h('div', { class: 'banner-pause' }, `${s.notice.text}`) : null,
     s.handover?.text ? h('div', { class: 'small' }, h('b', {}, 'Übergabe-Notiz: '), s.handover.text) : null,
     s.poll ? h('div', { class: 'small' }, h('b', {}, `Umfrage: ${s.poll.question} `), s.poll.options.map((o, i) => `${o}: ${s.poll.counts[i]}`).join(' · ')) : null));
 

@@ -19,7 +19,7 @@ const onlineEl = h('span', { class: 'online-dots', title: 'Aktuell online' });
 const bar = topbar('Moderation', { nav: true, right: [onlineEl, roleBadge] });
 
 const nowBox = h('div', { class: 'np' });
-const state0Banner = h('div', { class: 'hidden banner-pause' }, '⏸ Pausen-Modus ist an – Wünsche sind pausiert.');
+const state0Banner = h('div', { class: 'hidden banner-pause' }, 'Pausen-Modus ist an – Wünsche sind pausiert.');
 const tabBar = h('div', { class: 'tabs' });
 const body = h('div');
 const boxes = Object.fromEntries(TABS.map((t) => [t, h('div')]));
@@ -62,7 +62,7 @@ function render() {
   renderTabs();
   renderExtras();
   state0Banner.classList.toggle('hidden', !state.pauseMode && !state.opening?.awaiting);
-  state0Banner.textContent = state.opening?.awaiting ? `🔒 Die Wünsche sind noch geschlossen${state.opening.opensAt ? ` (öffnen ${new Date(state.opening.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})` : ''} – Technik/Admin schaltet sie frei.` : '⏸ Pausen-Modus ist an – Wünsche sind pausiert.';
+  state0Banner.textContent = state.opening?.awaiting ? `Die Wünsche sind noch geschlossen${state.opening.opensAt ? ` (öffnen ${new Date(state.opening.opensAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})` : ''} – Technik/Admin schaltet sie frei.` : 'Pausen-Modus ist an – Wünsche sind pausiert.';
   const claimKey = JSON.stringify((state.claims || []).filter((c) => c.by !== state.me)); // eigene Markierung loest keinen Neuaufbau aus
   const pk = (arr) => arr.map((p) => [p.id, p.votes]);
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));
@@ -75,7 +75,7 @@ function render() {
 
 // ---- Tastenkuerzel: wirken auf den obersten Wunsch ----
 const decide = async (id, action, reason) => {
-  try { const out = await api('/mod/decide', { method: 'POST', body: { id, action, reason, ...(action === 'approve' && assignMode !== 'auto' ? { player: Number(assignMode) } : {}) } }); toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? '⏳ Später' : '✕ Abgelehnt'); }
+  try { const out = await api('/mod/decide', { method: 'POST', body: { id, action, reason, ...(action === 'approve' && assignMode !== 'auto' ? { player: Number(assignMode) } : {}) } }); toast(action === 'approve' ? (out.request.player ? `✓ Player ${out.request.player}` : '✓ Angenommen') : action === 'later' ? 'Später' : '✕ Abgelehnt'); }
   catch (e) { toast(e.message, true); }
 };
 addEventListener('keydown', (e) => {
@@ -114,7 +114,7 @@ app.append(
     h('div', { class: 'row' },
       h('a', { class: 'btn', href: `${BASE}/focus`, title: 'Schwarzer Vollbild-Modus: zeigt nur neue Wünsche' }, '⤢ Fokus-Modus'),
       h('a', { class: 'btn', href: `${BASE}/ticker`, title: 'Live-Anzeige aller Wünsche und Entscheidungen' }, '◉ Live-Wünsche'),
-      h('button', { class: 'ghost', title: 'Tastenkürzel ansehen und ändern', onclick: () => openHotkeyEditor() }, `⌨ Tasten (${hk.approve.toUpperCase()} = annehmen)`)),
+      h('button', { class: 'ghost', title: 'Tastenkürzel ansehen und ändern', onclick: () => openHotkeyEditor() }, `Tasten (${hk.approve.toUpperCase()} = annehmen)`)),
     handoverCard, pollBox,
     h('div', { class: 'card' }, tabBar, body)),
 );

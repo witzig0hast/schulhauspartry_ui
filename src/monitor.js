@@ -22,10 +22,10 @@ export function createMonitor(engines) {
       s.since ??= now;
       if (!s.alerted && now - s.since >= settings().notify.downSec * 1000 && enabled(ev)) {
         s.alerted = true;
-        await sendNotify({ title: '⚠️ Problem bei der Party', message: downText, priority, tags: ['warning'], key: `down:${k}`, env });
+        await sendNotify({ title: 'Problem bei der Party', message: downText, priority, tags: ['warning'], key: `down:${k}`, env });
       }
     } else {
-      if (s.alerted && enabled(ev)) await sendNotify({ title: '✅ Wieder in Ordnung', message: upText, priority: 3, tags: ['white_check_mark'], key: `up:${k}`, env });
+      if (s.alerted && enabled(ev)) await sendNotify({ title: 'Wieder in Ordnung', message: upText, priority: 3, tags: ['white_check_mark'], key: `up:${k}`, env });
       s.since = null; s.alerted = false;
     }
     state.set(k, s);
@@ -53,8 +53,8 @@ export function createMonitor(engines) {
 
   // Einmalige Ereignisse direkt melden
   for (const [env, e] of Object.entries(engines)) {
-    e.on('panic', () => { if (enabled('panic')) sendNotify({ title: '🛑 NOT-AUS ausgelöst', message: 'Die Technik hat den Not-Aus gedrückt – beide Player gestoppt.', priority: 5, tags: ['rotating_light'], key: `panic:${env}`, env }); });
-    e.on('emergency', () => { if (enabled('emergency')) sendNotify({ title: '🆘 Notfall-Playlist gestartet', message: 'Die Notfall-Playlist läuft.', priority: 4, tags: ['sos'], key: `emergency:${env}`, env }); });
+    e.on('panic', () => { if (enabled('panic')) sendNotify({ title: 'NOT-AUS ausgelöst', message: 'Die Technik hat den Not-Aus gedrückt – beide Player gestoppt.', priority: 5, tags: ['rotating_light'], key: `panic:${env}`, env }); });
+    e.on('emergency', () => { if (enabled('emergency')) sendNotify({ title: 'Notfall-Playlist gestartet', message: 'Die Notfall-Playlist läuft.', priority: 4, tags: ['sos'], key: `emergency:${env}`, env }); });
   }
 
   return {

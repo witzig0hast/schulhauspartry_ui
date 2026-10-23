@@ -211,6 +211,36 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     res.json({ found });
   }));
 
+  // ----- X32-Einrichtung: laeuft ueber die Umgebung mit den echten Verbindungen (sonst simuliert) -----
+  const realEngine = () => engines[settings().test.realEnv] || engine;
+  const chNum = (v) => { const n = Number(v); if (!Number.isInteger(n) || n < 1 || n > 32) throw new Error('Ungültiger Kanal'); return n; };
+  r.get('/admin/x32/channels', wrap(async (req, res) => {
+    const e = realEngine();
+    if (!e.x32.channels) throw new Error('Diese Anbindung kennt keine Kanalübersicht.');
+    const out = await e.x32.channels();
+    res.json({ ...out, simulated: e.x32.kind === 'mock', env: e.env, assigned: settings().x32.channels });
+  }));
+  r.post('/admin/x32/select', wrap(async (req, res) => { await realEngine().x32.selectChannel?.(chNum(req.body?.channel)); res.json({ ok: true }); }));
+  r.post('/admin/x32/test-music', wrap(async (req, res) => {
+    const e = realEngine();
+    if (req.body?.stop) { await e.levelTestStop(); return res.json({ ok: true }); }
+    const p = Number(req.body?.player);
+    if (p !== 1 && p !== 2) throw new Error('Ungültiger Player');
+    const t = await e.levelTest(p);
+    res.json({ ok: true, title: t.title, artist: t.artist });
+  }));
+  // Sanfter Fader-Test: Player-Kanaele auf -10 dB und nach 3 s zurueck (die Fahrt selbst macht das Relay gleichmaessig)
+  r.post('/admin/x32/fader-test', wrap(async (req, res) => {
+    const e = realEngine(), p = Number(req.body?.player);
+    if (p !== 1 && p !== 2) throw new Error('Ungültiger Player');
+    if (e.state.panic) throw new Error('Not-Aus ist aktiv.');
+    e.faderTest = true;
+    await e.x32.setPlayerLevel(p, Math.pow(10, -10 / 20) * Math.pow(10, settings().levels.playerDb[p] / 20));
+    setTimeout(() => { e.faderTest = false; e.lastSent = { 1: -1, 2: -1 }; }, 3000).unref?.();
+    L.info('pult', 'x32.fader_test', `Fader-Test Player ${p} (Kanal ${settings().x32.channels[`p${p}`].join('/')})`, { env: e.env, actor: { kind: 'staff', label: req.session.label } });
+    res.json({ ok: true });
+  }));
+
   // ----- Bericht / Export / Reset -----
   r.get('/admin/report', (req, res) => res.json(buildReport(req.query.env === 'test' ? 'test' : 'live')));
   r.get('/admin/setlist.csv', (req, res) => {

@@ -120,7 +120,7 @@ export function login(secret, ip, ua = '') {
     loginLimiter.hit(key); globalLoginLimiter.hit('all');
     audit('login.fail', null, ip, 'falscher Code/Passwort');
     // Mehrere Fehlversuche in kurzer Zeit -> Warnung aufs Handy
-    if (loginLimiter.hits.get(key)?.length >= 5) sendNotify({ title: '🔐 Viele Fehl-Logins', message: `Mehrere falsche Anmeldeversuche von ${ip}.`, priority: 4, tags: ['lock'], key: `loginfail:${ip}` }).catch(() => {});
+    if (loginLimiter.hits.get(key)?.length >= 5) sendNotify({ title: 'Viele Fehl-Logins', message: `Mehrere falsche Anmeldeversuche von ${ip}.`, priority: 4, tags: ['lock'], key: `loginfail:${ip}` }).catch(() => {});
     return { ok: false, status: 401, error: 'Code oder Passwort falsch.' };
   }
   const token = newSession(session.accountId, session.role, ip, ua);

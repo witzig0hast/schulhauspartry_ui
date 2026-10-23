@@ -3,6 +3,10 @@
 //   GET  /x32/state  -> {mics:[{open,level}], meters:{1,2}, x32:{ok,lastSeenMs}}
 //   POST /x32/config {p1, p2, mics, host, port} -> Kanalzuordnung und X32-Adresse aus dem Admin (host '' = Wert aus der .env)
 //   POST /x32/discover -> sucht X32/M32 im Netz (OSC /xinfo per Broadcast)
+//   GET  /x32/channels -> Namen, Pegel, Mute und Fader aller 32 Kanaele (fuer die Einrichtung)
+//   POST /x32/select {channel} -> waehlt den Kanal am Pult an (Select-Taste leuchtet), ohne den Fader zu bewegen
+// Fader werden geschont: Das Relay faehrt neue Werte mit begrenzter Geschwindigkeit an (25 Schritte/s im LAN),
+// statt den Motor springen zu lassen. Bewegt jemand einen Fader von Hand, hat die Hand 3 s Vorrang.
 //   GET  /healthz    -> ohne Token, nur {ok:true}
 import dgram from 'node:dgram';
 import http from 'node:http';
@@ -32,6 +36,8 @@ export function createRelay(opts = {}) {
     mics: opts.mics ?? [5, 6, 7], players: opts.players ?? { 1: [1, 2], 2: [3, 4] },
     micThreshold: opts.micThreshold ?? 0.03, micHoldMs: opts.micHoldMs ?? 600,
     stateFile: opts.stateFile ?? null,
+    faderSpeed: opts.faderSpeed ?? 1.2,   // Fader-Weg pro Sekunde (0..1 = ganzer Weg)
+    glideMs: opts.glideMs ?? 40, manualHoldMs: opts.manualHoldMs ?? 3000,
   };
   const envHost = { host: cfg.x32Host, port: cfg.x32Port };
   cfg.hostSource = 'pi';
@@ -46,7 +52,9 @@ export function createRelay(opts = {}) {
   if (!cfg.token || cfg.token.length < 16) throw new Error('RELAY_TOKEN fehlt oder ist zu kurz (min. 16 Zeichen)');
 
   const sock = dgram.createSocket('udp4');
-  const state = { meters: new Array(32).fill(0), micOn: {}, micActiveUntil: {}, lastSeen: 0, lastMeters: 0 };
+  const state = { meters: new Array(32).fill(0), micOn: {}, micActiveUntil: {}, lastSeen: 0, lastMeters: 0, names: {}, namesAt: 0, chOn: {} };
+  // Fader: aktuelle Stellung, Ziel, Tempo; queried = wir haben die Stellung abgefragt (Antwort ist kein Handgriff)
+  const fad = { cur: {}, target: {}, speed: {}, manualUntil: {}, queried: {}, manualAt: {} };
   const send = (address, args) => sock.send(encode(address, args), cfg.x32Port, cfg.x32Host);
 
   sock.on('message', (msg) => {
@@ -56,7 +64,15 @@ export function createRelay(opts = {}) {
       try { const v = decodeMeters(m.args[0]); for (let i = 0; i < 32 && i < v.length; i++) state.meters[i] = v[i]; state.lastMeters = Date.now(); } catch { /* ignorieren */ }
     } else {
       const mm = /^\/ch\/(\d\d)\/mix\/on$/.exec(m.address);
-      if (mm) state.micOn[Number(mm[1])] = m.args[0] === 1;
+      if (mm) { state.micOn[Number(mm[1])] = m.args[0] === 1; state.chOn[Number(mm[1])] = m.args[0] === 1; }
+      const nm = /^\/ch\/(\d\d)\/config\/name$/.exec(m.address);
+      if (nm) state.names[Number(nm[1])] = String(m.args[0] ?? '').slice(0, 12);
+      const fm = /^\/ch\/(\d\d)\/mix\/fader$/.exec(m.address);
+      if (fm && typeof m.args[0] === 'number') {
+        const c = Number(fm[1]), v = Math.max(0, Math.min(1, m.args[0])), now = Date.now();
+        if (fad.queried[c] && now - fad.queried[c] < 1500) { delete fad.queried[c]; if (fad.cur[c] == null) fad.cur[c] = v; }
+        else if (fad.cur[c] == null || Math.abs(v - fad.cur[c]) > 0.002) { fad.cur[c] = v; fad.manualUntil[c] = now + cfg.manualHoldMs; fad.manualAt[c] = now; }   // von Hand (Pult/X32-Edit) bewegt
+      }
     }
   });
 
@@ -77,12 +93,44 @@ export function createRelay(opts = {}) {
     });
   }
 
+  // Fader sanft anfahren: instant nur fuer Not-Aus (sofort auf 0)
+  function setFader(c, v, { speed, instant } = {}) {
+    v = Math.round(Math.max(0, Math.min(1, v)) * 1023) / 1023;   // Raster des X32 (1024 Stufen)
+    fad.target[c] = v;
+    fad.speed[c] = Number.isFinite(speed) && speed > 0 ? Math.min(20, speed) : cfg.faderSpeed;
+    if (instant || fad.cur[c] == null) { fad.cur[c] = v; fad.manualUntil[c] = 0; send(`/ch/${ch2(c)}/mix/fader`, [{ t: 'f', v }]); }
+  }
+  function glide() {
+    const now = Date.now();
+    for (const k of Object.keys(fad.target)) {
+      const c = Number(k), t = fad.target[c], cur = fad.cur[c];
+      if (cur == null || cur === t || (fad.manualUntil[c] || 0) > now) continue;
+      const step = fad.speed[c] * cfg.glideMs / 1000;
+      const next = Math.abs(t - cur) <= step ? t : cur + Math.sign(t - cur) * step;
+      fad.cur[c] = next;
+      send(`/ch/${ch2(c)}/mix/fader`, [{ t: 'f', v: next }]);
+    }
+  }
+  // Stellung der benutzten Fader beim Start abfragen, damit die erste Bewegung nicht springt
+  const queryFaders = (list) => { for (const c of list) { fad.queried[c] = Date.now(); send(`/ch/${ch2(c)}/mix/fader`, []); } };
+  const usedChannels = () => [...new Set([...cfg.players[1], ...cfg.players[2], ...cfg.mics])];
+  async function channelInfo() {
+    if (Date.now() - state.namesAt > 20000) {
+      state.namesAt = Date.now();
+      for (let c = 1; c <= 32; c++) { send(`/ch/${ch2(c)}/config/name`, []); send(`/ch/${ch2(c)}/mix/on`, []); }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const now = Date.now();
+    return Array.from({ length: 32 }, (_, i) => ({ channel: i + 1, name: state.names[i + 1] || '', level: Math.min(1, state.meters[i] || 0), on: state.chOn[i + 1] ?? null, fader: fad.cur[i + 1] ?? null, manual: now - (fad.manualAt[i + 1] || 0) < 10000 }));
+  }
+
   function setHost(host, port) {
     const before = `${cfg.x32Host}:${cfg.x32Port}`;
     if (!host) { cfg.x32Host = envHost.host; cfg.x32Port = envHost.port; cfg.hostSource = 'pi'; }
     else { cfg.x32Host = host; cfg.x32Port = port || 10023; cfg.hostSource = 'admin'; }
     if (before === `${cfg.x32Host}:${cfg.x32Port}`) return;
-    state.lastSeen = 0; state.lastMeters = 0; state.micOn = {};
+    state.lastSeen = 0; state.lastMeters = 0; state.micOn = {}; state.names = {}; state.namesAt = 0; state.chOn = {};
+    for (const k of Object.keys(fad)) fad[k] = {};
     console.log(`[relay] X32-Adresse jetzt ${cfg.x32Host}:${cfg.x32Port} (${cfg.hostSource === 'admin' ? 'aus dem Admin' : 'aus der .env'})`);
     if (cfg.stateFile) {
       try {
@@ -90,7 +138,7 @@ export function createRelay(opts = {}) {
         else fs.rmSync(cfg.stateFile, { force: true });
       } catch (e) { console.error(`[relay] X32-Adresse konnte nicht gespeichert werden (${e.code || e.message}) – gilt bis zum Neustart`); }
     }
-    keepAlive(); pollMics();
+    keepAlive(); pollMics(); queryFaders(usedChannels());
   }
 
   // X32/M32 im lokalen Netz finden: /xinfo an alle Broadcast-Adressen (ausser VPN), Antwort: ip, name, model, version
@@ -140,6 +188,7 @@ export function createRelay(opts = {}) {
     if (req.method === 'GET' && req.url === '/x32/state') {
       return json(200, {
         mics: micState(), meters: { 1: playerMeter(1), 2: playerMeter(2) },
+        manual: usedChannels().filter((c) => Date.now() - (fad.manualAt[c] || 0) < 10000),
         x32: { ok: Date.now() - state.lastSeen < 5000, lastSeenMs: state.lastSeen ? Date.now() - state.lastSeen : null, host: cfg.x32Host, port: cfg.x32Port, source: cfg.hostSource, envHost: envHost.host },
       });
     }
@@ -156,6 +205,7 @@ export function createRelay(opts = {}) {
         if (p1) cfg.players[1] = p1;
         if (p2) cfg.players[2] = p2;
         if (mics) { cfg.mics = mics; pollMics(); }
+        if (p1 || p2 || mics) queryFaders(usedChannels().filter((c) => fad.cur[c] == null));
         if (j.host !== undefined) setHost(j.host, j.port);
         json(200, { ok: true, p1: cfg.players[1], p2: cfg.players[2], mics: cfg.mics, host: cfg.x32Host, port: cfg.x32Port, source: cfg.hostSource });
       });
@@ -165,6 +215,22 @@ export function createRelay(opts = {}) {
       if (state.discovering) return json(429, { error: 'busy' });
       state.discovering = true;
       discover().then((list) => json(200, { found: list }), () => json(500, { error: 'discover' })).finally(() => { state.discovering = false; });
+      return undefined;
+    }
+    if (req.method === 'GET' && req.url === '/x32/channels') {
+      channelInfo().then((list) => json(200, { channels: list, ok: Date.now() - state.lastSeen < 5000 }), () => json(500, { error: 'channels' }));
+      return undefined;
+    }
+    if (req.method === 'POST' && req.url === '/x32/select') {
+      let body = '';
+      req.on('data', (d) => { body += d; if (body.length > 256) req.destroy(); });
+      req.on('end', () => {
+        let j; try { j = JSON.parse(body); } catch { return json(400, { error: 'bad json' }); }
+        const c = Number(j.channel);
+        if (!Number.isInteger(c) || c < 1 || c > 32) return json(400, { error: 'channel' });
+        send('/-stat/selidx', [{ t: 'i', v: c - 1 }]);
+        json(200, { ok: true });
+      });
       return undefined;
     }
     if (req.method === 'POST' && req.url === '/x32/level') {
@@ -177,7 +243,8 @@ export function createRelay(opts = {}) {
         if (!Number.isFinite(fader) || fader < 0 || fader > 1) return json(400, { error: 'fader 0..1' });
         if (!channels.length || channels.length > 4 || channels.some((c) => !Number.isInteger(c) || c < 1 || c > 32)) return json(400, { error: 'channels' });
         if (j.player === 1 || j.player === 2) cfg.players[j.player] = channels;
-        for (const c of channels) send(`/ch/${ch2(c)}/mix/fader`, [{ t: 'f', v: fader }]);
+        const speed = j.speed === undefined ? undefined : Number(j.speed);
+        for (const c of channels) setFader(c, fader, { speed, instant: j.instant === true });
         json(200, { ok: true });
       });
       return undefined;
@@ -186,11 +253,11 @@ export function createRelay(opts = {}) {
   });
 
   return {
-    cfg, state, micState, discover,
+    cfg, state, micState, discover, fad,
     async start() {
       await new Promise((r) => sock.bind(0, r));
-      keepAlive(); pollMics();
-      timers.push(setInterval(keepAlive, 4000), setInterval(pollMics, 400));
+      keepAlive(); pollMics(); queryFaders(usedChannels());
+      timers.push(setInterval(keepAlive, 4000), setInterval(pollMics, 400), setInterval(glide, cfg.glideMs));
       await new Promise((r) => server.listen(cfg.port, cfg.bind, r));
       return server.address().port;
     },

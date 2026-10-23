@@ -58,7 +58,7 @@ function updateStrip() {
   refs.duckBtn.textContent = state.ducking.active ? 'Ducking aktiv' : `Ducking ${state.ducking.enabled ? 'an' : 'aus'}`;
   const wm = { open: ['ok', 'Wünsche offen'], paused: ['warn', 'Wünsche pausiert'], closed: ['bad', 'Wünsche zu'] }[state.wishMode] || ['', ''];
   refs.wishChip.className = `badge ${wm[0]}`; refs.wishChip.textContent = wm[1];
-  swap(refs.micChips, (state.mics || []).map((m) => `${m.name}${m.open}`).join(), () => h('div', { class: 'row', style: 'gap:6px' }, ...(state.mics || []).map((m) => h('span', { class: `badge ${m.open ? 'warn' : ''}` }, `🎤 ${m.name}${m.open ? ' offen' : ''}`))));
+  swap(refs.micChips, (state.mics || []).map((m) => `${m.name}${m.open}`).join(), () => h('div', { class: 'row', style: 'gap:6px' }, ...(state.mics || []).map((m) => h('span', { class: `badge ${m.open ? 'warn' : ''}` }, `${m.name}${m.open ? ' offen' : ''}`))));
 }
 
 // ---------- Player ----------
@@ -80,14 +80,14 @@ function playerCard(n) {
     r.prog, h('div', { class: 'row between tiny muted mono' }, r.pos, r.rem),
     h('div', { class: 'row between small' }, h('span', { class: 'muted' }, 'Pegel am Pult'), r.faderVal), r.meter, r.fader,
     h('div', { class: 'row' },
-      h('button', { onclick: () => post('/control/play', { player: n }) }, '▶ Play'),
-      h('button', { onclick: () => post('/control/pause', { player: n }) }, '⏸ Pause'),
-      h('button', { onclick: () => post('/control/fade-in', { player: n, sec: Number(r.fadeSec.value) }) }, '↗ Einblenden'),
-      h('button', { onclick: () => post('/control/fade-out', { player: n, sec: Number(r.fadeSec.value) }) }, '↘ Ausblenden')),
+      h('button', { onclick: () => post('/control/play', { player: n }) }, 'Play'),
+      h('button', { onclick: () => post('/control/pause', { player: n }) }, 'Pause'),
+      h('button', { onclick: () => post('/control/fade-in', { player: n, sec: Number(r.fadeSec.value) }) }, 'Einblenden'),
+      h('button', { onclick: () => post('/control/fade-out', { player: n, sec: Number(r.fadeSec.value) }) }, 'Ausblenden')),
     h('details', { class: 'more' }, h('summary', {}, 'Fade-Zeit & Lautstärke-Merker'),
       h('div', { class: 'stack', style: 'margin-top:10px' },
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Fade-Zeit'), r.fadeSec, h('span', { class: 'small muted' }, 's')), presetRow(r.fadeSec),
-        feat('gainMemory') ? h('button', { title: 'Der nächste Start dieses Songs nutzt diese Lautstärke', onclick: () => safe(async () => { const o = await api('/control/gain-remember', { method: 'POST', body: { player: n } }); toast(`Lautstärke gemerkt (${Math.round(o.gain * 100)} %)`); })() }, '📌 Lautstärke für diesen Song merken') : null)));
+        feat('gainMemory') ? h('button', { title: 'Der nächste Start dieses Songs nutzt diese Lautstärke', onclick: () => safe(async () => { const o = await api('/control/gain-remember', { method: 'POST', body: { player: n } }); toast(`Lautstärke gemerkt (${Math.round(o.gain * 100)} %)`); })() }, 'Lautstärke für diesen Song merken') : null)));
   return r.root;
 }
 function updatePlayer(n) {
@@ -96,7 +96,7 @@ function updatePlayer(n) {
   r.root.classList.toggle('onair', onAir);
   swap(r.cov, `${p.trackId}|${p.title}`, () => (p.title ? coverOnce(p.title, 'lg', p.trackId) : h('div', { class: 'cover lg', style: '--h:0;background:var(--bg-2);color:var(--faint)' }, '–')));
   r.title.textContent = p.title || 'Kein Song'; r.artist.textContent = p.artist || 'Bereit';
-  r.status.textContent = p.fading ? '〰 Fade' : onAir ? 'ON AIR' : p.playing ? '▶ spielt' : '⏸ gestoppt';
+  r.status.textContent = p.fading ? 'Fade' : onAir ? 'ON AIR' : p.playing ? 'spielt' : 'gestoppt';
   r.status.className = `badge ${onAir ? 'ink' : p.playing ? 'ok' : ''}`;
   r.eq.classList.toggle('off', !p.playing);
   const age = p.playing ? Date.now() - got : 0;
@@ -125,7 +125,7 @@ function updateNext() {
   const n = state.upcoming[0];
   swap(refs.cfNext, n ? `${n.id}|${n.player}` : 'none', () => (n ? h('div', { class: 'q-row', style: 'padding:6px 0' }, coverOnce(n.title, 'sm', n.trackId),
     h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, 'Als Nächstes'), h('div', { class: 't' }, n.title), h('div', { class: 'a' }, n.artist)),
-    n.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro' }, `♪ ${Math.round(n.introMs / 1000)} s`) : null, h('span', { class: `badge p${n.player}` }, `P${n.player || '–'}`))
+    n.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro' }, `${Math.round(n.introMs / 1000)} s`) : null, h('span', { class: `badge p${n.player}` }, `P${n.player || '–'}`))
     : h('div', { class: 'small muted' }, 'Die Warteschlange ist leer – nimm zuerst Wünsche an.')));
   const key = JSON.stringify(state.settings.fadePresets) + refs.cfSec.value;
   if (refs.cfSeg.dataset.k !== key) {
@@ -150,15 +150,15 @@ function operationsCard() {
     const b = h('button', { onclick: () => post('/control/wishmode', { mode: m }) }, { open: 'Offen', paused: 'Pausiert', closed: 'Geschlossen' }[m]);
     b.dataset.mode = m; return b;
   });
-  refs.endBtn = h('button', { onclick: onEnd }, '🏁 Ende-Modus');
-  refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, '🆘 Notfall-Playlist');
-  refs.openBtn = h('button', { class: 'primary hidden', onclick: () => post('/control/open-wishes') }, '🔓 Wünsche jetzt freischalten');
-  refs.startBtn = feat('startPlaylist') ? h('button', { class: 'hidden', onclick: () => post('/control/start-evening') }, '▶ Start-Playlist starten') : null;
-  refs.pauseBtn = feat('pauseMode') ? h('button', { onclick: () => post('/control/pause-mode', { on: !state?.pauseMode }) }, '⏸ Pausen-Modus') : null;
+  refs.endBtn = h('button', { onclick: onEnd }, 'Ende-Modus');
+  refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, 'Notfall-Playlist');
+  refs.openBtn = h('button', { class: 'primary hidden', onclick: () => post('/control/open-wishes') }, 'Wünsche jetzt freischalten');
+  refs.startBtn = feat('startPlaylist') ? h('button', { class: 'hidden', onclick: () => post('/control/start-evening') }, 'Start-Playlist starten') : null;
+  refs.pauseBtn = feat('pauseMode') ? h('button', { onclick: () => post('/control/pause-mode', { on: !state?.pauseMode }) }, 'Pausen-Modus') : null;
   const pq = h('input', { placeholder: 'Frage an die Gäste (z. B. Nächster Stil?)', maxlength: 120 });
   const pOpts = [h('input', { placeholder: 'Antwort 1', maxlength: 40 }), h('input', { placeholder: 'Antwort 2', maxlength: 40 }), h('input', { placeholder: 'Antwort 3 (optional)', maxlength: 40 })];
   refs.pollInfo = h('div', { class: 'small muted' });
-  const pollCard = feat('polls') ? h('details', { class: 'more' }, h('summary', {}, '📊 Live-Umfrage'), h('div', { class: 'stack', style: 'margin-top:10px' }, pq, ...pOpts,
+  const pollCard = feat('polls') ? h('details', { class: 'more' }, h('summary', {}, 'Live-Umfrage'), h('div', { class: 'stack', style: 'margin-top:10px' }, pq, ...pOpts,
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => safe(async () => { await api('/poll', { method: 'POST', body: { question: pq.value, options: pOpts.map((i) => i.value) } }); toast('Umfrage gestartet'); })() }, 'Starten'),
       h('button', { onclick: () => post('/poll/close') }, 'Beenden')), refs.pollInfo)) : null;
   return h('section', { class: 'card stack' },
@@ -175,14 +175,14 @@ async function onPanic() {
     const out = await api('/control/panic-arm', { method: 'POST', body: {} }).catch((e) => { toast(e.message, true); });
     if (!out) return;
     refs.panicNonce = out.nonce;
-    refs.panic.textContent = '⛔ NOCHMAL DRÜCKEN!'; refs.panic.classList.add('panic-armed');
+    refs.panic.textContent = 'NOCHMAL DRÜCKEN!'; refs.panic.classList.add('panic-armed');
     panicTimer = setTimeout(resetPanic, 4500);
     return;
   }
   const nonce = refs.panicNonce; resetPanic();
   await post('/control/panic', { nonce });
 }
-function resetPanic() { clearTimeout(panicTimer); refs.panicNonce = null; refs.panic.textContent = '⛔ NOT-AUS'; refs.panic.classList.remove('panic-armed'); }
+function resetPanic() { clearTimeout(panicTimer); refs.panicNonce = null; refs.panic.textContent = 'NOT-AUS'; refs.panic.classList.remove('panic-armed'); }
 async function onEmergency() {
   if (state.emergency) { await post('/control/emergency-clear'); return; }
   if (!confirm('Notfall-Playlist starten? Alles andere wird gestoppt, die Notfall-Playlist läuft gemischt.')) return;
@@ -214,7 +214,7 @@ function advancedCard() {
   refs.duckDb = numInput(-12, { min: -40, max: -1, step: 1, onchange: (v) => post('/settings/tech', { ducking: { db: v } }) });
   refs.micBox = h('div', { class: 'stack' });
   refs.noticeOn = h('input', { type: 'checkbox' });
-  refs.noticeText = h('textarea', { rows: 2, maxlength: 400, placeholder: 'z. B. Macht Stimmung! 🎉' });
+  refs.noticeText = h('textarea', { rows: 2, maxlength: 400, placeholder: 'z. B. Macht Stimmung!' });
   refs.noticeSave = h('button', { class: 'small', onclick: () => post('/settings/tech', { notice: { enabled: refs.noticeOn.checked, text: refs.noticeText.value } }).then(() => toast('Hinweis gespeichert')) }, 'Hinweis speichern');
   refs.errors = h('div');
   return h('details', { class: 'card more' }, h('summary', {}, 'Erweitert: Automatik, Mics, Gäste-Hinweis, Fehler'),
@@ -265,11 +265,11 @@ function render() {
   if (document.activeElement !== refs.noticeOn) refs.noticeOn.checked = !!state.notice.enabled;
   setVal(refs.noticeText, state.notice.text);
   refs.openBtn.classList.toggle('hidden', !state.opening?.awaiting);
-  if (refs.startBtn) { refs.startBtn.classList.toggle('hidden', !state.hasStart || state.mode === 'wishlist'); refs.startBtn.textContent = state.opening?.started ? '▶ Start-Playlist auffüllen' : '▶ Start-Playlist starten'; }
-  if (refs.pauseBtn) refs.pauseBtn.textContent = state.pauseMode ? '▶ Pause beenden' : '⏸ Pausen-Modus';
+  if (refs.startBtn) { refs.startBtn.classList.toggle('hidden', !state.hasStart || state.mode === 'wishlist'); refs.startBtn.textContent = state.opening?.started ? 'Start-Playlist auffüllen' : 'Start-Playlist starten'; }
+  if (refs.pauseBtn) refs.pauseBtn.textContent = state.pauseMode ? 'Pause beenden' : 'Pausen-Modus';
   if (refs.pollInfo) refs.pollInfo.textContent = state.poll ? `${state.poll.question} – ${state.poll.options.map((o, i) => `${o}: ${state.poll.counts[i]}`).join(' · ')}${state.poll.status === 'open' ? '' : ' (beendet)'}` : 'Keine Umfrage aktiv.';
-  refs.emBtn.textContent = state.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist';
-  refs.endBtn.textContent = state.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus';
+  refs.emBtn.textContent = state.emergency ? 'Notfall beenden' : 'Notfall-Playlist';
+  refs.endBtn.textContent = state.ended ? 'Ende-Modus aufheben' : 'Ende-Modus';
   refs.panicClear.classList.toggle('hidden', !state.panic);
   refs.dock.classList.toggle('alarm', !!(state.panic || state.emergency));
   swap(refs.badges, JSON.stringify([state.panic, state.ended, state.emergency]), () => h('span', { class: 'row' },
@@ -287,7 +287,7 @@ refs.modeBanner = h('div', { class: 'card hidden', style: 'background:var(--warn
 refs.badges = h('span', { class: 'row' });
 refs.chatBox = h('div', { style: 'margin-top:12px' }); refs.chatSum = h('summary', {}, 'Team-Chat');
 const showLevels = (opts) => openLevels(opts).catch((e) => toast(e.message, true));
-refs.levelsBtn = h('button', { class: 'small', title: 'Fader und Lautstärken einstellen', onclick: () => showLevels() }, '🎚 Pegel');
+refs.levelsBtn = h('button', { class: 'small', title: 'Fader und Lautstärken einstellen', onclick: () => showLevels() }, 'Pegel');
 // Einmal pro Abend (bzw. alle 10 Stunden) beim Oeffnen der Technik nach den Grundpegeln fragen
 let levelsAsked = false;
 function maybeAskLevels() {
@@ -295,10 +295,10 @@ function maybeAskLevels() {
   levelsAsked = true;
   try { if (sessionStorage.getItem('levelsAsked')) return; sessionStorage.setItem('levelsAsked', '1'); } catch { /* ohne Speicher: trotzdem fragen */ }
   if (state.levels.confirmedAt && Date.now() - state.levels.confirmedAt < 10 * 3600e3) return;
-  showLevels({ later: true, intro: 'Bevor es losgeht: einmal Fader und Lautstärken einstellen. Jede Änderung gilt sofort – starte Testmusik und hör direkt, wie es klingt. Später findest du das Fenster oben unter „🎚 Pegel“.' });
+  showLevels({ later: true, intro: 'Bevor es losgeht: einmal Fader und Lautstärken einstellen. Jede Änderung gilt sofort – starte Testmusik und hör direkt, wie es klingt. Später findest du das Fenster oben unter „Pegel“.' });
 }
 // Immer erreichbar: Crossfade und Not-Aus (auch beim Scrollen durch die Wuensche)
-refs.panic = h('button', { class: 'bad', onclick: onPanic }, '⛔ NOT-AUS');
+refs.panic = h('button', { class: 'bad', onclick: onPanic }, 'NOT-AUS');
 refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
 refs.dockNext = h('div', { class: 'small grow', style: 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' });
 const chatCard = h('details', { class: 'card more' }, refs.chatSum, refs.chatBox);

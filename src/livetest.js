@@ -94,7 +94,7 @@ export function createLiveTest({ engines, hub, setRealEnv, isBusy = () => null }
     async levels(step) {
       const errs = await eng().applyAllLevels();
       if (errs.length) check(step, 'Gespeicherte Pegel gesetzt', false, errs.join(' · '));
-      const v = guard(await waitInput(step, { waiting: 'Öffne das Pegel-Fenster, starte Testmusik und stell Fader und Lautstärken ein. Mit „Übernehmen“ geht es weiter.', actions: [{ id: 'open-levels', label: '🎚 Pegel-Fenster öffnen', client: true }, { id: 'done', label: 'Pegel passen schon' }] }));
+      const v = guard(await waitInput(step, { waiting: 'Öffne das Pegel-Fenster, starte Testmusik und stell Fader und Lautstärken ein. Mit „Übernehmen“ geht es weiter.', actions: [{ id: 'open-levels', label: 'Pegel-Fenster öffnen', client: true }, { id: 'done', label: 'Pegel passen schon' }] }));
       const l = settings().levels;
       return { status: errs.length ? 'warn' : 'ok', detail: `Player 1 ${l.playerDb[1]} dB / Spotify ${l.spotifyVol[1]} % · Player 2 ${l.playerDb[2]} dB / Spotify ${l.spotifyVol[2]} %` };
     },
@@ -343,7 +343,7 @@ export function createLiveTest({ engines, hub, setRealEnv, isBusy = () => null }
     async notify(step) {
       const n = settings().notify;
       if (!isOn('notify') || !n.enabled || !n.topic) return { status: 'warn', detail: 'Nicht eingerichtet (Admin → Automatik → Alarm aufs Handy)' };
-      const out = await sendNotify({ title: '🔔 Live-Test', message: 'Wenn du das liest, kommen Alarme der Party-App an.', priority: 3, tags: ['bell'], force: true, env: 'test' });
+      const out = await sendNotify({ title: 'Live-Test', message: 'Wenn du das liest, kommen Alarme der Party-App an.', priority: 3, tags: ['bell'], force: true, env: 'test' });
       check(step, 'Nachricht gesendet', !!out.sent, out.sent ? '' : out.reason);
       if (!out.sent) return { status: 'fail', detail: out.reason };
       const ans = guard(await waitInput(step, { question: { text: 'Ist die Testnachricht auf dem Handy angekommen?', yes: 'Ja', no: 'Nein' } }));

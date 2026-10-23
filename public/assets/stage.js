@@ -18,7 +18,7 @@ function render(s) {
   const pl = [1, 2].map((n) => ({ n, p: s.players[n] }));
   const cur = pl.find((x) => x.p.playing && x.n === s.current) || pl.find((x) => x.p.playing);
   clear(now).append(cur ? h('div', {}, h('div', { class: 'row', style: 'justify-content:center;margin-bottom:14px' }, coverOnce(cur.p.title, 'xl', cur.p.trackId)), h('div', { class: 'row', style: 'gap:10px;justify-content:center' }, eq(true), h('span', { class: 'eyebrow' }, 'Jetzt läuft')), h('div', { class: 'bm-title', style: 'text-align:center' }, cur.p.title), h('div', { class: 'bm-artist', style: 'text-align:center' }, cur.p.artist),
-    bar(cur.p.durationMs ? cur.p.positionMs / cur.p.durationMs : 0), h('div', { class: 'mono muted', style: 'text-align:center;margin-top:6px' }, `-${fmtTime(cur.p.remainingMs)}`)) : h('div', { class: 'bm-artist', style: 'text-align:center' }, s.pauseMode ? '⏸ Pause' : 'Gerade läuft nichts'));
+    bar(cur.p.durationMs ? cur.p.positionMs / cur.p.durationMs : 0), h('div', { class: 'mono muted', style: 'text-align:center;margin-top:6px' }, `-${fmtTime(cur.p.remainingMs)}`)) : h('div', { class: 'bm-artist', style: 'text-align:center' }, s.pauseMode ? 'Pause' : 'Gerade läuft nichts'));
   const up = s.upcoming[0];
   clear(next).append(up ? h('div', { class: 'row', style: 'gap:14px;justify-content:center' }, coverOnce(up.title, 'sm', up.trackId), h('div', {}, h('div', { class: 'eyebrow' }, 'Als Nächstes'), h('b', {}, up.title), h('span', { class: 'muted' }, ` – ${up.artist}`))) : h('div', { class: 'muted', style: 'text-align:center' }, 'Warteschlange leer'));
   const nowM = (() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); })();

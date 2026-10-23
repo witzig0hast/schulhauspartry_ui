@@ -67,7 +67,7 @@ test('KI: Genres nachtragen, Wunsch-Zusammenfassung, Stimmungs-Warnung nur per n
     await admin.post('/api/admin/settings', { notify: { enabled: true, topic: 'party-test' } });
     await watch.tick();
     assert.equal(sent.length, 1);
-    assert.equal(sent[0].title, '📉 Stimmung kippt!'); assert.match(sent[0].message, /Partyhit/); assert.equal(sent[0].key, 'mood:live');
+    assert.equal(sent[0].title, 'Stimmung kippt!'); assert.match(sent[0].message, /Partyhit/); assert.equal(sent[0].key, 'mood:live');
     assert.ok(state.moodInput.zuletzt_gespielt.length >= 4 && 'wuensche_letzte_15_min' in state.moodInput);
     await watch.tick();
     assert.equal(sent.length, 1, 'höchstens alle 10 Minuten');

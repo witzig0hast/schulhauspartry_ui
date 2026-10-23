@@ -49,7 +49,7 @@ beim Erstellen angezeigt (gespeichert wird nur ein Hash).
 3. **Duplikat-Check** im Backend: schon vorgeschlagen → Pop-up „wird voraussichtlich in ca. N Songs gespielt“, der Wunsch bekommt ein **+1**.
 4. Moderation sieht den Wunsch live (WebSocket). **Der erste Klick gewinnt** – ein zweiter Moderator bekommt „wurde schon bearbeitet“.
 5. **Annehmen** → automatisch dem Player mit weniger zugewiesenen Songs zugeordnet (oder fest P1/P2). Der Gast sieht „angenommen“ / „abgelehnt (+Grund)“ und „noch N Lieder vor dir“.
-6. **Priorisieren** (★) schiebt einen Song in die nächsten N Songs (Standard 3), markiert mit dem Code des Priorisierenden.
+6. **Priorisieren** („Prio“) schiebt einen Song in die nächsten N Songs (Standard 3), markiert mit dem Code des Priorisierenden.
 7. Die Warteschlange liegt in der App; die Engine startet jeweils den nächsten Song just-in-time auf dem passenden Player (kein Umsortieren per UI).
 
 **Explicit-Filter** (Admin): *Aus* · *Markieren* („E“ im Dashboard) · *Blocken* (Gäste können Explicit-Songs nicht wünschen).
@@ -81,10 +81,10 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
-### Pegel-Fenster (Technik → 🎚 Pegel)
+### Pegel-Fenster (Technik → Pegel)
 
 Zuerst Fader und Lautstärken einstellen: Grundpegel der Player-Fader am X32 (Stellung bei voller Lautstärke, in dB), Spotify-Lautstärke je Player,
-optional die Mic-Fader, Fader-Obergrenze, Ducking-Absenkung und Crossfade-Dauer. Jede Änderung gilt sofort; „▶ Testmusik“ spielt einen Song in voller
+optional die Mic-Fader, Fader-Obergrenze, Ducking-Absenkung und Crossfade-Dauer. Jede Änderung gilt sofort; „Testmusik“ spielt einen Song in voller
 Grundlautstärke zum Einpegeln, „Abbrechen“ stellt die vorherigen Werte wieder her. Das Fenster öffnet sich beim ersten Aufruf der Technik-Ansicht
 (wenn die Pegel seit 10 Stunden nicht bestätigt wurden), ist der erste Schritt des Live-Tests, und die Werte werden beim Start der Start-Playlist erneut gesetzt.
 
@@ -186,7 +186,7 @@ Admin → *QR & Poster*: QR-Code zur Gäste-Seite (live oder Test), Überschrift
 
 ## Sperren & schon gespielte Songs
 
-- **Sperren** (Moderation, Technik, Admin): bei jedem Wunsch „⛔ Sperren“ → *Song* oder *Interpret*. Gesperrt = Gäste sehen „nicht möglich“,
+- **Sperren** (Moderation, Technik, Admin): bei jedem Wunsch „Sperren“ → *Song* oder *Interpret*. Gesperrt = Gäste sehen „nicht möglich“,
   offene Wünsche werden abgelehnt, Einträge aus der Warteschlange entfernt. Reiter *Gesperrt*: Liste, direkt per Suche sperren, *Freigeben*.
 - **Schon gespielt** (Admin → Einstellungen): *Erlauben* · *Pause* (erst nach X Minuten wieder wünschbar) · *Sperren* (heute nicht mehr).
   Die Moderation kann gespielte Songs im Reiter *Gespielt* trotzdem mit **↻ Nochmal** hinten einreihen oder sperren.
@@ -213,7 +213,7 @@ Antworten kommen als JSON nach festem Schema und werden geprüft, bevor die App 
   nichts Gesperrtes oder schon Gespieltes) und per Knopf eingereiht. Optional füllt die KI eine leere Warteschlange selbst auf (höchstens alle 2 Minuten).
 - **Licht-Vorschläge**: für den laufenden und die nächsten fünf Songs im Hintergrund – Farben, Tempo/BPM, Intensität, Strobo-Empfehlung, Effekte und ein
   Tipp; erscheinen im Licht-Dashboard und werden pro Song gespeichert.
-- **Fehler-Assistent** („🩺 Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard): wertet Verbindungen, Fehlerliste, Prüfliste und den letzten
+- **Fehler-Assistent** („Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard): wertet Verbindungen, Fehlerliste, Prüfliste und den letzten
   Live-Test aus und nennt Ursachen mit konkreten Schritten; optional mit eigener Frage.
 - **Rückblick** (Bericht & Export → „Rückblick schreiben“): ein Text für die Gäste (Homepage/Instagram) und eine Auswertung fürs Team.
 
@@ -223,7 +223,7 @@ und Minute. Modell-Tipp: für deutsche Texte und sauberes JSON z. B. Qwen 2.5/3 
 ## Live-Protokoll (`/logs`, Technik und Admin)
 
 Ein Protokoll über alles, was passiert – **zweimal lesbar**:
-- **Mensch:** Uhrzeit, Bereich, ein verständlicher Satz und wer es war („Angenommen: Uptown Funk → Player 1 · Mia“, „🎤 Mic 1 offen“, „Spotify-Limit erreicht – Pause 7 s“).
+- **Mensch:** Uhrzeit, Bereich, ein verständlicher Satz und wer es war („Angenommen: Uptown Funk → Player 1 · Mia“, „Mic 1 offen“, „Spotify-Limit erreicht – Pause 7 s“).
 - **Maschine:** Zeitstempel, Level, fester Ereignisname (`request.approved`, `control.play`, `spotify.rate_limited`, `ai.energy` …) und die Rohdaten als JSON.
   Ein Klick auf einen Eintrag zeigt das komplette JSON (farbig, kopierbar); „{ } Maschine“ schaltet die ganze Liste auf die technische Zeilenansicht.
 
@@ -250,7 +250,7 @@ Das Token wird nur als Hash gespeichert; ein neues Token macht das alte ungülti
 
 ## Weitere KI-Funktionen
 
-- **Genres nachtragen:** Liefert Spotify für einen Song keine Genres (häufig bei neueren Apps), ordnet die KI ihn aus einer festen Genre-Liste ein (im Licht-Dashboard mit „🤖 KI“ markiert).
+- **Genres nachtragen:** Liefert Spotify für einen Song keine Genres (häufig bei neueren Apps), ordnet die KI ihn aus einer festen Genre-Liste ein (im Licht-Dashboard mit „KI“ markiert).
 - **Wunsch-Zusammenfassung** (Moderation → „Zusammenfassen“): Überblick über die offenen Wünsche, größte Gruppen, was man genauer ansehen sollte, womit anfangen.
 - **Stimmungs-Warnung:** Alle 10 Minuten, solange Musik läuft, prüft die KI Wunsch-Tempo, Ablehnungen, zuletzt gespielte Songs und Warteschlange. Kippt die
   Stimmung (mittel/hoch), kommt eine Meldung **nur per ntfy** aufs Handy (Automatik → Alarm aufs Handy → „KI: Stimmung kippt“).
@@ -323,9 +323,9 @@ abschalten – die App ist deshalb so gebaut, dass sie es praktisch nie erreicht
 ## Moderation im Team
 
 - **Später:** Wunsch zurückstellen; Reiter *Später*. Gäste sehen weiter „wartet“.
-- **Tastenkürzel:** frei einstellbar pro Gerät (⌨-Knopf in Moderation und Fokus-Modus): annehmen, ablehnen, später, sperren, Gründe 1–9, Vollbild.
+- **Tastenkürzel:** frei einstellbar pro Gerät (Knopf „Tasten“ in Moderation und Fokus-Modus): annehmen, ablehnen, später, sperren, Gründe 1–9, Vollbild.
 - **Team-Chat:** Name ist Pflicht (wird pro Gerät gemerkt); in Moderation, Technik und als Board-Baustein.
-- **Mehrere Geräte:** „● n online“ und „✋ Lisa bearbeitet gerade …“ – erster Klick gewinnt weiterhin serverseitig.
+- **Mehrere Geräte:** „● n online“ und „Lisa bearbeitet gerade …“ – erster Klick gewinnt weiterhin serverseitig.
 - **Gleich dran:** Gäste sehen auf ihrem Handy „Dein Song ist als Nächstes dran!“ (mit Vibration).
 
 ## Design
@@ -341,7 +341,7 @@ Neue Funktionen: Wunsch-Voting, Live-Umfragen, Gast-Geräte sperren, Pausen-Modu
 
 ## Sicherheit
 
-* **Passkeys** (Fingerabdruck/Gesicht/Geräte-PIN) für Admin und alle Codes: 🔑 in der Kopfzeile, Verwaltung unter Admin → Sicherheit. Bei Aussperrung: Server mit `ADMIN_RECOVERY=1` starten (Passwort-Login wieder erlaubt).
+* **Passkeys** (Fingerabdruck/Gesicht/Geräte-PIN) für Admin und alle Codes: Schlüssel-Knopf in der Kopfzeile, Verwaltung unter Admin → Sicherheit. Bei Aussperrung: Server mit `ADMIN_RECOVERY=1` starten (Passwort-Login wieder erlaubt).
 * Optional: Admin-Login nur per Passkey, Admin nur von bestimmten IP-Adressen/Netzen, Sitzungs-Timeouts, Abmelden einzelner Geräte, Passwort ändern, Sicherheitsprotokoll, Flut-Alarm per ntfy.
 * Schutz vor Überlastung (Grenzen pro Adresse/Gerät, Sperre bei Dauerfeuer) und Cloudflare-Einrichtung: siehe docs/SECURITY.md.
 * `__Host-`-Cookies unter HTTPS, CSRF-Prüfung (Origin + Sec-Fetch-Site), Rate-Limits pro IP, gehashte Codes/Sitzungen.
@@ -359,19 +359,19 @@ SSO-Konten erscheinen unter Codes mit „SSO", können dort gesperrt oder gelös
 
 ## Betriebsart: Normalbetrieb oder nur Wunschliste (mit DJ)
 
-Admin → Start → **Betriebsart**. *Normalbetrieb*: die App spielt (Spotify-Player, Warteschlange, Crossfade, X32). *Nur Wunschliste*: Wünsche werden nur angenommen oder abgelehnt, ein DJ spielt selbst. Dann sind Player-Steuerung, Crossfade, Pult-Anbindung, Auto-Sortierung und Hardware-Alarme aus. Die neue Rolle **DJ** (Codes → Rolle „DJ") hat die Ansicht `/dj`: angenommene Wünsche als Arbeitsliste mit „▶ Läuft jetzt" und „✓ Gespielt" (↩ bei Versehen). Die Markierungen erscheinen bei den Gästen („Jetzt läuft"), im Beamer, in der Setlist und im Bericht. Der DJ darf auch Wünsche annehmen/ablehnen; Moderation und Technik dürfen mitmarkieren. Beim Wechsel in den Wunschlisten-Modus werden laufende Player angehalten.
+Admin → Start → **Betriebsart**. *Normalbetrieb*: die App spielt (Spotify-Player, Warteschlange, Crossfade, X32). *Nur Wunschliste*: Wünsche werden nur angenommen oder abgelehnt, ein DJ spielt selbst. Dann sind Player-Steuerung, Crossfade, Pult-Anbindung, Auto-Sortierung und Hardware-Alarme aus. Die neue Rolle **DJ** (Codes → Rolle „DJ") hat die Ansicht `/dj`: angenommene Wünsche als Arbeitsliste mit „Läuft jetzt" und „✓ Gespielt" („Zurück“ bei Versehen). Die Markierungen erscheinen bei den Gästen („Jetzt läuft"), im Beamer, in der Setlist und im Bericht. Der DJ darf auch Wünsche annehmen/ablehnen; Moderation und Technik dürfen mitmarkieren. Beim Wechsel in den Wunschlisten-Modus werden laufende Player angehalten.
 
 ## Bestehende Zugänge mit SSO verbinden
 
 SSO muss kein neues Konto anlegen:
-- **Selbst verbinden:** eingeloggt (Code oder Passwort) auf 🔑 → „Mit SSO verbinden". Danach führt die SSO-Anmeldung auf genau diesen Zugang (gleiche Rolle, gleicher Verlauf, auch ohne Gruppenzuordnung). Der Head-Admin verbindet seinen Zugang genauso. Ein SSO-Konto kann nur mit einem Zugang verbunden sein.
-- **Per E-Mail:** Admin → Codes → ✉ (E-Mail der Person eintragen) und in der SSO-Karte „Bestehende Zugänge automatisch per E-Mail verbinden" einschalten. Es zählt nur eine vom Anbieter bestätigte E-Mail.
+- **Selbst verbinden:** eingeloggt (Code oder Passwort) auf den Schlüssel-Knopf oben → „Mit SSO verbinden". Danach führt die SSO-Anmeldung auf genau diesen Zugang (gleiche Rolle, gleicher Verlauf, auch ohne Gruppenzuordnung). Der Head-Admin verbindet seinen Zugang genauso. Ein SSO-Konto kann nur mit einem Zugang verbunden sein.
+- **Per E-Mail:** Admin → Codes → „E-Mail“ (E-Mail der Person eintragen) und in der SSO-Karte „Bestehende Zugänge automatisch per E-Mail verbinden" einschalten. Es zählt nur eine vom Anbieter bestätigte E-Mail.
 - **Keine neuen Konten:** In der SSO-Karte „Neue Konten automatisch anlegen" ausschalten, dann kommen nur verbundene Zugänge per SSO hinein.
 - Der Admin kann Verbindungen unter Codes lösen („SSO lösen"). Gesperrte Zugänge bleiben auch per SSO gesperrt; für den Head-Admin gelten weiter IP-Liste und „Admin nur mit Passkey".
 
 ## Abend-Start: Start-Playlist und Freischaltung der Wünsche
 
 Admin → Automatik → **Abend-Start**.
-- **Wünsche freischalten:** Mit „Wünsche sind zu, bis sie freigeschaltet werden" bleiben die Wünsche geschlossen (Gäste sehen den Hinweistext mit Uhrzeit und Countdown). Sie öffnen zur eingestellten Uhrzeit (z. B. 18:00) automatisch oder sofort per Knopf („🔓 Wünsche jetzt freischalten" in Technik und Admin → Start). Die Moderation sieht einen Hinweis.
-- **Start-Playlist:** Eine Playlist (Link/ID), die zum Auftakt läuft: Technik → „▶ Start-Playlist starten" (oder automatisch zur Startzeit). Die App hält mindestens N Songs in der Warteschlange, solange noch kein Wunsch angenommen wurde; danach übernimmt der normale Lückenfüller. Angenommene Wünsche kommen immer **vor** die automatisch eingereihten Songs (und in Annahme-Reihenfolge).
+- **Wünsche freischalten:** Mit „Wünsche sind zu, bis sie freigeschaltet werden" bleiben die Wünsche geschlossen (Gäste sehen den Hinweistext mit Uhrzeit und Countdown). Sie öffnen zur eingestellten Uhrzeit (z. B. 18:00) automatisch oder sofort per Knopf („Wünsche jetzt freischalten" in Technik und Admin → Start). Die Moderation sieht einen Hinweis.
+- **Start-Playlist:** Eine Playlist (Link/ID), die zum Auftakt läuft: Technik → „Start-Playlist starten" (oder automatisch zur Startzeit). Die App hält mindestens N Songs in der Warteschlange, solange noch kein Wunsch angenommen wurde; danach übernimmt der normale Lückenfüller. Angenommene Wünsche kommen immer **vor** die automatisch eingereihten Songs (und in Annahme-Reihenfolge).
 - Beides ist einzeln unter Funktionen schaltbar. Im Wunschlisten-Modus (mit DJ) gilt nur die Freischaltung.

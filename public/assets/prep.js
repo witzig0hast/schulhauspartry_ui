@@ -24,7 +24,7 @@ async function run(id) {
 function renderChecks() {
   const { fail, warn } = data;
   banner.className = `ready ${fail ? 'fail' : warn ? 'warn' : 'ok'}`;
-  clear(banner).append(h('div', { style: 'font-size:2.2rem' }, fail ? '🛑' : warn ? '⚠️' : '✅'),
+  clear(banner).append(h('span', { class: `status-dot ${fail ? 'fail' : warn ? 'warn' : 'ok'}`, 'aria-hidden': 'true' }),
     h('div', {}, h('div', { class: 'big' }, fail ? `${fail} Punkt${fail > 1 ? 'e' : ''} nicht in Ordnung` : warn ? `Fast bereit – ${warn} Hinweis${warn > 1 ? 'e' : ''}` : 'Alles bereit für die Party!'),
       h('div', { class: 'small muted' }, fail ? 'Rote Punkte zuerst beheben.' : warn ? 'Gelbe Punkte prüfen – müssen aber nicht blockieren.' : 'Alle Prüfungen bestanden.')),
     h('div', { style: 'margin-left:auto' }, h('button', { onclick: () => load() }, '↻ Neu prüfen')));
@@ -50,7 +50,7 @@ const load = safe(async () => { data = await api('/prep/status'); renderChecks()
 
 const aiBox = h('div');
 app.append(top, h('div', { class: 'wrap' }, banner, aiBox, h('div', { class: 'grid main' }, groupsBox, liveBox)));
-aiStatus().then((s) => { if (s?.ready && s.features.help) aiBox.replaceWith(h('div', { class: 'card stack' }, h('h2', {}, '🩺 KI: Was ist los?'), h('p', { class: 'small muted' }, 'Wertet diese Prüfliste, Verbindungen, Fehler und den letzten Live-Test aus und nennt die nächsten Schritte.'), helpPanel())); });
+aiStatus().then((s) => { if (s?.ready && s.features.help) aiBox.replaceWith(h('div', { class: 'card stack' }, h('h2', {}, 'KI: Was ist los?'), h('p', { class: 'small muted' }, 'Wertet diese Prüfliste, Verbindungen, Fehler und den letzten Live-Test aus und nennt die nächsten Schritte.'), helpPanel())); });
 connect({ ping: true, onStatus: (ok) => top.setLive(ok), onState: (s) => { live = s; renderLive(); } });
 load();
 setInterval(load, 6000);

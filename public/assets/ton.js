@@ -65,11 +65,11 @@ function render() {
   clock.textContent = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   // Warnungen ganz oben
   const a = [];
-  if (s.panic) a.push(['bad', '⛔ NOT-AUS']);
-  if (s.emergency) a.push(['bad', '🆘 Notfall-Playlist']);
-  if (s.ended) a.push(['warn', '🏁 Ende-Modus']);
-  if (s.pauseMode) a.push(['warn', '⏸ Pause']);
-  if (s.ducking?.active) a.push(['warn', `🎤 Ducking aktiv (${Math.round((s.ducking.mul ?? 1) * 100)} %)`]);
+  if (s.panic) a.push(['bad', 'NOT-AUS']);
+  if (s.emergency) a.push(['bad', 'Notfall-Playlist']);
+  if (s.ended) a.push(['warn', 'Ende-Modus']);
+  if (s.pauseMode) a.push(['warn', 'Pause']);
+  if (s.ducking?.active) a.push(['warn', `Ducking aktiv (${Math.round((s.ducking.mul ?? 1) * 100)} %)`]);
   if (s.mode === 'wishlist') a.push(['', 'Wunschlisten-Modus: die App spielt nicht']);
   swap(alerts, JSON.stringify(a), () => h('div', { class: 'row' }, ...a.map(([c, t]) => h('span', { class: `badge big ${c}` }, t))));
   for (const p of players) p.update(s, age);
@@ -101,7 +101,7 @@ function render() {
     return h('div', { class: 'q-row' }, coverOnce(u.title, 'sm', u.trackId),
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist),
         h('div', { class: 'row small', style: 'gap:6px;margin-top:4px' },
-          u.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro – nicht zu früh hochziehen' }, `♪ Intro ${Math.round(u.introMs / 1000)} s`) : null,
+          u.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro – nicht zu früh hochziehen' }, `Intro ${Math.round(u.introMs / 1000)} s`) : null,
           u.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null,
           u.durationMs ? h('span', { class: 'muted' }, `Länge ${mmss(u.durationMs)}`) : null)),
       h('div', { style: 'text-align:right' }, h('span', { class: `badge p${u.player}` }, `P${u.player || '–'}`), h('div', { class: 'tiny muted mono' }, eta != null ? `in ${mmss(eta)}` : i === 0 ? 'als Nächstes' : `+${i}`)));
@@ -131,4 +131,4 @@ connect({
 });
 setInterval(render, 500);   // Countdowns laufen zwischen den Server-Staenden weiter
 // Fehler-Assistent fuer Technik/Admin (der Server prueft die Rolle)
-aiStatus().then((s) => { if (s?.ready && s.features.help) helpSlot.replaceWith(h('button', { class: 'small', onclick: openHelpModal }, '🩺 Was ist los?')); });
+aiStatus().then((s) => { if (s?.ready && s.features.help) helpSlot.replaceWith(h('button', { class: 'small', onclick: openHelpModal }, 'Was ist los?')); });

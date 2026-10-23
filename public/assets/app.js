@@ -61,6 +61,8 @@ const ICONS = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.5-6.9A2 2 0 0016.8 4H7.2a2 2 0 00-1.7 1.1z"/></svg>',
   note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M17 6l3 3M14 9l2 2"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   contrast: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 010 18z" fill="currentColor"/></svg>',
 };
 export function icon(name) {
@@ -150,7 +152,7 @@ export function topbar(title, { right = [], test = ENV === 'test', live = true, 
   const bar = h('div', { class: 'topbar' },
     h('div', { class: 'brand' }, brandLogo(), h('div', {}, h('div', { class: 'name' }, BRAND.name), h('div', { class: 'sub' }, title))),
     navBox, h('div', { class: 'grow' }), live ? pill : null, ...right,
-    nav && (passkeysSupported() || feat('sso')) ? h('button', { class: 'small ghost', title: 'Passkey & SSO', 'aria-label': 'Passkey', onclick: () => openPasskeys() }, '🔑') : null,
+    nav && (passkeysSupported() || feat('sso')) ? h('button', { class: 'small ghost', title: 'Passkey & SSO', 'aria-label': 'Passkey & SSO', onclick: () => openPasskeys() }, icon('key')) : null,
     nav ? h('button', { class: 'small ghost', onclick: logout }, 'Abmelden') : null, themeButton());
   const wrap = h('div', { style: 'position:sticky;top:0;z-index:10' }, test ? h('div', { class: 'testbanner' }, 'Testmodus · keine echte Party') : null, bar);
   bar.style.position = 'static';
@@ -287,7 +289,7 @@ export async function openPasskeys() {
       st.linked.length ? h('div', { class: 'item row between' }, h('div', {}, h('b', {}, 'Verbunden'), h('div', { class: 'tiny muted' }, st.linked.map((l) => l.email || l.name || 'SSO-Konto').join(', '))),
         h('button', { class: 'small bad', onclick: async () => { try { await api('/sso/link', { method: 'DELETE', body: {} }); toast('SSO getrennt'); close(); } catch (e) { toast(e.message, true); } } }, 'Trennen'))
         : h('div', { class: 'stack', style: 'gap:6px' }, h('p', { class: 'small muted' }, 'Verbinde diesen Zugang mit deinem SSO-Konto. Danach meldest du dich per SSO unter genau diesem Zugang an (gleiche Rolle, gleicher Verlauf).'),
-          h('a', { class: 'btn primary', href: `${BASE}/api/sso/link`, style: 'text-decoration:none;text-align:center' }, '🔐 Mit SSO verbinden')));
+          h('a', { class: 'btn primary', href: `${BASE}/api/sso/link`, style: 'text-decoration:none;text-align:center' }, 'Mit SSO verbinden')));
   }).catch(() => {});
   const close = modal([h('h2', {}, 'Passkey & SSO'), h('p', { class: 'small muted' }, 'Damit meldest du dich auf diesem Gerät per Fingerabdruck, Gesicht oder Geräte-PIN an – ohne Code.'), list,
     h('label', { class: 'field' }, 'Name des Geräts', label),

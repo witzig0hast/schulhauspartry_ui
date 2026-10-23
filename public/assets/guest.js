@@ -49,7 +49,7 @@ function renderSoon() {
   const key = mineNext ? `${mineNext.id}:${mineNext.position}` : '';
   soonBox.classList.toggle('hidden', !mineNext);
   if (!mineNext) { lastSoon = ''; return; }
-  clear(soonBox).append(h('div', { class: 'soon' }, h('span', { class: 'big-ic' }, '🎶'), h('div', {}, h('b', {}, mineNext.position === 0 ? 'Dein Song ist als Nächstes dran!' : 'Gleich dran – noch ein Song davor'), h('div', { class: 'small', style: 'opacity:.8' }, `${mineNext.title} – ${mineNext.artist}`))));
+  clear(soonBox).append(h('div', { class: 'soon' }, h('span', { class: 'big-ic' }, icon('note')), h('div', {}, h('b', {}, mineNext.position === 0 ? 'Dein Song ist als Nächstes dran!' : 'Gleich dran – noch ein Song davor'), h('div', { class: 'small', style: 'opacity:.8' }, `${mineNext.title} – ${mineNext.artist}`))));
   if (key !== lastSoon) { lastSoon = key; try { navigator.vibrate?.([120, 80, 120]); } catch { /* egal */ } }
 }
 
@@ -89,7 +89,7 @@ function render() {
   renderPoll();
   renderVoting();
   pauseEl.classList.toggle('hidden', !state.pause);
-  if (state.pause) clear(pauseEl).append(h('div', { class: 'big-ic' }, '⏸'), h('b', {}, state.pause));
+  if (state.pause) clear(pauseEl).append(h('div', { class: 'big-ic' }, icon('pause')), h('b', {}, state.pause));
   // Konfetti, wenn der eigene Wunsch gerade spielt
   const playing = state.requests.find((r) => r.status === 'playing');
   const pk = playing ? `${playing.id}` : '';

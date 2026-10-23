@@ -5,7 +5,7 @@ let statusP = null;
 export const aiStatus = () => (statusP ||= api('/ai/status').catch(() => null));
 
 const busy = (box, text) => clear(box).append(h('div', { class: 'ai-busy' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), text));
-const fail = (box, e) => clear(box).append(h('div', { class: 'banner-pause' }, `⚠ ${e.message}`));
+const fail = (box, e) => clear(box).append(h('div', { class: 'banner-pause' }, `${e.message}`));
 
 // ---- 3: Energie-Kurve ----
 async function energy(box) {
@@ -47,7 +47,7 @@ async function filler(box) {
 export function helpResult(r) {
   const cls = { ok: 'ok', warn: 'warn', fail: 'fail' }[r.level] || 'warn';
   return h('div', { class: 'stack' },
-    h('div', { class: `ready ${cls}`, style: 'padding:14px 18px' }, h('div', { style: 'font-size:1.6rem' }, r.level === 'ok' ? '✅' : r.level === 'fail' ? '🛑' : '⚠️'), h('div', { style: 'font-weight:650' }, r.summary)),
+    h('div', { class: `ready ${cls}`, style: 'padding:14px 18px' }, h('span', { class: `status-dot ${r.level === 'ok' ? 'ok' : r.level === 'fail' ? 'fail' : 'warn'}`, 'aria-hidden': 'true' }), h('div', { style: 'font-weight:650' }, r.summary)),
     r.answer ? h('p', {}, r.answer) : null,
     ...r.problems.map((p) => h('div', { class: 'card stack', style: 'padding:14px 16px' },
       h('div', { class: 'row between' }, h('b', {}, p.title), h('span', { class: `badge ${p.severity === 'hoch' ? 'bad' : p.severity === 'mittel' ? 'warn' : ''}` }, p.severity)),
@@ -63,10 +63,10 @@ export function helpPanel() {
     try { clear(out).append(helpResult(await api('/ai/help', { method: 'POST', body: { question: q.value } }))); } catch (e) { fail(out, e); }
   };
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') ask(); });
-  return h('div', { class: 'stack' }, h('div', { class: 'row nowrap' }, q, h('button', { class: 'primary', onclick: ask }, '🩺 Was ist los?')), out);
+  return h('div', { class: 'stack' }, h('div', { class: 'row nowrap' }, q, h('button', { class: 'primary', onclick: ask }, 'Was ist los?')), out);
 }
 export function openHelpModal() {
-  const close = modal([h('h2', {}, '🩺 Was ist los?'), h('p', { class: 'small muted' }, 'Die KI wertet Verbindungen, Fehlerliste, Prüfliste und den letzten Live-Test aus und nennt die nächsten Schritte.'), helpPanel(), h('button', { onclick: () => close() }, 'Schließen')], { wide: true });
+  const close = modal([h('h2', {}, 'Was ist los?'), h('p', { class: 'small muted' }, 'Die KI wertet Verbindungen, Fehlerliste, Prüfliste und den letzten Live-Test aus und nennt die nächsten Schritte.'), helpPanel(), h('button', { onclick: () => close() }, 'Schließen')], { wide: true });
 }
 
 // Karte fuer die Technik
@@ -77,11 +77,11 @@ export async function aiCard() {
   if (!f.energy && !f.filler && !f.help) return null;
   const out = h('div');
   return h('section', { class: 'card stack' },
-    h('div', { class: 'row between' }, h('h2', {}, '🤖 KI-Assistent'), h('span', { class: 'tiny muted' }, st.model)),
+    h('div', { class: 'row between' }, h('h2', {}, 'KI-Assistent'), h('span', { class: 'tiny muted' }, st.model)),
     h('div', { class: 'row' },
-      f.energy ? h('button', { onclick: () => energy(out) }, '📈 Reihenfolge vorschlagen') : null,
-      f.filler ? h('button', { onclick: () => filler(out) }, '➕ Songs vorschlagen') : null,
-      f.help ? h('button', { onclick: () => clear(out).append(helpPanel()) }, '🩺 Was ist los?') : null),
+      f.energy ? h('button', { onclick: () => energy(out) }, 'Reihenfolge vorschlagen') : null,
+      f.filler ? h('button', { onclick: () => filler(out) }, 'Songs vorschlagen') : null,
+      f.help ? h('button', { onclick: () => clear(out).append(helpPanel()) }, 'Was ist los?') : null),
     out);
 }
 
@@ -99,10 +99,10 @@ export async function summaryBox() {
         r.groups.length ? h('div', { class: 'row', style: 'gap:6px' }, ...r.groups.map((g) => h('span', { class: 'badge' }, `${g.name} · ${g.count}`))) : null,
         r.flagged.length ? h('div', { class: 'stack', style: 'gap:2px' }, h('div', { class: 'eyebrow' }, 'Bitte genauer ansehen'),
           ...r.flagged.map((f) => h('div', { class: 'q-row' }, cover(f.title, 'sm', f.trackId), h('div', { class: 'grow' }, h('div', { class: 't' }, f.title), h('div', { class: 'a' }, f.artist)), h('span', { class: 'badge warn' }, f.reason)))) : null,
-        r.advice ? h('div', { class: 'small' }, `👉 ${r.advice}`) : null,
+        r.advice ? h('div', { class: 'small' }, `Tipp: ${r.advice}`) : null,
         h('div', { class: 'tiny muted' }, 'Nur ein Überblick der KI – entscheiden tust du.')));
     } catch (e) { fail(out, e); }
   };
   return h('div', { class: 'card stack', style: 'padding:12px 14px;margin-bottom:10px' },
-    h('div', { class: 'row between' }, h('b', {}, '🤖 Überblick über die offenen Wünsche'), h('button', { class: 'small', onclick: run }, 'Zusammenfassen')), out);
+    h('div', { class: 'row between' }, h('b', {}, 'Überblick über die offenen Wünsche'), h('button', { class: 'small', onclick: run }, 'Zusammenfassen')), out);
 }

@@ -1,4 +1,4 @@
-import { h, api, connect, clear, eq, qrElement, BASE, BRAND, $, feat, coverOnce } from '/assets/app.js';
+import { h, api, connect, clear, eq, qrElement, BASE, BRAND, $, feat, coverOnce, icon } from '/assets/app.js';
 import { stagger, flash } from '/assets/motion.js';
 
 // Beamer-/Bildschirmansicht fuer die Gaeste: Jetzt laeuft + QR-Code. Oeffentlich, zeigt nichts Internes.
@@ -17,7 +17,7 @@ qrElement(url, { size: 300, cls: 'qr' }).then((el) => { clear(qrBox).append(el, 
 
 function renderExtra() {
   const parts = [];
-  if (pub?.pause) parts.push(h('div', { class: 'bm-pause' }, h('div', { class: 'bm-pause-ic' }, '⏸'), h('div', { class: 'bm-msgtext' }, pub.pause)));
+  if (pub?.pause) parts.push(h('div', { class: 'bm-pause' }, h('div', { class: 'bm-pause-ic' }, icon('pause')), h('div', { class: 'bm-msgtext' }, pub.pause)));
   const p = pub?.poll;
   if (p) parts.push(h('div', { class: 'bm-poll' }, h('div', { class: 'eyebrow' }, p.status === 'open' ? 'Abstimmen am Handy' : 'Ergebnis'), h('div', { class: 'bm-msgtext' }, p.question),
     ...p.options.map((o, i) => { const pct = p.total ? Math.round(100 * p.counts[i] / p.total) : 0; return h('div', { class: 'bm-bar' }, h('i', { style: `width:${pct}%` }), h('span', {}, o), h('b', {}, `${pct} %`)); })));

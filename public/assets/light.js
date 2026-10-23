@@ -16,7 +16,7 @@ const hhmmss = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
 const chips = (genres, families, ai = false) => h('div', { class: 'lt-chips' },
   ...(families || []).map((f) => h('span', { class: `lt-fam ${f === 'Unbekannt' ? 'unk' : ''}` }, f)),
-  ...((genres || []).slice(0, 4).map((g) => h('span', { class: 'lt-gen' }, g))), ai ? h('span', { class: 'lt-gen', title: 'Genres von der KI ergänzt (Spotify lieferte keine)' }, '🤖 KI') : null);
+  ...((genres || []).slice(0, 4).map((g) => h('span', { class: 'lt-gen' }, g))), ai ? h('span', { class: 'lt-gen', title: 'Genres von der KI ergänzt (Spotify lieferte keine)' }, 'KI') : null);
 
 // KI-Lichtvorschlag (Farben, Tempo, Intensitaet, Strobo) – kompakt fuer die Warteschlange, ausfuehrlich fuer den laufenden Song
 const cueLine = (c, big = false) => (!c ? null : h('div', { class: 'stack', style: 'gap:2px' },
@@ -24,10 +24,10 @@ const cueLine = (c, big = false) => (!c ? null : h('div', { class: 'stack', styl
     ...c.colors.map((x) => h('span', { class: 'lt-sw', title: x.name, style: `background:${x.hex}` })),
     h('span', { class: 'badge' }, `${c.tempo}${c.bpm ? ` · ~${c.bpm} BPM` : ''}`),
     h('span', { class: 'lt-int', title: `Intensität ${c.intensity}/10` }, ...Array.from({ length: 10 }, (_, i) => h('i', { class: i < c.intensity ? 'on' : '' }))),
-    c.strobe ? h('span', { class: 'badge warn' }, '⚡ Strobo') : null,
+    c.strobe ? h('span', { class: 'badge warn' }, 'Strobo') : null,
     big && c.mood ? h('span', { class: 'muted' }, `„${c.mood}“`) : null,
     ...(big ? c.effects.map((e) => h('span', { class: 'lt-gen' }, e)) : [])),
-  big && c.hint ? h('div', { class: 'lt-hint' }, `💡 ${c.hint}${c.known ? '' : ' (geschätzt)'}`) : null));
+  big && c.hint ? h('div', { class: 'lt-hint' }, `${c.hint}${c.known ? '' : ' (geschätzt)'}`) : null));
 
 // Details zum laufenden Song: passender Eintrag aus den zuletzt gespielten (Titel + Interpret)
 const cur0 = (st) => {
@@ -66,13 +66,13 @@ function render() {
       cueLine(meta?.light, true),
       h('div', { class: 'lt-facts' }, meta?.year ? h('span', {}, `${meta.year}`) : null, h('span', {}, `Länge ${mmss(cur.p.durationMs)}`), h('span', {}, `noch ${mmss(left)}`), meta?.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null),
       h('div', { class: 'bar lt-bar' }, h('i', { style: `width:${Math.round(100 * (cur.p.durationMs ? 1 - left / cur.p.durationMs : 0))}%` })))),
-    countdown) : h('div', { class: 'lt-hero idle' }, h('div', { class: 'lt-title' }, state.pauseMode ? '⏸ Pause' : 'Gerade läuft nichts'), h('div', { class: 'lt-artist' }, next ? `Als Nächstes: ${next.title}` : 'Warteschlange leer')));
+    countdown) : h('div', { class: 'lt-hero idle' }, h('div', { class: 'lt-title' }, state.pauseMode ? 'Pause' : 'Gerade läuft nichts'), h('div', { class: 'lt-artist' }, next ? `Als Nächstes: ${next.title}` : 'Warteschlange leer')));
 
   // --- naechste Songs ---
   const micOpen = (state.mics || []).filter((m) => m.open);
   const prevFam = (i) => (i === 0 ? (meta?.families || [])[0] : queue[i - 1].families?.[0]);
   clear(nextBox).append(
-    h('div', { class: 'row between' }, h('div', { class: 'eyebrow' }, `Als Nächstes · ${state.upcomingTotal}`), micOpen.length ? h('span', { class: 'badge warn' }, `🎤 ${micOpen.map((m) => m.name).join(', ')} offen`) : null),
+    h('div', { class: 'row between' }, h('div', { class: 'eyebrow' }, `Als Nächstes · ${state.upcomingTotal}`), micOpen.length ? h('span', { class: 'badge warn' }, `${micOpen.map((m) => m.name).join(', ')} offen`) : null),
     ...(queue.length ? queue.slice(0, 6).map((u, i) => {
       const fam = u.families?.[0], was = prevFam(i);
       const change = fam && was && fam !== was && fam !== 'Unbekannt' && was !== 'Unbekannt';
@@ -83,8 +83,8 @@ function render() {
         h('div', { class: 'grow' },
           h('div', { class: 'lt-t' }, u.title), h('div', { class: 'lt-a' }, u.artist), chips(u.genres, u.families, u.genresAi), cueLine(u.light),
           h('div', { class: 'lt-facts' }, u.year ? h('span', {}, `${u.year}`) : null, u.durationMs ? h('span', {}, `Länge ${mmss(u.durationMs)}`) : null,
-            u.introMs > 15000 ? h('span', { class: 'badge', title: 'Langes ruhiges Intro' }, `♪ Intro ${Math.round(u.introMs / 1000)} s`) : null,
-            u.prioritized ? h('span', { class: 'badge bad' }, '★ Prio') : null, u.auto ? h('span', { class: 'badge' }, 'Auto') : h('span', { class: 'badge ok' }, `Wunsch${u.votes > 1 ? ` · ${u.votes}×` : ''}`),
+            u.introMs > 15000 ? h('span', { class: 'badge', title: 'Langes ruhiges Intro' }, `Intro ${Math.round(u.introMs / 1000)} s`) : null,
+            u.prioritized ? h('span', { class: 'badge bad' }, 'Prio') : null, u.auto ? h('span', { class: 'badge' }, 'Auto') : h('span', { class: 'badge ok' }, `Wunsch${u.votes > 1 ? ` · ${u.votes}×` : ''}`),
             u.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null, change ? h('span', { class: 'badge ink' }, `↻ Genrewechsel: ${was} → ${fam}`) : null)),
         h('span', { class: `badge p${u.player}` }, `P${u.player}`));
     }) : [h('div', { class: 'muted', style: 'padding:18px 0' }, 'Warteschlange leer – es kommen noch Songs.')]));

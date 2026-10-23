@@ -106,11 +106,11 @@ function drawControls() {
     h('div', { class: 'row' }, search,
       seg([['', 'Alle'], ['live', 'Live'], ['test', 'Test'], ['system', 'System']], f.env, (v) => { f.env = v; reload(); }),
       seg([['debug', 'Alles'], ['info', 'Info+'], ['warn', 'Warnungen+'], ['error', 'Fehler']], f.level, (v) => { f.level = v; reload(); }),
-      seg([['human', '👤 Mensch'], ['machine', '{ } Maschine']], f.view, (v) => { f.view = v; savePref(); drawControls(); draw(); }),
+      seg([['human', 'Mensch'], ['machine', '{ } Maschine']], f.view, (v) => { f.view = v; savePref(); drawControls(); draw(); }),
       h('div', { class: 'grow' }),
-      h('button', { class: paused ? 'primary' : '', onclick: () => { paused = !paused; if (!paused) flushHeld(); drawControls(); } }, paused ? '▶ Weiter live' : '⏸ Anhalten'),
+      h('button', { class: paused ? 'primary' : '', onclick: () => { paused = !paused; if (!paused) flushHeld(); drawControls(); } }, paused ? 'Weiter live' : 'Anhalten'),
       newBtn,
-      h('a', { class: 'btn small', href: `${BASE}/api/logs/export?${new URLSearchParams({ level: f.level, ...(f.env ? { env: f.env } : {}), ...(f.cats.size ? { cats: [...f.cats].join(',') } : {}), ...(f.q ? { q: f.q } : {}) })}` }, '⬇ Export (JSONL)')),
+      h('a', { class: 'btn small', href: `${BASE}/api/logs/export?${new URLSearchParams({ level: f.level, ...(f.env ? { env: f.env } : {}), ...(f.cats.size ? { cats: [...f.cats].join(',') } : {}), ...(f.q ? { q: f.q } : {}) })}` }, 'Export (JSONL)')),
     h('div', { class: 'row', style: 'gap:6px' }, h('span', { class: 'small muted' }, 'Bereiche:'),
       ...Object.entries(cats).map(([id, label]) => {
         const c = counts[id];
@@ -128,7 +128,7 @@ async function drawSettings() {
   const s = (await api('/admin/settings')).settings.logs;
   const days = h('input', { type: 'number', class: 'num', min: 1, max: 365, value: s.keepDays });
   const dbg = h('input', { type: 'checkbox', checked: s.debug });
-  clear(settingsBox).append(h('details', { class: 'card more' }, h('summary', {}, '⚙ Protokoll-Einstellungen'),
+  clear(settingsBox).append(h('details', { class: 'card more' }, h('summary', {}, 'Protokoll-Einstellungen'),
     h('div', { class: 'stack', style: 'margin-top:10px' },
       h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Einträge aufheben'), days, h('span', { class: 'small muted' }, 'Tage')),
       h('label', { class: 'check' }, dbg, 'Debug-Einträge erzeugen (jede Spotify-Anfrage, Mic schließt, Ducking vorbei – nur im Speicher, nur zur Fehlersuche)'),

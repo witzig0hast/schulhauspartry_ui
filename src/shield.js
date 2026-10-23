@@ -57,7 +57,7 @@ function strike(ip, reason) {
       bans.set(ip, { until: Date.now() + cfg().banMin * 60000, reason, since: Date.now() });
       if (ip.startsWith('198.18.')) return;   // Generalprobe: keine Meldungen fuer Mess-Adressen
       audit('shield.ban', null, ip, `${reason}, ${cfg().banMin} Min.`);
-      sendNotify({ title: '🛡️ Absender gesperrt', message: `${ip} wurde wegen Dauerfeuer (${reason}) für ${cfg().banMin} Minuten gesperrt.`, priority: 3, tags: ['shield'], key: `ban:${ip}` }).catch(() => {});
+      sendNotify({ title: 'Absender gesperrt', message: `${ip} wurde wegen Dauerfeuer (${reason}) für ${cfg().banMin} Minuten gesperrt.`, priority: 3, tags: ['shield'], key: `ban:${ip}` }).catch(() => {});
     }
   }
 }

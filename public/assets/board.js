@@ -151,19 +151,19 @@ const WIDGETS = {
     title: 'Not-Aus', desc: 'Zweimal drücken: stoppt beide Player sofort', roles: ['admin', 'tech'],
     make() {
       let nonce = null, timer = null;
-      const reset = () => { clearTimeout(timer); nonce = null; btn.textContent = '⛔  NOT-AUS'; btn.classList.remove('panic-armed'); };
+      const reset = () => { clearTimeout(timer); nonce = null; btn.textContent = 'NOT-AUS'; btn.classList.remove('panic-armed'); };
       const btn = h('button', { class: 'bad', style: 'height:56px;font-size:1.05rem', onclick: async () => {
         if (!nonce) {
           const out = await api('/control/panic-arm', { method: 'POST', body: {} }).catch((e) => toast(e.message, true));
           if (!out) return;
-          nonce = out.nonce; btn.textContent = '⛔  NOCHMAL DRÜCKEN!'; btn.classList.add('panic-armed'); timer = setTimeout(reset, 4500); return;
+          nonce = out.nonce; btn.textContent = 'NOCHMAL DRÜCKEN!'; btn.classList.add('panic-armed'); timer = setTimeout(reset, 4500); return;
         }
         const n = nonce; reset(); await post('/control/panic', { nonce: n });
-      } }, '⛔  NOT-AUS');
+      } }, 'NOT-AUS');
       const clearBtn = h('button', { class: 'hidden', onclick: () => post('/control/panic-clear') }, 'Not-Aus aufheben');
-      const emBtn = h('button', { class: 'outline-bad', onclick: async () => { if (state.emergency) return post('/control/emergency-clear'); if (confirm('Notfall-Playlist starten? Alles andere wird gestoppt.')) await post('/control/emergency'); } }, '🆘 Notfall-Playlist');
-      const endBtn = h('button', { onclick: async () => { if (state.ended) return post('/control/end-clear'); if (confirm('Ende-Modus starten? Musik wird ausgeblendet, Wünsche werden geschlossen.')) await post('/control/end', { sec: 10 }); } }, '🏁 Ende-Modus');
-      return { el: h('div', { class: 'stack' }, btn, clearBtn, emBtn, endBtn), update(s) { emBtn.textContent = s.emergency ? '↩ Notfall beenden' : '🆘 Notfall-Playlist'; clearBtn.classList.toggle('hidden', !s.panic); endBtn.textContent = s.ended ? '↩ Ende-Modus aufheben' : '🏁 Ende-Modus'; } };
+      const emBtn = h('button', { class: 'outline-bad', onclick: async () => { if (state.emergency) return post('/control/emergency-clear'); if (confirm('Notfall-Playlist starten? Alles andere wird gestoppt.')) await post('/control/emergency'); } }, 'Notfall-Playlist');
+      const endBtn = h('button', { onclick: async () => { if (state.ended) return post('/control/end-clear'); if (confirm('Ende-Modus starten? Musik wird ausgeblendet, Wünsche werden geschlossen.')) await post('/control/end', { sec: 10 }); } }, 'Ende-Modus');
+      return { el: h('div', { class: 'stack' }, btn, clearBtn, emBtn, endBtn), update(s) { emBtn.textContent = s.emergency ? 'Notfall beenden' : 'Notfall-Playlist'; clearBtn.classList.toggle('hidden', !s.panic); endBtn.textContent = s.ended ? 'Ende-Modus aufheben' : 'Ende-Modus'; } };
     },
   },
   status: {
@@ -292,7 +292,7 @@ function renderEdit() {
 
 function renderToolbar() {
   clear(toolbar).append(h('div', {}, h('h2', { style: 'font-size:1.2rem' }, 'Mein Board'), h('div', { class: 'small muted' }, 'Stell dir deine eigene Ansicht zusammen.')),
-    h('div', { class: 'row' }, h('button', { class: editing ? 'primary' : '', onclick: () => { editing = !editing; renderToolbar(); renderEdit(); renderLayout(); } }, editing ? '✓ Fertig' : '✎ Bearbeiten')));
+    h('div', { class: 'row' }, h('button', { class: editing ? 'primary' : '', onclick: () => { editing = !editing; renderToolbar(); renderEdit(); renderLayout(); } }, editing ? '✓ Fertig' : 'Bearbeiten')));
 }
 
 const top = topbar('Board', { nav: true });

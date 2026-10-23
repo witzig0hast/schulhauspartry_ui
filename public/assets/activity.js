@@ -3,13 +3,13 @@ import { stagger } from '/assets/motion.js';
 
 const app = $('#app');
 const list = h('div', { class: 'tl' });
-const ICON = { wish: '✉️', approve: '✅', deny: '❌', play: '🎵', sys: '⚙️' };
+const ICON = { wish: 'Wunsch', approve: 'Angenommen', deny: 'Abgelehnt', play: 'Läuft', sys: 'System' };
 let key = '';
 async function load() {
   const { events } = await api('/activity');
   const k = events.map((e) => `${e.ts}${e.kind}`).join(',');
   if (k === key) return; const first = !key; key = k;
-  clear(list).append(...events.map((e) => h('div', { class: `tl-row act-${e.kind}` }, h('span', { class: 'tiny muted mono' }, fmtClock(e.ts)), h('span', {}, ICON[e.kind] || '•'), h('div', { class: 'grow' }, e.text))));
+  clear(list).append(...events.map((e) => h('div', { class: `tl-row act-${e.kind}` }, h('span', { class: 'tiny muted mono' }, fmtClock(e.ts)), h('span', { class: 'badge' }, ICON[e.kind] || 'Info'), h('div', { class: 'grow' }, e.text))));
   if (first) stagger(list, 15);
 }
 const bar = topbar('Verlauf', { nav: true });

@@ -29,7 +29,7 @@ export function noteWish(env, now = Date.now()) {
   list.push(now);
   while (list.length && list[0] < now - 60000) list.shift();
   if (isOn('floodAlarm') && list.length >= settings().security.floodPerMin && settings().notify.events.flood !== false) {
-    sendNotify({ title: '🌊 Ungewöhnlich viele Wünsche', message: `${list.length} Wünsche in der letzten Minute – evtl. Missbrauch. Moderation → Gerät sperren.`, priority: 4, tags: ['ocean'], key: `flood:${env}`, env }).catch(() => {});
+    sendNotify({ title: 'Ungewöhnlich viele Wünsche', message: `${list.length} Wünsche in der letzten Minute – evtl. Missbrauch. Moderation → Gerät sperren.`, priority: 4, tags: ['ocean'], key: `flood:${env}`, env }).catch(() => {});
   }
   return list.length;
 }

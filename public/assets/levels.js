@@ -57,7 +57,7 @@ export async function openLevels({ base = BASE, later = false, intro } = {}) {
   const testBtn = (n) => h('button', { class: 'small', onclick: async () => {
     try { const t = await api('/control/level-test', { method: 'POST', body: { player: n }, base }); testInfo.textContent = `Player ${n} spielt: ${t.title} – ${t.artist}`; }
     catch (e) { toast(e.message, true); }
-  } }, `▶ Testmusik Player ${n}`);
+  } }, `Testmusik Player ${n}`);
   const stopBtn = h('button', { class: 'small', onclick: async () => { await api('/control/level-test', { method: 'POST', body: { stop: true }, base }).catch(() => {}); testInfo.textContent = ''; } }, '■ Stopp');
 
   // --- Player-Fader am X32 ---
@@ -102,7 +102,7 @@ export async function openLevels({ base = BASE, later = false, intro } = {}) {
       resolve(how);
     };
     const close = modal([
-      h('h2', {}, '🎚 Pegel einrichten'),
+      h('h2', {}, 'Pegel einrichten'),
       h('p', { class: 'small muted' }, intro || 'Stell zuerst Fader und Lautstärken ein. Jede Änderung geht sofort ans Pult und an Spotify – starte Testmusik und hör direkt, wie es klingt.'),
       st.mode === 'wishlist' ? h('p', { class: 'small', style: 'color:var(--warn)' }, 'Wunschlisten-Modus: Die App spielt keine Musik, Testmusik ist aus.') : null,
       h('div', { class: 'row', style: 'flex-wrap:wrap' }, testBtn(1), testBtn(2), stopBtn, testInfo),
@@ -128,7 +128,7 @@ export async function openLevels({ base = BASE, later = false, intro } = {}) {
       for (const n of [1, 2]) { meters[n].set(st.players?.[n]?.meter); levelNow[n].textContent = st.players?.[n]?.playing ? `spielt · Pegel ${Math.round((st.players[n].level || 0) * 100)} %` : ''; }
       (st.mics || []).forEach((m, i) => { micMeters[i]?.set(m.level); if (micBadges[i]) { micBadges[i].textContent = m.open ? 'offen' : 'stumm'; micBadges[i].className = `badge ${m.open ? 'ok' : ''}`; } });
       const err = (st.errors || []).find((e) => e.ts >= openedAt && /lautstaerke|mic-fader|x32/.test(e.msg));
-      errBox.textContent = err ? `⚠ ${err.msg.replace(/^[\w-]+: /, '')}` : '';
+      errBox.textContent = err ? `${err.msg.replace(/^[\w-]+: /, '')}` : '';
       if (!st.levelTest && testInfo.textContent) testInfo.textContent = '';
     }, 500);
   });

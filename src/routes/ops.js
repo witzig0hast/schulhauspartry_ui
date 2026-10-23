@@ -85,7 +85,7 @@ export function opsRouter(env, engine, hub, { engines }) {
       return res.json({ ok: true, info: 'Beide Fader fahren kurz auf ca. 35 % und zurück – schau am X32.' });
     }
     if (id === 'notify-test') {
-      const out = await sendNotify({ title: '🔔 Test', message: 'So sieht ein Alarm der Party-App aus.', priority: 3, tags: ['bell'], force: true, env });
+      const out = await sendNotify({ title: 'Test', message: 'So sieht ein Alarm der Party-App aus.', priority: 3, tags: ['bell'], force: true, env });
       if (!out.sent) throw new Error(`Nicht gesendet: ${out.reason}`);
       return res.json({ ok: true, info: 'Test gesendet – ist die Nachricht auf deinem Handy?' });
     }
@@ -112,7 +112,7 @@ export function opsRouter(env, engine, hub, { engines }) {
 
   // ----- Benachrichtigung testen -----
   r.post('/admin/notify/test', adm, json, wrap(async (req, res) => {
-    const out = await sendNotify({ title: '🔔 Test', message: 'Die Benachrichtigung funktioniert.', priority: 3, tags: ['bell'], force: true, env });
+    const out = await sendNotify({ title: 'Test', message: 'Die Benachrichtigung funktioniert.', priority: 3, tags: ['bell'], force: true, env });
     if (!out.sent) throw new Error(out.reason);
     res.json({ ok: true });
   }));

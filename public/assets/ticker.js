@@ -17,7 +17,7 @@ function stateOf(r) {
   if (r.status === 'pending') return { cls: 'pending', badge: h('span', { class: 'badge warn' }, '● Neu – wartet auf Entscheidung'), sub: '' };
   if (r.status === 'denied') return { cls: 'denied', badge: h('span', { class: 'badge bad' }, '✕ Abgelehnt'), sub: r.reason || '' };
   const where = r.player ? `Player ${r.player}` : '';
-  return { cls: 'approved', badge: h('span', { class: 'badge ok' }, `✓ Angenommen${r.prioritized ? ' · ★ priorisiert' : ''}`), sub: r.status === 'playing' ? 'läuft jetzt' : r.status === 'played' ? 'gespielt' : where };
+  return { cls: 'approved', badge: h('span', { class: 'badge ok' }, `✓ Angenommen${r.prioritized ? ' · priorisiert' : ''}`), sub: r.status === 'playing' ? 'läuft jetzt' : r.status === 'played' ? 'gespielt' : where };
 }
 
 const els = new Map(); // id -> {el, badgeBox}

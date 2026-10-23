@@ -15,9 +15,9 @@ const submit = safe(async () => {
 const pk = passkeysSupported() ? h('button', { type: 'button', class: 'passkey-btn', onclick: async () => {
   err.textContent = '';
   try { go(await passkeyLogin()); } catch (e) { err.textContent = e.name === 'NotAllowedError' ? 'Abgebrochen.' : e.message; }
-} }, h('span', { 'aria-hidden': 'true' }, '🔑'), ' Mit Passkey anmelden') : null;
+} }, 'Mit Passkey anmelden') : null;
 // Single Sign-On (nur wenn der Admin es eingerichtet hat)
-const SSO_ERR = { denied: 'Die Anmeldung wurde abgebrochen.', failed: 'Die SSO-Anmeldung ist fehlgeschlagen. Bitte noch einmal versuchen.', expired: 'Die Anmeldung ist abgelaufen. Bitte noch einmal starten.', norole: 'Dein Konto hat hier keinen Zugang (keine passende Gruppe). Wende dich an den Admin.', locked: 'Dieses Konto wurde gesperrt.', nolink: 'Zu diesem SSO-Konto gibt es keinen verbundenen Zugang. Melde dich einmal mit deinem Code an und verbinde ihn über das 🔑-Symbol mit SSO.', passkeyonly: 'Der Admin-Login ist nur mit Passkey erlaubt.', taken: 'Dieses SSO-Konto ist schon mit einem anderen Zugang verbunden.', adminip: 'Admin-Anmeldung ist von dieser Adresse aus nicht erlaubt.', config: 'SSO ist nicht richtig eingerichtet.' };
+const SSO_ERR = { denied: 'Die Anmeldung wurde abgebrochen.', failed: 'Die SSO-Anmeldung ist fehlgeschlagen. Bitte noch einmal versuchen.', expired: 'Die Anmeldung ist abgelaufen. Bitte noch einmal starten.', norole: 'Dein Konto hat hier keinen Zugang (keine passende Gruppe). Wende dich an den Admin.', locked: 'Dieses Konto wurde gesperrt.', nolink: 'Zu diesem SSO-Konto gibt es keinen verbundenen Zugang. Melde dich einmal mit deinem Code an und verbinde ihn über den Schlüssel-Knopf oben mit SSO.', passkeyonly: 'Der Admin-Login ist nur mit Passkey erlaubt.', taken: 'Dieses SSO-Konto ist schon mit einem anderen Zugang verbunden.', adminip: 'Admin-Anmeldung ist von dieser Adresse aus nicht erlaubt.', config: 'SSO ist nicht richtig eingerichtet.' };
 const urlErr = new URLSearchParams(location.search).get('error');
 if (urlErr && SSO_ERR[urlErr]) err.textContent = SSO_ERR[urlErr];
 const ssoBox = h('div', { class: 'stack hidden', style: 'gap:18px' });
@@ -26,7 +26,7 @@ api('/sso/config').then((c) => {
   const next = new URLSearchParams(location.search).get('next');
   const q = next && next.startsWith(BASE + '/') && !next.startsWith('//') ? `?next=${encodeURIComponent(next.slice(BASE.length))}` : '';
   ssoBox.classList.remove('hidden');
-  ssoBox.append(h('a', { class: 'btn passkey-btn', href: `${BASE}/api/sso/login${q}`, style: 'display:flex;align-items:center;justify-content:center;text-decoration:none' }, '🔐 ', c.label || 'Mit SSO anmelden'), h('div', { class: 'or' }, 'oder mit Code'));
+  ssoBox.append(h('a', { class: 'btn passkey-btn', href: `${BASE}/api/sso/login${q}`, style: 'display:flex;align-items:center;justify-content:center;text-decoration:none' }, c.label || 'Mit SSO anmelden'), h('div', { class: 'or' }, 'oder mit Code'));
 }).catch(() => {});
 
 app.append(

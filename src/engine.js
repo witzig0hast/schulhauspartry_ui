@@ -99,13 +99,21 @@ export class Engine extends EventEmitter {
     this.syncLevels();
   }
 
+  // Jemand hat einen Fader der App von Hand bewegt: die Hand hat kurz Vorrang, danach faehrt der Fader sanft zurueck
+  logManual(list = []) {
+    const prev = this.manualSeen || [];
+    this.manualSeen = list;
+    const fresh = list.filter((c) => !prev.includes(c));
+    if (fresh.length) L.info('pult', 'fader.manual', `Fader von Hand bewegt (Kanal ${fresh.join(', ')}) – die App wartet 3 s und fährt dann sanft auf ihren Wert zurück. Dauerhaft ändern: Pegel-Fenster.`, { env: this.env, data: { channels: fresh } });
+  }
+
   // Mikrofone: oeffnen als Eintrag, schliessen nur im Debug (sonst flattert das Protokoll beim Sprechen)
   logMics(mics = []) {
     const prev = this.micOpen || {};
     this.micOpen = {};
     for (const m of mics) {
       this.micOpen[m.id] = m.open;
-      if (prev[m.id] !== undefined && prev[m.id] !== m.open) L.log(m.open ? 'info' : 'debug', 'pult', m.open ? 'mic.open' : 'mic.closed', `🎤 ${m.name} ${m.open ? 'offen' : 'wieder stumm'}`, { env: this.env, data: { mic: m.id, name: m.name, level: Math.round((m.level || 0) * 100) / 100 } });
+      if (prev[m.id] !== undefined && prev[m.id] !== m.open) L.log(m.open ? 'info' : 'debug', 'pult', m.open ? 'mic.open' : 'mic.closed', `${m.name} ${m.open ? 'offen' : 'wieder stumm'}`, { env: this.env, data: { mic: m.id, name: m.name, level: Math.round((m.level || 0) * 100) / 100 } });
     }
   }
 
@@ -181,7 +189,7 @@ export class Engine extends EventEmitter {
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;
       const playing = { 1: this.players[1].status().playing, 2: this.players[2].status().playing };
-      this.x32.readState(playing).then((s) => { this.logMics(s.mics); this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
+      this.x32.readState(playing).then((s) => { this.logMics(s.mics); this.logManual(this.x32.manual); this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
     }
     if (!this.lastBroadcast || now - this.lastBroadcast >= BROADCAST_MS) {
       this.lastBroadcast = now;
@@ -308,12 +316,13 @@ export class Engine extends EventEmitter {
   }
 
   applyLevels() {
+    if (this.faderTest && !this.state.panic) return;   // Einrichtung: Fader-Test laeuft gerade
     for (const p of [1, 2]) {
       const cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
       const amp = this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul * dbToAmp(settings().levels.playerDb[p]);
       if (Math.abs(amp - this.lastSent[p]) < 0.002 && !(amp === 0 && this.lastSent[p] !== 0)) continue;
       this.lastSent[p] = amp;
-      this.x32.setPlayerLevel(p, amp).catch((e) => this.fail('x32', e));
+      this.x32.setPlayerLevel(p, amp, { instant: !!this.state.panic }).catch((e) => this.fail('x32', e));
     }
   }
 

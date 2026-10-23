@@ -460,7 +460,7 @@ export function startMoodWatch(engines, notify) {
       last[env] = Date.now();
       try {
         const r = await checkMood(engine);
-        if (r.drop && r.severity !== 'niedrig') await notify({ title: r.severity === 'hoch' ? '📉 Stimmung kippt!' : '📉 Stimmung lässt nach', message: `${r.reason}\n\n💡 ${r.idea}`, priority: r.severity === 'hoch' ? 4 : 3, tags: ['chart_with_downwards_trend'], key: `mood:${env}`, env });
+        if (r.drop && r.severity !== 'niedrig') await notify({ title: r.severity === 'hoch' ? 'Stimmung kippt!' : 'Stimmung lässt nach', message: `${r.reason}\n\nVorschlag: ${r.idea}`, priority: r.severity === 'hoch' ? 4 : 3, tags: ['chart_with_downwards_trend'], key: `mood:${env}`, env });
       } catch { /* naechstes Mal */ }
     }
   };
