@@ -126,7 +126,8 @@ function updateNext() {
   const n = state.upcoming[0];
   swap(refs.cfNext, n ? `${n.id}|${n.player}` : 'none', () => (n ? h('div', { class: 'q-row', style: 'padding:6px 0' }, coverOnce(n.title, 'sm', n.trackId),
     h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, 'Als Nächstes'), h('div', { class: 't' }, n.title), h('div', { class: 'a' }, n.artist)),
-    n.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro' }, `${Math.round(n.introMs / 1000)} s`) : null, h('span', { class: `badge p${n.player}` }, `P${n.player || '–'}`))
+    n.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro' }, `${Math.round(n.introMs / 1000)} s`) : null,
+    n.ai ? h('span', { class: 'badge ai', title: 'Von der KI hinzugefügt' }, 'KI') : n.team ? h('span', { class: 'badge', title: 'Vom Team hinzugefügt' }, 'Team') : null, h('span', { class: `badge p${n.player}` }, `P${n.player || '–'}`))
     : h('div', { class: 'small muted' }, 'Die Warteschlange ist leer – nimm zuerst Wünsche an.')));
   const key = JSON.stringify(state.settings.fadePresets) + refs.cfSec.value;
   if (refs.cfSeg.dataset.k !== key) {

@@ -8,7 +8,7 @@ const mapRow = (r) => r && ({
   explicit: !!r.explicit, durationMs: r.duration_ms, createdAt: r.created_at, status: r.status,
   reason: r.reason, decidedBy: r.decided_by, decidedAt: r.decided_at, player: r.player, queuePos: r.queue_pos,
   votes: r.votes, prioritizedBy: r.prioritized_by, prioritizedAt: r.prioritized_at, playedAt: r.played_at,
-  deviceId: r.device_id, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity, cover: r.cover || null,
+  deviceId: r.device_id, source: r.source || null, genres: r.genres ? JSON.parse(r.genres) : null, year: r.year, popularity: r.popularity, cover: r.cover || null,
 });
 
 export const getRequest = (id) => mapRow(db().prepare('SELECT * FROM requests WHERE id = ?').get(id));
@@ -310,8 +310,8 @@ export function requeue(env, id, accountId, currentPlayer, now = Date.now()) {
 }
 
 // Automatisch eingereihter Song (Lueckenfueller): sieht aus wie ein angenommener Wunsch, Gaeste-ID "auto"
-// deviceId 'team' = vom Team (Admin) selbst eingereiht
-export function addAuto(env, track, currentPlayer, now = Date.now(), { deviceId = 'auto', decidedBy = null } = {}) {
+// source: 'ai' = von der KI eingereiht, 'team' = vom Admin selbst (deviceId 'staff')
+export function addAuto(env, track, currentPlayer, now = Date.now(), { deviceId = 'auto', decidedBy = null, source = null } = {}) {
   return transaction(() => {
     const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
     const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_at, player, queue_pos, artist_ids, genres, year, popularity, cover)
@@ -319,6 +319,7 @@ export function addAuto(env, track, currentPlayer, now = Date.now(), { deviceId 
       assignPlayer(env, currentPlayer), (max ?? 0) + 1, JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null, track.cover || null);
     const id = Number(info.lastInsertRowid);
     if (decidedBy != null) db().prepare('UPDATE requests SET decided_by = ? WHERE id = ?').run(decidedBy, id);
+    if (source) db().prepare('UPDATE requests SET source = ? WHERE id = ?').run(source, id);
     return getRequest(id);
   });
 }

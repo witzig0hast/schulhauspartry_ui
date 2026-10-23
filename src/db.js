@@ -198,6 +198,7 @@ export function openDb(dataDir) {
   addColumn('requests', 'genres', 'TEXT');
   addColumn('requests', 'year', 'INTEGER');
   addColumn('requests', 'popularity', 'INTEGER');
+  addColumn('requests', 'source', 'TEXT');   // Herkunft automatisch eingereihter Songs: ai (KI), team (vom Admin), sonst leer
   addColumn('requests', 'tag', 'TEXT');
   addColumn('accounts', 'email', 'TEXT');
   addColumn('accounts', 'home', 'TEXT');           // Startansicht/Dashboard dieses Codes (leer = Standard der Rolle)

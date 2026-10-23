@@ -43,7 +43,7 @@ export function setlistPdf(env, out) {
   rows.forEach((r, i) => {
     if (doc.y > doc.page.height - 90) { doc.addPage(); header(); }
     const y = doc.y;
-    const tag = r.device_id === 'auto' ? '  [Auto]' : r.prioritized_at ? '  [Prio]' : r.request_id ? '' : '  [extern]';
+    const tag = r.source === 'ai' ? '  [KI]' : r.device_id === 'auto' ? '  [Auto]' : r.prioritized_at ? '  [Prio]' : r.request_id ? '' : '  [extern]';
     doc.font('Helvetica').fontSize(9).fillColor('#76767b').text(String(i + 1), 52, y + 1, { width: 28 });
     doc.fillColor('#3d3d40').text(fmtTime(r.ts, tz), 82, y + 1, { width: 40 });
     doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#0b0b0c').text(latin(r.title), 126, y, { width: W - 150, continued: tag ? true : false });

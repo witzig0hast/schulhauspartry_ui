@@ -17,7 +17,7 @@ test('Admin legt Lieder selbst in die Warteschlange; nur Admin; gesperrt/doppelt
     assert.equal(r.status, 200, JSON.stringify(r.json));
     const st = (await admin.get('/api/state')).json;
     const u = st.upcoming.find((x) => x.id === r.json.id);
-    assert.ok(u && u.team && !u.auto, 'als Team-Song markiert');
+    assert.ok(u && u.team && !u.auto && !u.ai, 'als Team-Song markiert');
     assert.equal((await admin.post('/api/queue/add', { trackId: found[0].id })).status, 409, 'nicht doppelt');
     assert.equal((await admin.get('/api/queue/search?q=uptown')).json.tracks[0].queued, true);
     // vorziehen

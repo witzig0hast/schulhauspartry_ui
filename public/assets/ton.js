@@ -102,6 +102,7 @@ function render() {
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist),
         h('div', { class: 'row small', style: 'gap:6px;margin-top:4px' },
           u.introMs > 15000 ? h('span', { class: 'badge warn', title: 'Langes, oft leises Intro – nicht zu früh hochziehen' }, `Intro ${Math.round(u.introMs / 1000)} s`) : null,
+          u.ai ? h('span', { class: 'badge ai', title: 'Von der KI hinzugefügt' }, 'KI') : null,
           u.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null,
           u.durationMs ? h('span', { class: 'muted' }, `Länge ${mmss(u.durationMs)}`) : null)),
       h('div', { style: 'text-align:right' }, h('span', { class: `badge p${u.player}` }, `P${u.player || '–'}`), h('div', { class: 'tiny muted mono' }, eta != null ? `in ${mmss(eta)}` : i === 0 ? 'als Nächstes' : `+${i}`)));

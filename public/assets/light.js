@@ -60,7 +60,7 @@ function render() {
   const meta = nowReq;
   clear(nowBox).append(cur ? h('div', { class: `lt-hero ${changed && animOn() ? 'pop-in' : ''}` },
     h('div', { class: 'lt-hero-main' }, coverOnce(cur.p.title, 'xl', cur.p.trackId), h('div', { class: 'lt-main grow', style: 'min-width:0' },
-      h('div', { class: 'eyebrow' }, `Jetzt läuft · Player ${cur.n}${meta?.auto ? ' · Auto-Lückenfüller' : meta ? ' · Gästewunsch' : ''}`),
+      h('div', { class: 'eyebrow' }, `Jetzt läuft · Player ${cur.n}${meta?.ai ? ' · von der KI hinzugefügt' : meta?.team ? ' · vom Team hinzugefügt' : meta?.auto ? ' · Auto-Lückenfüller' : meta ? ' · Gästewunsch' : ''}`),
       h('div', { class: 'lt-title' }, cur.p.title), h('div', { class: 'lt-artist' }, cur.p.artist),
       meta ? chips(meta.genres, meta.families, meta.genresAi) : null,
       cueLine(meta?.light, true),
@@ -84,7 +84,7 @@ function render() {
           h('div', { class: 'lt-t' }, u.title), h('div', { class: 'lt-a' }, u.artist), chips(u.genres, u.families, u.genresAi), cueLine(u.light),
           h('div', { class: 'lt-facts' }, u.year ? h('span', {}, `${u.year}`) : null, u.durationMs ? h('span', {}, `Länge ${mmss(u.durationMs)}`) : null,
             u.introMs > 15000 ? h('span', { class: 'badge', title: 'Langes ruhiges Intro' }, `Intro ${Math.round(u.introMs / 1000)} s`) : null,
-            u.prioritized ? h('span', { class: 'badge bad' }, 'Prio') : null, u.auto ? h('span', { class: 'badge' }, 'Auto') : h('span', { class: 'badge ok' }, `Wunsch${u.votes > 1 ? ` · ${u.votes}×` : ''}`),
+            u.prioritized ? h('span', { class: 'badge bad' }, 'Prio') : null, u.ai ? h('span', { class: 'badge ai' }, 'KI') : u.auto ? h('span', { class: 'badge' }, 'Auto') : u.team ? h('span', { class: 'badge' }, 'Team') : h('span', { class: 'badge ok' }, `Wunsch${u.votes > 1 ? ` · ${u.votes}×` : ''}`),
             u.explicit ? h('span', { class: 'badge warn' }, 'Explicit') : null, change ? h('span', { class: 'badge ink' }, `↻ Genrewechsel: ${was} → ${fam}`) : null)),
         h('span', { class: `badge p${u.player}` }, `P${u.player}`));
     }) : [h('div', { class: 'muted', style: 'padding:18px 0' }, 'Warteschlange leer – es kommen noch Songs.')]));

@@ -88,7 +88,7 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
       cover(u.title, 'sm', u.trackId),
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
-        u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
+        u.ai ? h('span', { class: 'badge ai', title: 'Von der KI hinzugefügt' }, 'KI') : u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
         u.team ? h('span', { class: 'badge', title: `Vom Team eingereiht${u.decidedBy ? ` (${u.decidedBy})` : ''}` }, 'Team') : null,
         u.introMs > 20000 ? h('span', { class: 'badge', title: `Langes Intro (${Math.round(u.introMs / 1000)} s)` }, 'Intro') : null,
         u.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'E') : null,

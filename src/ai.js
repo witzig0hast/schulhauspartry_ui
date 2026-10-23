@@ -197,7 +197,7 @@ export async function addSuggested(engine, trackId) {
   const t = await engine.spotify.getTrack(String(trackId));
   if (!t) throw new AiError('Song nicht gefunden.', 404);
   if (isBlacklisted(t.id, t.artist) || playedBlock(engine.env, t.id)) throw new AiError('Dieser Song ist gesperrt oder lief gerade erst.', 409);
-  const row = rq.addAuto(engine.env, t, engine.current);
+  const row = rq.addAuto(engine.env, t, engine.current, Date.now(), { source: 'ai' });
   engine.afterQueueChange();
   return row;
 }

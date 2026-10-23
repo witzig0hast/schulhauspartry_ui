@@ -84,7 +84,7 @@ test('KI ueber Ollama: Einrichtung, Energie-Kurve, Lueckenfueller, Licht, Fehler
     assert.equal(sug[1].track, null); assert.match(sug[1].note, /nicht gefunden/);
     assert.equal((await tech.post('/api/ai/filler/add', { trackId: sug[0].track.id })).status, 200);
     const up = (await tech.get('/api/state')).json.upcoming;
-    assert.ok(up.some((u) => u.title === 'September' && u.auto));
+    assert.ok(up.some((u) => u.title === 'September' && u.auto && u.ai && !u.team), 'als von der KI hinzugefügt markiert');
 
     // 5: Licht-Vorschlag – ungueltige Farben fliegen raus, erscheint in der Warteschlange
     r = await tech.post('/api/ai/light', { id: up[0].id });

@@ -728,3 +728,6 @@ html.no-confetti .confetti-cv { display: none !important; }
 .status-dot.fail { background: var(--bad); box-shadow: 0 0 0 5px var(--bad-bg); }
 .big-ic svg, .bm-pause-ic svg { width: 1em; height: 1em; display: block; }
 .topbar button svg { width: 16px; height: 16px; }
+
+/* Von der KI hinzugefuegt */
+.badge.ai { background: color-mix(in srgb, #8b5cf6 16%, transparent); color: #8b5cf6; }

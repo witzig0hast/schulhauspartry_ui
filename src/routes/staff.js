@@ -133,7 +133,7 @@ export function staffRouter(env, engine, hub) {
     const t = await engine.spotify.getTrack(id);
     if (!t) return res.status(404).json({ error: 'Song nicht gefunden' });
     if (isBlacklisted(t.id, t.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
-    let row = rq.addAuto(env, t, engine.current, Date.now(), { deviceId: 'team', decidedBy: req.session.accountId ?? null });
+    let row = rq.addAuto(env, t, engine.current, Date.now(), { deviceId: 'staff', source: 'team', decidedBy: req.session.accountId ?? null });
     if (req.body?.next) { rq.prioritize(env, row.id, req.session.accountId ?? null, engine.current); row = rq.getRequest(row.id); }
     engine.afterQueueChange();
     L.info('moderation', 'queue.added', `Vom Team eingereiht${req.body?.next ? ' und vorgezogen' : ''}: ${t.title} – ${t.artist}`, { env, actor: staffActor(req), data: { id: row.id, trackId: t.id, next: !!req.body?.next } });

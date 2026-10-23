@@ -70,7 +70,7 @@ function render() {
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));
   update(laterBox, JSON.stringify([pk(state.later || []), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, list: 'later', me: state.me }));
   if (state.role === 'admin' && !boxes.queue.dataset.add) { boxes.queue.dataset.add = '1'; boxes.queue.prepend(addSongBox()); }
-  update(queueInner, JSON.stringify([state.upcoming.map((u) => [u.id, u.player, u.prioritized, u.votes, u.auto]), canAct]), () => upcomingList(state, { canAct }));
+  update(queueInner, JSON.stringify([state.upcoming.map((u) => [u.id, u.player, u.prioritized, u.votes, u.auto, u.ai, u.team]), canAct]), () => upcomingList(state, { canAct }));
   update(boxes.gespielt, JSON.stringify([state.history?.map((r) => [r.id, r.status]), canAct, (state.blacklist || []).length]), () => historyList(state, { canAct }));
   update(boxes.gesperrt, JSON.stringify([state.blacklist, canAct]), () => blacklistPanel(state, { canAct }));
   update(boxes.chat, JSON.stringify([state.chat?.map((m) => m.id), canAct]), () => chatPanel(state, { canWrite: canAct }));
