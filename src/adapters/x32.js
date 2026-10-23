@@ -16,6 +16,14 @@ const SEND_GAP_MS = 125;
 export const FADER_SPEEDS = { sanft: 0.6, normal: 1.2, schnell: 3 };
 const faderSpeed = () => FADER_SPEEDS[settings().x32.faderSpeed] || FADER_SPEEDS.normal;
 
+// Umkehrung: X32-Fader-Float -> Amplitude (fuer Fades, die am Fader gleichmaessig laufen)
+export function faderToAmp(f) {
+  f = Math.max(0, Math.min(1, Number(f) || 0));
+  if (f <= 0) return 0;
+  const db = f < 0.0625 ? f * 480 - 90 : f < 0.25 ? f * 160 - 70 : f < 0.5 ? f * 80 - 50 : f * 40 - 30;
+  return Math.pow(10, db / 20);
+}
+
 // Simulierter X32: haelt Fader-Zustaende und simuliert Mics und Pegel.
 export class MockX32 {
   constructor() {
@@ -35,6 +43,7 @@ export class MockX32 {
     return { ok: true, simulated: true, channels: Array.from({ length: 32 }, (_, i) => ({ channel: i + 1, name: names[i + 1] || '', level: lvl(i + 1), on: true, fader: (this.faders || {})[i + 1] ?? null, manual: false })) };
   }
   async selectChannel() {}
+  async setMute(player, muted) { (this.mutes ||= {})[player] = !!muted; }
   async readState(playing) {
     this.playing = playing;
     this.mics.forEach((m, i) => { m.name = settings().x32.micNames?.[i] || `Mic ${i + 1}`; });
@@ -101,6 +110,12 @@ export class HttpX32 {
   // Einzelner Kanal (Mic-Fader aus dem Pegel-Fenster); das Relay kennt das schon ueber /x32/level ohne Player-Angabe
   async setChannelFader(ch, fader) {
     const res = await this._fetch('/x32/level', { method: 'POST', headers: this._headers(), body: JSON.stringify({ channels: [ch], fader: Math.max(0, Math.min(1, fader)), speed: faderSpeed() }) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
+  // Kanaele eines Players stumm schalten / wieder freigeben (X32: /ch/NN/mix/on)
+  async setMute(player, muted) {
+    const res = await this._fetch('/x32/mute', { method: 'POST', headers: this._headers(), body: JSON.stringify({ channels: settings().x32.channels[`p${player}`], muted: !!muted }) });
+    if (res.status === 404) throw new Error('Das Relay auf dem Pi ist zu alt für Stummschalten – auf dem Pi aktualisieren.');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
   // Fuer die Einrichtung: Namen/Pegel aller Kanaele vom Pult, Kanal am Pult anwaehlen

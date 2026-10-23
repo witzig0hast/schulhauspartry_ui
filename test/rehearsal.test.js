@@ -4,6 +4,8 @@ import { startTestApp, Client } from './helpers.js';
 import { shield } from '../src/shield.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Unter Last (ganze Testreihe parallel) dauert es unterschiedlich lange: warten, bis die Bedingung erfuellt ist
+async function until(get, ok, ms = 25000) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await get(); if (ok(v)) return v; await sleep(500); } return v; }
 
 test('Generalprobe: simuliert Gaeste, Moderation und Wiedergabe im Testmodus und raeumt danach auf', async () => {
   shield.reset();
@@ -22,8 +24,7 @@ test('Generalprobe: simuliert Gaeste, Moderation und Wiedergabe im Testmodus und
     r = await admin.post('/api/admin/rehearsal/start', { guests: 25, durationMin: 1, rampSec: 1, intensity: 'extrem', modDelaySec: 1, speed: 30, ipMode: 'many' });
     assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.json.running, true);
     assert.equal((await admin.post('/api/admin/rehearsal/start', {})).status, 400);       // nicht doppelt
-    await sleep(11000);
-    const st = (await admin.get('/api/admin/rehearsal')).json;
+    const st = await until(async () => (await admin.get('/api/admin/rehearsal')).json, (x) => x.current && x.current.guests.joined === 25 && x.current.decisions.approved + x.current.decisions.denied > 0 && x.current.cats.Suche?.ok > 0 && x.current.ws.opened >= 20 && x.current.totals.n > 100);
     const c = st.current;
     assert.equal(c.guests.joined, 25);
     assert.ok(c.totals.n > 100, `Anfragen: ${c.totals.n}`);
@@ -89,8 +90,7 @@ test('Generalprobe live: nur leer und bestaetigt, simuliert Spotify/Pult, keine 
     assert.equal(live.realConnections, false, 'bleibt simuliert, auch wenn jemand umschaltet');
     assert.ok(getSetting('rehearsalLive'));
     assert.equal((await sendNotify({ title: 'x', message: 'y', env: 'live' })).reason, 'Generalprobe läuft', 'keine Alarme fuer Live');
-    await sleep(8000);
-    const c = (await admin.get('/api/admin/rehearsal')).json.current;
+    const c = await until(async () => (await admin.get('/api/admin/rehearsal')).json.current, (x) => x && x.cats.Wunsch?.n > 0 && x.cats.Seite?.ok >= 20 && x.app.pending + x.app.queue + x.app.played > 0);
     assert.equal(c.opt.target, 'live');
     assert.ok(c.cats.Wunsch.n > 0 && c.cats.Seite.ok >= 20, JSON.stringify(c.cats));
     assert.ok(c.app.pending + c.app.queue + c.app.played > 0, 'Wünsche sind in Live angekommen');

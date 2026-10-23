@@ -105,10 +105,15 @@ function render() {
   const open = state.wishMode === 'open';
   msgEl.classList.toggle('hidden', open);
   if (!open) clear(msgEl).append(h('strong', {}, state.message || 'Wünsche sind gerade nicht möglich.'), state.opensAt ? h('div', { class: 'lt-cd-v mono', id: 'opens-cd', style: 'font-size:2rem;margin-top:8px' }, '') : null);
-  input.disabled = !open;
-  if (!open) clear(results);
-
   const l = state.limit;
+  // Keine Wuensche frei: Suche aus, bis wieder einer frei ist (dann Zustand neu laden)
+  const noneLeft = open && l.remaining <= 0;
+  input.disabled = !open || noneLeft;
+  input.placeholder = noneLeft ? `Keine Wünsche frei – in ca. ${Math.max(1, Math.ceil(l.retryAfterMs / 60000))} Min. wieder` : 'Song oder Interpret suchen …';
+  if (!open || noneLeft) { clear(results); if (noneLeft) input.value = ''; }
+  clearTimeout(limitTimer);
+  if (noneLeft && l.retryAfterMs > 0) limitTimer = setTimeout(() => api('/guest/state').then((s) => { state = s; render(); }).catch(() => {}), Math.min(l.retryAfterMs + 1500, 2 ** 31 - 1));
+
   limitEl.textContent = l.remaining > 0 ? `Noch ${l.remaining} von ${l.max} Wünschen frei · alle ${l.windowMin} Min.` : `Limit erreicht – in ca. ${Math.ceil(l.retryAfterMs / 60000)} Min. geht es weiter.`;
   clear(dots).append(...Array.from({ length: Math.min(l.max, 10) }, (_, i) => h('i', { class: i < l.used ? 'used' : '' })));
 
@@ -127,8 +132,10 @@ function render() {
   }
 }
 
+let limitTimer = null;
 async function search() {
   const q = input.value.trim();
+  if (input.disabled) return;
   const seq = ++searchSeq;
   if (q.length < 2) { clear(results); return; }
   try {
@@ -144,6 +151,7 @@ async function search() {
   } catch (e) {
     if (seq !== searchSeq) return;
     clear(results).append(h('div', { class: 'muted' }, e.message));
+    if (e.data?.noSearch) api('/guest/state').then((s) => { state = s; render(); }).catch(() => {});   // Server sagt: gerade keine Suche moeglich
     // Spotify-Limit: kurz warten und die Suche von selbst wiederholen
     if (e.status === 503 && e.data?.retryAfterSec) setTimeout(() => { if (input.value.trim() === q) search(); }, Math.min(20, e.data.retryAfterSec) * 1000 + 300);
   }

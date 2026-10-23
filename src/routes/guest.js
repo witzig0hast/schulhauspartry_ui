@@ -65,6 +65,14 @@ export function guestRouter(env, engine, hub) {
   r.get('/search', async (req, res) => {
     const q = String(req.query.q || '').trim().replace(/\s+/g, ' ').slice(0, 80);
     if (q.length < 2) return res.json({ tracks: [] });
+    // Suchen nur, wenn ein Wunsch auch moeglich ist: spart Spotify-Anfragen (Wuensche zu, Geraet gesperrt, keine Wuensche mehr frei)
+    if (engine.state.wishMode !== 'open') return res.status(423).json({ error: 'Wünsche sind gerade nicht möglich.', noSearch: 'closed' });
+    if (isBlocked(env, req.deviceId)) return res.status(403).json({ error: 'Von diesem Gerät sind keine Wünsche mehr möglich.', noSearch: 'blocked' });
+    const lim = rq.limitState(env, req.deviceId);
+    if (lim.remaining <= 0) {
+      const min = Math.max(1, Math.ceil(lim.retryAfterMs / 60000));
+      return res.status(429).set('Retry-After', String(Math.ceil(lim.retryAfterMs / 1000))).json({ error: `Du hast gerade keine Wünsche frei – in ca. ${min} Min. kannst du wieder suchen und wünschen.`, noSearch: 'limit', limit: lim });
+    }
     if (!searchLimiter.check(req.deviceId).ok) return res.status(429).json({ error: 'Bitte kurz warten.' });
     const key = q.toLowerCase();
     let tracks = searchCache.get(key);

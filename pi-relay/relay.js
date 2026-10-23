@@ -4,6 +4,7 @@
 //   POST /x32/config {p1, p2, mics, host, port} -> Kanalzuordnung und X32-Adresse aus dem Admin (host '' = Wert aus der .env)
 //   POST /x32/discover -> sucht X32/M32 im Netz (OSC /xinfo per Broadcast)
 //   GET  /x32/channels -> Namen, Pegel, Mute und Fader aller 32 Kanaele (fuer die Einrichtung)
+//   POST /x32/mute {channels, muted} -> Kanaele stumm / wieder an (nach dem Ausblenden)
 //   POST /x32/select {channel} -> waehlt den Kanal am Pult an (Select-Taste leuchtet), ohne den Fader zu bewegen
 // Fader werden geschont: Das Relay faehrt neue Werte mit begrenzter Geschwindigkeit an (25 Schritte/s im LAN),
 // statt den Motor springen zu lassen. Bewegt jemand einen Fader von Hand, hat die Hand 3 s Vorrang.
@@ -54,7 +55,7 @@ export function createRelay(opts = {}) {
   const sock = dgram.createSocket('udp4');
   const state = { meters: new Array(32).fill(0), micOn: {}, micActiveUntil: {}, lastSeen: 0, lastMeters: 0, names: {}, namesAt: 0, chOn: {} };
   // Fader: aktuelle Stellung, Ziel, Tempo; queried = wir haben die Stellung abgefragt (Antwort ist kein Handgriff)
-  const fad = { cur: {}, target: {}, speed: {}, manualUntil: {}, queried: {}, manualAt: {} };
+  const fad = { cur: {}, target: {}, speed: {}, manualUntil: {}, queried: {}, manualAt: {}, lastAt: {} };
   const send = (address, args) => sock.send(encode(address, args), cfg.x32Port, cfg.x32Host);
 
   sock.on('message', (msg) => {
@@ -96,8 +97,13 @@ export function createRelay(opts = {}) {
   // Fader sanft anfahren: instant nur fuer Not-Aus (sofort auf 0)
   function setFader(c, v, { speed, instant } = {}) {
     v = Math.round(Math.max(0, Math.min(1, v)) * 1023) / 1023;   // Raster des X32 (1024 Stufen)
+    const now = Date.now(), max = Number.isFinite(speed) && speed > 0 ? Math.min(20, speed) : cfg.faderSpeed;
+    // Gleichmaessig statt in Stufen: so schnell fahren, dass der Fader genau zum naechsten erwarteten Wert ankommt
+    // (Werte kommen bei Blenden etwa alle 125 ms); nie schneller als das eingestellte Tempo (schont den Motor)
+    const dt = Math.min(400, Math.max(60, now - (fad.lastAt[c] || 0)));
+    fad.lastAt[c] = now;
     fad.target[c] = v;
-    fad.speed[c] = Number.isFinite(speed) && speed > 0 ? Math.min(20, speed) : cfg.faderSpeed;
+    fad.speed[c] = fad.cur[c] == null ? max : Math.min(max, Math.max(0.02, Math.abs(v - fad.cur[c]) / (dt / 1000)));
     if (instant || fad.cur[c] == null) { fad.cur[c] = v; fad.manualUntil[c] = 0; send(`/ch/${ch2(c)}/mix/fader`, [{ t: 'f', v }]); }
   }
   function glide() {
@@ -219,6 +225,18 @@ export function createRelay(opts = {}) {
     }
     if (req.method === 'GET' && req.url === '/x32/channels') {
       channelInfo().then((list) => json(200, { channels: list, ok: Date.now() - state.lastSeen < 5000 }), () => json(500, { error: 'channels' }));
+      return undefined;
+    }
+    if (req.method === 'POST' && req.url === '/x32/mute') {
+      let body = '';
+      req.on('data', (d) => { body += d; if (body.length > 512) req.destroy(); });
+      req.on('end', () => {
+        let j; try { j = JSON.parse(body); } catch { return json(400, { error: 'bad json' }); }
+        const channels = Array.isArray(j.channels) ? j.channels.map(Number) : [];
+        if (!channels.length || channels.length > 4 || channels.some((c) => !Number.isInteger(c) || c < 1 || c > 32)) return json(400, { error: 'channels' });
+        for (const c of channels) { send(`/ch/${ch2(c)}/mix/on`, [{ t: 'i', v: j.muted ? 0 : 1 }]); state.chOn[c] = !j.muted; }
+        json(200, { ok: true });
+      });
       return undefined;
     }
     if (req.method === 'POST' && req.url === '/x32/select') {

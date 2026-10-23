@@ -5,7 +5,7 @@ import { getSetting, setSetting, logEvent } from './db.js';
 import * as rq from './requests.js';
 import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
 import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
-import { MockX32, HttpX32, ampToFader } from './adapters/x32.js';
+import { MockX32, HttpX32, ampToFader, faderToAmp } from './adapters/x32.js';
 import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
 import { autoFill } from './ai.js';
@@ -53,6 +53,7 @@ export class Engine extends EventEmitter {
     this.duckMul = 1;
     this.trackMul = { 1: 1, 2: 1 }; // gemerkte Lautstaerke je Song
     this.lastSent = { 1: -1, 2: -1 };
+    this.muted = { 1: false, 2: false };   // Kanal nach dem Ausblenden stumm geschaltet
     this.current = null;
     this.ramps = {}; // player -> {from,to,start,dur,curve}
     this.crossfade = null; // {from,to,start,dur}
@@ -286,16 +287,22 @@ export class Engine extends EventEmitter {
         const from = cf.from;
         this.crossfade = null;
         L.info('wiedergabe', 'crossfade.done', `Übergang fertig: Player ${from} → Player ${cf.to} (${cf.dur} s)`, { env: this.env, data: { from, to: cf.to, durSec: cf.dur, curve: cf.curve } });
-        this.players[from].pause().catch((e) => this.fail('pause', e));
-        this.gain[from] = 1; // bereit fuer den naechsten Einsatz (Player ist pausiert)
+        this.afterFadeOut(from);   // stumm, pausieren, Fader zurueck in die Grundstellung
         this.current = cf.to;
         this.emit('change');
       }
     }
     for (const [pl, r] of Object.entries(this.ramps)) {
       const p = clamp01((now - r.start) / (r.dur * 1000));
-      const [o, i] = curveLevels(r.curve, p);
-      this.gain[pl] = r.to < r.from ? r.from * o : r.from + (r.to - r.from) * i;
+      if (r.curve === 'fader') {
+        // gleichmaessig am Fader: die Fader-Stellung laeuft linear, nicht die Amplitude
+        const base = this.trackMul[pl] * dbToAmp(settings().levels.playerDb[pl]) || 1;
+        const f0 = ampToFader(r.from * base), f1 = ampToFader(r.to * base);
+        this.gain[pl] = faderToAmp(f0 + (f1 - f0) * p) / base;
+      } else {
+        const [o, i] = curveLevels(r.curve, p);
+        this.gain[pl] = r.to < r.from ? r.from * o : r.from + (r.to - r.from) * i;
+      }
       if (p >= 1) {
         delete this.ramps[pl];
         this.gain[pl] = r.to;
@@ -316,11 +323,14 @@ export class Engine extends EventEmitter {
     if (was !== this.ducking) L.log(this.ducking ? 'info' : 'debug', 'pult', this.ducking ? 'ducking.on' : 'ducking.off', this.ducking ? `Ducking: Musik wird abgesenkt (${cfg.ducking.db} dB), weil ein Mikrofon offen ist` : 'Ducking vorbei: Musik wieder voll', { env: this.env, data: { db: cfg.ducking.db, mics: this.x32State.mics.filter((m) => m.open).map((m) => m.name) } });
   }
 
+  levelAmp(p) {
+    const cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
+    return this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul * dbToAmp(settings().levels.playerDb[p]);
+  }
   applyLevels() {
     if (this.faderTest && !this.state.panic) return;   // Einrichtung: Fader-Test laeuft gerade
     for (const p of [1, 2]) {
-      const cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
-      const amp = this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul * dbToAmp(settings().levels.playerDb[p]);
+      const amp = this.levelAmp(p);
       if (Math.abs(amp - this.lastSent[p]) < 0.002 && !(amp === 0 && this.lastSent[p] !== 0)) continue;
       this.lastSent[p] = amp;
       this.x32.setPlayerLevel(p, amp, { instant: !!this.state.panic }).catch((e) => this.fail('x32', e));
@@ -363,7 +373,7 @@ export class Engine extends EventEmitter {
     const prevTrack = this.trackIdOf[target];
     this.trackIdOf[target] = next.trackId;
     const track = { uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs };
-    try { await this.players[target].play(track); }
+    try { if (this.muted[target]) await this.unmuteFor(target, 0); await this.players[target].play(track); }
     catch (e) { rq.undoPlaying(this.env, next.id, prev); this.trackIdOf[target] = prevTrack; this.expectedUri[target] = null; this.emit('change'); throw e; }
     logEvent(this.env, 'play', { player: target, title: next.title, auto });
     this.players[this.current ?? target]?.boost?.(20000); this.players[target].boost?.(20000);
@@ -406,7 +416,7 @@ export class Engine extends EventEmitter {
     const st = this.players[player].status();
     const np = rq.nowPlayingRequest(this.env);
     const ours = st.uri && !st.ended && this.trackIdOf[player] && np && np.trackId === this.trackIdOf[player] && np.player === player;
-    if (ours) { await this.players[player].resume(); if (!this.current) this.current = player; }
+    if (ours) { if (this.muted[player]) await this.unmuteFor(player, startGain); await this.players[player].resume(); if (!this.current) this.current = player; }
     else {
       const next = rq.upcoming(this.env).find((u) => !u.player || u.player === player) || rq.upcoming(this.env)[0];
       if (!next) throw new Error('Keine Songs in der Warteschlange.');
@@ -416,7 +426,7 @@ export class Engine extends EventEmitter {
       const prev = rq.markPlaying(this.env, next.id, player);
       const prevTrack = this.trackIdOf[player];
       this.trackIdOf[player] = next.trackId;
-      try { await this.players[player].play({ uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs }); }
+      try { if (this.muted[player]) await this.unmuteFor(player, startGain); await this.players[player].play({ uri: next.uri, title: next.title, artist: next.artist, durationMs: next.durationMs }); }
       catch (e) { rq.undoPlaying(this.env, next.id, prev); this.trackIdOf[player] = prevTrack; this.expectedUri[player] = null; this.emit('change'); throw e; }
       this.afterTrackStart(player);
       if (!this.current) this.current = player;
@@ -426,13 +436,35 @@ export class Engine extends EventEmitter {
 
   async pause(player) { await this.players[player].pause(); this.emit('change'); }
 
+  // Ende eines Fade-outs/Crossfades: Kanal stumm, Player pausieren, Fader faehrt (stumm) zurueck in die Grundstellung
+  async afterFadeOut(player) {
+    if (settings().x32.muteAfterFade !== false && this.x32.setMute && !this.state.panic) {
+      try { await this.x32.setMute(player, true); this.muted[player] = true; L.debug('pult', 'channel.muted', `Player ${player} ausgeblendet: Kanal stumm`, { env: this.env }); }
+      catch (e) { this.fail('mute', e); }
+    }
+    await this.players[player].pause().catch((e) => this.fail('pause', e));
+    if (!this.ramps[player] && this.crossfade?.to !== player) this.gain[player] = 1;   // bereit fuer den naechsten Einsatz
+    this.emit('change');
+  }
+  // Vor jedem Abspielen: war der Kanal stumm, zuerst den Fader auf den Startwert setzen, dann freigeben
+  async unmuteFor(player, startGain = 1) {
+    if (!this.muted[player]) return;
+    this.gain[player] = startGain;
+    const amp = this.levelAmp(player);
+    this.lastSent[player] = amp;
+    await this.x32.setPlayerLevel(player, amp, { instant: true }).catch(() => {});
+    try { await this.x32.setMute(player, false); this.muted[player] = false; }
+    catch (e) { this.fail('mute', e); throw new Error(`Kanal von Player ${player} lässt sich nicht freigeben – am Pult von Hand einschalten. (${e.message})`); }
+  }
+
   async fadeIn(player, sec) {
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     const st = this.players[player].status();
     this.gain[player] = 0;
     delete this.ramps[player];
     if (!st.playing) await this.play(player, { startGain: 0 });
-    this.ramps[player] = { from: 0, to: 1, start: Date.now(), dur: Math.max(0.1, sec), curve: settings().auto.curve };
+    else if (this.muted[player]) await this.unmuteFor(player, 0);
+    this.ramps[player] = { from: 0, to: 1, start: Date.now(), dur: Math.max(0.1, sec), curve: 'fader' };
     if (!this.current) this.current = player;
     this.emit('change');
   }
@@ -440,8 +472,8 @@ export class Engine extends EventEmitter {
   fadeOut(player, sec, { pauseAfter = true } = {}) {
     const from = this.gain[player];
     this.ramps[player] = {
-      from, to: 0, start: Date.now(), dur: Math.max(0.1, sec), curve: settings().auto.curve,
-      then: () => { if (pauseAfter) { this.players[player].pause().catch((e) => this.fail('pause', e)); this.gain[player] = 1; } },
+      from, to: 0, start: Date.now(), dur: Math.max(0.1, sec), curve: 'fader',
+      then: () => { if (pauseAfter) this.afterFadeOut(player); },
     };
     this.emit('change');
   }
@@ -495,6 +527,7 @@ export class Engine extends EventEmitter {
     this.state.panic = false; this.state.ended = false; this.state.emergency = true; this.persist();
     this.players[o].pause().catch(() => {});
     this.gain[o] = 1; this.gain[p] = 0; this.duckMul = 1;
+    if (this.muted[p]) await this.unmuteFor(p, 0).catch((e) => this.fail('mute', e));   // im Notfall trotzdem weiter
     await this.players[p].playContext(m ? `spotify:playlist:${m[1]}` : 'mock:playlist:notfall', { shuffle: cfg.shuffle });
     this.current = p;
     const begin = () => { this.ramps[p] = { from: 0, to: 1, start: Date.now(), dur: 2, curve: 'linear' }; this.emit('change'); };
@@ -518,6 +551,7 @@ export class Engine extends EventEmitter {
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     delete this.ramps[n]; this.gain[n] = gain; this.trackMul[n] = 1;
     this.expectedUri[n] = track.uri; this.trackIdOf[n] = null;
+    if (this.muted[n]) await this.unmuteFor(n, gain);
     await this.players[n].play(track);
     this.current = n;
     this.emit('change');
@@ -554,6 +588,7 @@ export class Engine extends EventEmitter {
     const t = list.find((x) => x.durationMs > 60000) || list[0];
     if (!t) throw new Error('Kein Testsong gefunden (Spotify-Suche).');
     this.gain[n] = 0.12; delete this.ramps[n];
+    if (this.muted[n]) await this.unmuteFor(n, 0.12);
     await this.players[n].play(t);
     setTimeout(() => { this.players[n].pause().catch(() => {}); this.gain[n] = 1; this.emit('change'); }, 8000).unref?.();
     return { title: t.title, artist: t.artist };
@@ -630,6 +665,7 @@ export class Engine extends EventEmitter {
         level: this.state.panic ? 0 : this.gain[p] * this.trackMul[p] * this.duckMul,
         trackMul: this.trackMul[p],
         meter: this.x32State.meters[p] || 0,
+        muted: !!this.muted[p],
         fading: !!this.ramps[p] || (this.crossfade && (this.crossfade.from === p || this.crossfade.to === p)) || false,
       };
     }

@@ -96,7 +96,7 @@ function updatePlayer(n) {
   r.root.classList.toggle('onair', onAir);
   swap(r.cov, `${p.trackId}|${p.title}`, () => (p.title ? coverOnce(p.title, 'lg', p.trackId) : h('div', { class: 'cover lg', style: '--h:0;background:var(--bg-2);color:var(--faint)' }, '–')));
   r.title.textContent = p.title || 'Kein Song'; r.artist.textContent = p.artist || 'Bereit';
-  r.status.textContent = p.fading ? 'Fade' : onAir ? 'ON AIR' : p.playing ? 'spielt' : 'gestoppt';
+  r.status.textContent = p.fading ? 'Fade' : onAir ? 'ON AIR' : p.playing ? 'spielt' : p.muted ? 'gestoppt · Kanal stumm' : 'gestoppt';
   r.status.className = `badge ${onAir ? 'ink' : p.playing ? 'ok' : ''}`;
   r.eq.classList.toggle('off', !p.playing);
   const age = p.playing ? Date.now() - got : 0;

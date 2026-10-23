@@ -11,7 +11,7 @@ test('Freischaltung: Wuensche bleiben zu bis Knopf oder Uhrzeit; Start-Playlist 
     const mk = async (role, label) => { const c = new Client(ctx.base); await c.post('/api/login', { secret: (await admin.post('/api/admin/accounts', { role, label })).json.code }); return c; };
     const tech = await mk('tech', 'Tech'), mod = await mk('mod', 'Mod');
     const guest = async () => { const g = new Client(ctx.base); await g.get('/api/guest/state'); return g; };
-    const wish = async (g, q) => { const t = (await g.get(`/api/guest/search?q=${q}`)).json.tracks[0]; return g.post('/api/guest/request', { trackId: t.id }); };
+    const wish = async (g, q) => { const t = (await ctx.engines.live.spotify.search(q, 1))[0]; return g.post('/api/guest/request', { trackId: t.id }); };
     const live = ctx.engines.live;
 
     // Freischaltung scharf stellen: Wuensche sofort zu, mit Hinweistext
@@ -20,6 +20,7 @@ test('Freischaltung: Wuensche bleiben zu bis Knopf oder Uhrzeit; Start-Playlist 
     let gs = (await g1.get('/api/guest/state')).json;
     assert.equal(gs.wishMode, 'closed'); assert.equal(gs.message, 'Wünsche ab 23:59 Uhr!');
     assert.equal((await wish(g1, 'blinding')).status, 423);
+    assert.equal((await g1.get('/api/guest/search?q=blinding')).status, 423, 'Suche aus, solange die Wünsche zu sind');
 
     // Start-Playlist: Warteschlange mit Fuelltiteln, Player 1 spielt
     assert.equal((await mod.post('/api/control/start-evening')).status, 403);

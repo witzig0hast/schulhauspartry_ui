@@ -6,7 +6,8 @@ let ctx, admin, mod, tech;
 const PW = 'super-geheimes-passwort-123';
 const login = async (role, label) => { const c = new Client(ctx.base); const code = (await admin.post('/api/admin/accounts', { role, label })).json.code; await c.post('/api/login', { secret: code }); return c; };
 const guest = async () => { const g = new Client(ctx.base); await g.get('/api/guest/state'); return g; };
-const wish = async (g, q, extra = {}) => { const t = (await g.get(`/api/guest/search?q=${encodeURIComponent(q)}`)).json.tracks[0]; return { t, res: await g.post('/api/guest/request', { trackId: t.id, ...extra }) }; };
+// Track direkt ueber die Engine holen: die Gaeste-Suche ist aus, sobald kein Wunsch moeglich ist (das pruefen eigene Tests)
+const wish = async (g, q, extra = {}) => { const t = (await ctx.engines.live.spotify.search(q, 1))[0]; return { t, res: await g.post('/api/guest/request', { trackId: t.id, ...extra }) }; };
 
 test.before(async () => {
   ctx = await startTestApp();
