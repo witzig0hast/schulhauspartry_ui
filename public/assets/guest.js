@@ -104,7 +104,7 @@ function render() {
 
   const open = state.wishMode === 'open';
   msgEl.classList.toggle('hidden', open);
-  if (!open) clear(msgEl).append(h('strong', {}, state.message || 'Wünsche sind gerade nicht möglich.'), state.opensAt ? h('div', { class: 'lt-cd-v mono', id: 'opens-cd', style: 'font-size:2rem;margin-top:8px' }, '') : null);
+  if (!open) clear(msgEl).append(h('strong', {}, state.message || 'Wünsche sind gerade nicht möglich.'), state.opensAt ? h('div', { class: 'lt-cd-v mono', id: 'opens-cd', style: 'font-size:2rem;margin-top:8px' }, '') : h('span'));
   const l = state.limit;
   // Keine Wuensche frei: Suche aus, bis wieder einer frei ist (dann Zustand neu laden)
   const noneLeft = open && l.remaining <= 0;
