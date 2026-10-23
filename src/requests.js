@@ -240,6 +240,31 @@ export function resetEnv(env) {
   logEvent(env, 'reset', {});
 }
 
+// Gezielt zuruecksetzen (Rest bleibt): played = gespielte Songs/Setlist, stats = Zaehler und Auswertung,
+// denied = abgelehnte/entfernte Wuensche, queue = offene Wuensche und Warteschlange, polls = Umfragen und Chat
+export const RESET_PARTS = ['played', 'stats', 'denied', 'queue', 'polls'];
+export function resetParts(env, parts) {
+  const want = new Set(parts.filter((p) => RESET_PARTS.includes(p)));
+  if (!want.size) throw new Error('Nichts ausgewählt');
+  const delReq = (statuses) => {
+    const ph = statuses.map(() => '?').join(',');
+    db().prepare(`DELETE FROM votes WHERE request_id IN (SELECT id FROM requests WHERE env = ? AND status IN (${ph}))`).run(env, ...statuses);
+    db().prepare(`DELETE FROM requests WHERE env = ? AND status IN (${ph})`).run(env, ...statuses);
+  };
+  transaction(() => {
+    if (want.has('played')) { delReq(['played']); db().prepare('DELETE FROM plays WHERE env = ?').run(env); }
+    if (want.has('denied')) delReq(['denied', 'removed']);
+    if (want.has('queue')) delReq(['pending', 'later', 'approved']);
+    if (want.has('stats')) for (const t of ['guest_actions', 'vote_actions', 'block_attempts', 'events']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
+    if (want.has('polls')) {
+      db().prepare('DELETE FROM poll_votes WHERE poll_id IN (SELECT id FROM polls WHERE env = ?)').run(env);
+      for (const t of ['polls', 'chat']) db().prepare(`DELETE FROM ${t} WHERE env = ?`).run(env);
+    }
+  });
+  logEvent(env, 'reset', { parts: [...want] });
+  return [...want];
+}
+
 // Live-Statistik fuer Dashboards (ohne Bezug zu einzelnen Codes -> anonym)
 export function liveStats(env, now = Date.now()) {
   const q = (sql, ...p) => db().prepare(sql).all(...p);
@@ -285,13 +310,16 @@ export function requeue(env, id, accountId, currentPlayer, now = Date.now()) {
 }
 
 // Automatisch eingereihter Song (Lueckenfueller): sieht aus wie ein angenommener Wunsch, Gaeste-ID "auto"
-export function addAuto(env, track, currentPlayer, now = Date.now()) {
+// deviceId 'team' = vom Team (Admin) selbst eingereiht
+export function addAuto(env, track, currentPlayer, now = Date.now(), { deviceId = 'auto', decidedBy = null } = {}) {
   return transaction(() => {
     const max = db().prepare("SELECT MAX(queue_pos) AS m FROM requests WHERE env = ? AND status='approved'").get(env).m;
     const info = db().prepare(`INSERT INTO requests(env, track_id, uri, title, artist, album, explicit, duration_ms, device_id, created_at, status, decided_at, player, queue_pos, artist_ids, genres, year, popularity, cover)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, 'auto', now, 'approved', now,
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(env, track.id, track.uri, track.title, track.artist, track.album || '', track.explicit ? 1 : 0, track.durationMs || 0, deviceId, now, 'approved', now,
       assignPlayer(env, currentPlayer), (max ?? 0) + 1, JSON.stringify(track.artistIds || []), track.genres ? JSON.stringify(track.genres) : null, track.year ?? null, track.popularity ?? null, track.cover || null);
-    return getRequest(Number(info.lastInsertRowid));
+    const id = Number(info.lastInsertRowid);
+    if (decidedBy != null) db().prepare('UPDATE requests SET decided_by = ? WHERE id = ?').run(decidedBy, id);
+    return getRequest(id);
   });
 }
 

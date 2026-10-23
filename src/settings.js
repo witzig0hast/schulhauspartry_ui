@@ -37,7 +37,7 @@ export const DEFAULTS = {
     { name: 'Normal', sec: 8 },
     { name: 'Lang', sec: 15 },
   ],
-  auto: { enabled: false, crossfadeSec: 8, startBeforeEndSec: { 1: 20, 2: 20 }, curve: 'equalPower', smartOutro: true },
+  auto: { enabled: false, crossfadeSec: 8, fadeSec: 5, startBeforeEndSec: { 1: 20, 2: 20 }, curve: 'equalPower', smartOutro: true },
   // Automatik rund um die Warteschlange
   autoOrder: { enabled: true, maxRepeat: 2, window: 4, mood: true, phases: [] }, // phases: [{name, from:'HH:MM', to:'HH:MM', prefer:[Genre-Familien]}]
   filler: { enabled: false, playlist: '', minQueue: 1, avoidMin: 90 },
@@ -66,7 +66,7 @@ export const DEFAULTS = {
   // Hardware-Knoepfe ueber Bitfocus Companion (Token nur als Hash)
   companion: { enabled: false, tokenHash: '' },
   // KI ueber einen eigenen Ollama-Server: ein Modell fuer alles. token = optional (z. B. hinter einem Reverse-Proxy)
-  ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false },
+  ai: { enabled: false, url: '', model: '', token: '', timeoutSec: 90, autoLight: true, autoFiller: false, autoMix: true, mixMaxCutDb: 6 },
   // Grundpegel (Pegel-Fenster): Player-Fader am X32 bei 100 %, Spotify-Lautstaerke, optional Mic-Fader
   levels: { playerDb: { 1: 0, 2: 0 }, spotifyVol: { 1: 100, 2: 100 }, micControl: false, micDb: [0, 0, 0], confirmedAt: 0, confirmedBy: '' },
 };
@@ -270,6 +270,7 @@ export function applyPatch(patch, { allow }) {
     const a = patch.auto;
     if ('enabled' in a) s.auto.enabled = !!a.enabled;
     if ('crossfadeSec' in a) s.auto.crossfadeSec = clamp(a.crossfadeSec, 0.5, 60, s.auto.crossfadeSec);
+    if ('fadeSec' in a) s.auto.fadeSec = Math.round(clamp(a.fadeSec, 0.5, 60, s.auto.fadeSec ?? 5) * 2) / 2;
     if (a.startBeforeEndSec) for (const p of [1, 2]) if (p in a.startBeforeEndSec) s.auto.startBeforeEndSec[p] = clamp(a.startBeforeEndSec[p], 1, 180, s.auto.startBeforeEndSec[p]);
     if (['equalPower', 'linear'].includes(a.curve)) s.auto.curve = a.curve;
     if ('smartOutro' in a) s.auto.smartOutro = !!a.smartOutro;
@@ -379,6 +380,8 @@ export function applyPatch(patch, { allow }) {
     if ('timeoutSec' in q) o.timeoutSec = Math.round(clamp(q.timeoutSec, 10, 600, o.timeoutSec));
     if ('autoLight' in q) o.autoLight = !!q.autoLight;
     if ('autoFiller' in q) o.autoFiller = !!q.autoFiller;
+    if ('autoMix' in q) o.autoMix = !!q.autoMix;
+    if ('mixMaxCutDb' in q) o.mixMaxCutDb = Math.round(clamp(q.mixMaxCutDb, 0, 12, o.mixMaxCutDb ?? 6));
   }
   if (has('levels')) {
     const l = patch.levels, o = s.levels;

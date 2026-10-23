@@ -30,7 +30,7 @@ import { liveTestRouter } from './routes/livetest.js';
 import { aiRouter } from './routes/ai.js';
 import { logsRouter } from './routes/logs.js';
 import { companionRouter } from './routes/companion.js';
-import { startLightWorker, startGenreWorker, startMoodWatch } from './ai.js';
+import { startLightWorker, startGenreWorker, startMoodWatch, startMixWorker } from './ai.js';
 import { sendNotify } from './notify.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
@@ -280,7 +280,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   const monitor = createMonitor(engines);
   let stopBackup = () => {};
   let stopLight = [];
-  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); stopLight = [startLightWorker(engines, (env) => hub.pushEnv(env)), startGenreWorker((env) => hub.pushEnv(env)), startMoodWatch(engines, sendNotify)]; }
+  if (startEngines) { for (const e of Object.values(engines)) e.start(); monitor.start(); stopBackup = startBackupScheduler(); stopLight = [startLightWorker(engines, (env) => hub.pushEnv(env)), startGenreWorker((env) => hub.pushEnv(env)), startMoodWatch(engines, sendNotify), startMixWorker(engines, (env) => hub.pushEnv(env))]; }
   timers.push(setInterval(sweepSessions, 10 * 60000));
   timers.push(setInterval(() => shield.sweep(), 60000));
   timers.push(setInterval(() => { for (const l of limiters.values()) l.sweep(); }, 60000));

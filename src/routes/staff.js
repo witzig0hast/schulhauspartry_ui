@@ -118,6 +118,28 @@ export function staffRouter(env, engine, hub) {
     const tracks = await engine.spotify.search(q, 8);
     res.json({ tracks: tracks.map((t) => ({ id: t.id, title: t.title, artist: t.artist })) });
   }));
+  // Admin legt selbst Lieder in die Warteschlange (hinten oder als Naechstes)
+  r.get('/queue/search', requirePerm('addSongs'), wrap(async (req, res) => {
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    if (q.length < 2) return res.json({ tracks: [] });
+    const queued = new Set(rq.upcoming(env).map((u) => u.trackId));
+    const tracks = await engine.spotify.search(q, 8);
+    res.json({ tracks: tracks.map((t) => ({ id: t.id, title: t.title, artist: t.artist, durationMs: t.durationMs, explicit: !!t.explicit, blocked: !!isBlacklisted(t.id, t.artist), queued: queued.has(t.id) })) });
+  }));
+  r.post('/queue/add', requirePerm('addSongs'), wrap(async (req, res) => {
+    const id = String(req.body?.trackId || '');
+    if (!/^[A-Za-z0-9]{1,40}$/.test(id)) throw new Error('Ungültiger Song');
+    if (rq.upcoming(env).some((u) => u.trackId === id)) return res.status(409).json({ error: 'Der Song ist schon in der Warteschlange.' });
+    const t = await engine.spotify.getTrack(id);
+    if (!t) return res.status(404).json({ error: 'Song nicht gefunden' });
+    if (isBlacklisted(t.id, t.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
+    let row = rq.addAuto(env, t, engine.current, Date.now(), { deviceId: 'team', decidedBy: req.session.accountId ?? null });
+    if (req.body?.next) { rq.prioritize(env, row.id, req.session.accountId ?? null, engine.current); row = rq.getRequest(row.id); }
+    engine.afterQueueChange();
+    L.info('moderation', 'queue.added', `Vom Team eingereiht${req.body?.next ? ' und vorgezogen' : ''}: ${t.title} – ${t.artist}`, { env, actor: staffActor(req), data: { id: row.id, trackId: t.id, next: !!req.body?.next } });
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, id: row.id, title: t.title });
+  }));
   // Schon gespielten (oder abgelehnten/entfernten) Song nochmal einreihen
   r.post('/mod/requeue', requirePerm('moderate'), wrap((req, res) => {
     const row = rq.getRequest(Number(req.body?.id));
@@ -147,8 +169,8 @@ export function staffRouter(env, engine, hub) {
   });
   r.post('/control/play', ctl, wrap(async (req, res) => { await engine.play(player(req.body.player)); res.json({ ok: true }); }));
   r.post('/control/pause', ctl, wrap(async (req, res) => { await engine.pause(player(req.body.player)); res.json({ ok: true }); }));
-  r.post('/control/fade-in', ctl, wrap(async (req, res) => { await engine.fadeIn(player(req.body.player), num(req.body.sec, 5, 0.1, 120)); res.json({ ok: true }); }));
-  r.post('/control/fade-out', ctl, wrap((req, res) => { engine.fadeOut(player(req.body.player), num(req.body.sec, 5, 0.1, 120)); res.json({ ok: true }); }));
+  r.post('/control/fade-in', ctl, wrap(async (req, res) => { await engine.fadeIn(player(req.body.player), num(req.body.sec, settings().auto.fadeSec ?? 5, 0.1, 120)); res.json({ ok: true }); }));
+  r.post('/control/fade-out', ctl, wrap((req, res) => { engine.fadeOut(player(req.body.player), num(req.body.sec, settings().auto.fadeSec ?? 5, 0.1, 120)); res.json({ ok: true }); }));
   r.post('/control/gain', ctl, wrap((req, res) => { engine.setGain(player(req.body.player), num(req.body.value, 1, 0, 1)); res.json({ ok: true }); }));
   r.post('/control/crossfade', ctl, wrap(async (req, res) => {
     const out = await engine.startCrossfade(num(req.body.sec, 8, 0.1, 120));

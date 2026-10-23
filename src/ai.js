@@ -468,4 +468,87 @@ export function startMoodWatch(engines, notify) {
   t.unref?.();
   return Object.assign(() => clearInterval(t), { tick });   // tick fuer Tests direkt aufrufbar
 }
+// ---------- Uebergaenge & Auto-Pegel ----------
+// Die KI schaetzt pro Song Lautheit, Intro, Art des Endes und Energie (sie hoert die Musik nicht, sondern kennt den Song
+// bzw. leitet es aus Interpret, Jahr und Genre ab). Daraus berechnet die App den Uebergang (Laenge, Startpunkt, Kurve) und
+// einen Pegel-Ausgleich je Song. Echte Spotify-Analysewerte (Ausblende-Start) haben Vorrang.
+const MIX_SCHEMA = { type: 'object', properties: {
+  lautheit_lufs_ca: { type: 'number' }, intro_s: { type: 'integer', minimum: 0, maximum: 90 }, outro_s: { type: 'integer', minimum: 0, maximum: 90 },
+  ende: { type: 'string', enum: ['fade', 'hart', 'ausklang'] }, energie: { type: 'integer', minimum: 1, maximum: 10 }, song_bekannt: { type: 'boolean' },
+}, required: ['lautheit_lufs_ca', 'intro_s', 'outro_s', 'ende', 'energie', 'song_bekannt'] };
+const MIX_SYS = sys(
+  'Rolle: erfahrene:r DJ und Tontechniker:in, der/die Übergänge zwischen Songs plant und die Lautstärke angleicht.',
+  '- "lautheit_lufs_ca": geschätzte integrierte Lautheit des Masters in LUFS. Richtwerte: aktuelle Pop/EDM/Hip-Hop-Produktionen -6 bis -9, 2000er -7 bis -10, 90er -9 bis -12, 80er und älter -12 bis -16, Balladen/akustisch eher leiser.',
+  '- "intro_s": Länge eines ruhigen oder leisen Intros in Sekunden (0, wenn der Song sofort voll einsetzt).',
+  '- "outro_s": wie viele Sekunden vor Schluss der Song deutlich nachlässt (Ausblenden oder Ausklang); 0 bei hartem Ende.',
+  '- "ende": "fade" = wird ausgeblendet, "hart" = endet abrupt auf dem letzten Schlag, "ausklang" = klingt natürlich aus (letzter Akkord, Hall).',
+  '- "energie": 1 (sehr ruhig) bis 10 (Eskalation).',
+  '- "song_bekannt": true nur, wenn du den Song tatsächlich kennst; sonst leite alles vorsichtig aus Genre, Jahr und Dauer ab und bleib bei mittleren Werten.',
+);
+const mixMem = new Map();
+function cleanMix(o) {
+  if (!o || typeof o !== 'object') return null;
+  const n = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
+  return {
+    loudness: Math.round(n(o.lautheit_lufs_ca, -20, -3, -10) * 10) / 10, introSec: Math.round(n(o.intro_s, 0, 90, 0)), outroSec: Math.round(n(o.outro_s, 0, 90, 0)),
+    ending: ['fade', 'hart', 'ausklang'].includes(o.ende) ? o.ende : 'ausklang', energy: Math.round(n(o.energie, 1, 10, 5)), known: !!o.song_bekannt,
+  };
+}
+export function mixInfo(trackId) {
+  if (!trackId) return null;
+  if (!mixMem.has(trackId)) { mixMem.set(trackId, cacheGetStale('aimix', trackId)); if (mixMem.size > 3000) mixMem.delete(mixMem.keys().next().value); }
+  return mixMem.get(trackId) || null;
+}
+export async function makeMix(r) {
+  const out = cleanMix(await chat({ task: 'mix', system: MIX_SYS, user: { ...songOf(r), dauer_s: r.durationMs ? Math.round(r.durationMs / 1000) : null }, schema: MIX_SCHEMA, temperature: 0.2, maxTokens: 300 }));
+  if (!out) throw new AiError('Keine verwertbare Analyse.');
+  cacheSet('aimix', r.trackId, out); mixMem.set(r.trackId, out);
+  L.debug('ki', 'ai.mix', `Song analysiert: ${r.title} – ${r.artist} (${out.ending}, ca. ${out.loudness} LUFS, Energie ${out.energy})`, { data: { trackId: r.trackId, ...out } });
+  return out;
+}
+export const mixActive = () => aiOn('aiMix') && settings().ai.autoMix !== false;
+
+// Pegel-Ausgleich: laute Songs (ueber dem Bezug) leiser machen, hoechstens um mixMaxCutDb; leisere bleiben (der Grundpegel ist das Maximum)
+const MIX_REF_LUFS = -9;
+export function mixTrimDb(trackId) {
+  const m = mixActive() ? mixInfo(trackId) : null;
+  if (!m) return null;
+  return Math.round(Math.max(-(settings().ai.mixMaxCutDb ?? 6), Math.min(0, MIX_REF_LUFS - m.loudness)) * 2) / 2;
+}
+
+// Uebergang vom laufenden zum naechsten Song berechnen. spotifyOutroMs: echter Ausblende-Start aus der Spotify-Analyse (falls da)
+export function mixPlan({ curId, nextId, durationMs, spotifyOutroMs, baseSec }) {
+  const cur = mixActive() ? mixInfo(curId) : null;
+  if (!cur || !durationMs) return null;
+  const next = mixInfo(nextId);
+  const clampN = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const outro = spotifyOutroMs && durationMs > spotifyOutroMs ? (durationMs - spotifyOutroMs) / 1000 : cur.outroSec;
+  let dur, lead, curve = 'equalPower', why;
+  if (cur.ending === 'hart') { dur = clampN(Math.min(baseSec, 4), 1.5, 4); lead = dur + 0.5; curve = 'linear'; why = 'hartes Ende – kurzer Übergang kurz vor Schluss'; }
+  else if (cur.ending === 'fade') { dur = clampN(outro || baseSec * 1.5, 6, 16); lead = Math.max(dur, outro) + 1; why = `Song blendet aus (ca. ${Math.round(outro || dur)} s)`; }
+  else { dur = clampN(outro || baseSec, 4, 12); lead = Math.max(dur, outro * 0.6) + 1; why = 'Song klingt aus'; }
+  if (next && next.energy - cur.energy >= 3) { dur = Math.min(dur, 5); lead = Math.min(lead, dur + 2); why += ', danach deutlich mehr Energie – zügiger Wechsel'; }
+  else if (next && next.introSec >= 8 && cur.ending !== 'hart') { dur = Math.max(dur, Math.min(12, next.introSec)); lead = Math.max(lead, dur + 1); why += `, nächster Song hat ein ruhiges Intro (ca. ${next.introSec} s)`; }
+  lead = clampN(lead, dur + 0.5, 45);
+  return { durSec: Math.round(dur * 10) / 10, leadMs: Math.round(lead * 1000), curve, why, src: spotifyOutroMs ? 'spotify+ki' : 'ki' };
+}
+
+// Hintergrund: laufenden und die naechsten Songs analysieren (einer nach dem anderen)
+const mixBusy = new Set(), mixFailed = new Map();
+export function startMixWorker(engines, onNew) {
+  const t = setInterval(async () => {
+    if (!mixActive() || mixBusy.size) return;
+    for (const engine of Object.values(engines)) {
+      const rows = [...rq.history(engine.env, 1).filter((r) => r.status === 'playing'), ...rq.upcoming(engine.env).slice(0, 6)];
+      const r = rows.find((x) => x.trackId && !mixInfo(x.trackId) && Date.now() - (mixFailed.get(x.trackId) || 0) > 10 * 60000);
+      if (!r) continue;
+      mixBusy.add(r.trackId);
+      try { await makeMix(r); onNew?.(engine.env); } catch { mixFailed.set(r.trackId, Date.now()); } finally { mixBusy.delete(r.trackId); }
+      return;
+    }
+  }, 3000);
+  t.unref?.();
+  return () => clearInterval(t);
+}
+
 export { startGenreWorker, checkMood };

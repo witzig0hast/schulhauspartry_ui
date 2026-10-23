@@ -256,6 +256,14 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     if (!target) throw new Error('Umgebung fehlt');
     if (target === 'live' && req.body?.confirm !== 'ZURÜCKSETZEN') throw new Error('Bestätigung fehlt');
     if (target === 'live') { try { backupNow('vor-reset'); } catch { /* ohne Backup-Ordner (Tests) */ } }
+    // Nur Teile: Wiedergabe laeuft weiter
+    if (Array.isArray(req.body?.parts)) {
+      const done = rq.resetParts(target, req.body.parts.map(String));
+      audit('reset', req.session.label, clientIp(req), `${target}: ${done.join(', ')}`);
+      if (done.includes('queue')) engines[target].afterQueueChange(); else engines[target].emit('change');
+      hub.pushEnv(target, { guests: true });
+      return res.json({ ok: true, parts: done });
+    }
     audit('reset', req.session.label, clientIp(req), target);
     rq.resetEnv(target);
     engines[target].resetAll();

@@ -62,6 +62,7 @@ function viewSettings() {
   const prio = num(s.priorityWithin, { min: 1, max: 10 });
   const replayMode = h('select', {}, ...[['allow', 'Erlauben – Songs dürfen beliebig oft gewünscht werden'], ['cooldown', 'Pause – erst nach einer Wartezeit wieder wünschbar'], ['block', 'Sperren – schon gespielte Songs sind nicht mehr wünschbar']].map(([v, l]) => h('option', { value: v, selected: s.replay.mode === v }, l)));
   const replayMin = num(s.replay.cooldownMin, { min: 1, max: 1440, class: 'num' });
+  const fadeDef = num(s.auto.fadeSec ?? 5, { min: 0.5, max: 60, step: 0.5, class: 'num' }), xfadeDef = num(s.auto.crossfadeSec, { min: 0.5, max: 60, step: 0.5, class: 'num' });
   const presets = s.fadePresets.map((p) => ({ name: h('input', { value: p.name, maxlength: 20 }), sec: num(p.sec, { min: 0.5, max: 60, step: 0.5 }) }));
   return h('div', { class: 'grid two' },
     h('div', { class: 'card stack' }, h('h2', {}, 'Wunsch-Limit pro Gerät'),
@@ -77,7 +78,10 @@ function viewSettings() {
     h('div', { class: 'card stack' }, h('h2', {}, 'Moderation'),
       field('Ablehnungsgründe (eine pro Zeile)', reasons),
       field('Priorisierte Songs kommen innerhalb der nächsten … Songs', prio)),
-    h('div', { class: 'card stack' }, h('h2', {}, 'Fade-Presets'),
+    h('div', { class: 'card stack' }, h('h2', {}, 'Fade-Zeiten'),
+      h('div', { class: 'row' }, h('span', {}, 'Standard-Fade-Zeit (Ein-/Ausblenden)'), fadeDef, h('span', {}, 's')),
+      h('div', { class: 'row' }, h('span', {}, 'Standard-Crossfade-Dauer'), xfadeDef, h('span', {}, 's')),
+      h('p', { class: 'small muted' }, 'Gilt für die Knöpfe „Einblenden“/„Ausblenden“ in der Technik, für Companion und für den Auto-Crossfade. Mit KI-Übergängen passt die KI die Crossfade-Dauer pro Song an. Presets darunter: Schnellwahl in der Technik.'),
       ...presets.map((p) => h('div', { class: 'row' }, p.name, p.sec, h('span', {}, 's')))),
     h('div', { class: 'row', style: 'grid-column:1/-1' }, h('button', { class: 'primary', onclick: () => save({
       limit: { count: Number(count.value), windowMin: Number(win.value) }, explicitMode: explicit.value,
@@ -85,6 +89,7 @@ function viewSettings() {
       rejectReasons: reasons.value.split('\n'), notice: { enabled: noticeOn.checked, text: noticeText.value },
       wishMessages: Object.fromEntries(Object.entries(msgs).map(([k, i]) => [k, i.value])), priorityWithin: Number(prio.value),
       fadePresets: presets.map((p) => ({ name: p.name.value, sec: Number(p.sec.value) })),
+      auto: { fadeSec: Number(fadeDef.value), crossfadeSec: Number(xfadeDef.value) },
     }) }, 'Speichern')));
 }
 
@@ -307,12 +312,29 @@ function viewStart() {
   const t = data.settings.test;
   const speed = num(t.mockSpeed, { min: 1, max: 60, step: 1 });
   const real = h('select', {}, h('option', { value: 'live', selected: t.realEnv === 'live' }, 'Live (Party)'), h('option', { value: 'test', selected: t.realEnv === 'test' }, 'Testmodus'));
-  const resetTest = () => { if (confirm('Alle Testdaten löschen (Wünsche, Queue, Setlist) und die Test-Wiedergabe stoppen?')) safe(async () => { await api('/admin/reset', { method: 'POST', body: { env: 'test' } }); toast('Testmodus zurückgesetzt'); await load(); })(); };
-  const resetLive = () => {
-    const typed = prompt('ACHTUNG: Das löscht ALLE Live-Wünsche, die Warteschlange und die Setlist und stoppt die Wiedergabe.\nCodes und Einstellungen bleiben.\n\nZur Bestätigung tippe: ZURÜCKSETZEN');
-    if (typed === 'ZURÜCKSETZEN') safe(async () => { await api('/admin/reset', { method: 'POST', body: { env: 'live', confirm: 'ZURÜCKSETZEN' } }); toast('Live-Daten zurückgesetzt'); await load(); })();
-    else if (typed != null) toast('Nicht bestätigt – nichts gelöscht', true);
+  // Zuruecksetzen: alles oder nur Teile (gespielte Songs, Statistik, ...). Live braucht eine getippte Bestaetigung, vorher gibt es ein Backup.
+  const PARTS = [['played', 'Gespielte Lieder', 'Setlist und Verlauf – danach dürfen sie wieder gewünscht werden'], ['stats', 'Statistiken & Zähler', 'Auswertung im Bericht, Wunsch- und Vote-Zähler der Gäste (alle haben wieder volle Wünsche)'],
+    ['denied', 'Abgelehnte Wünsche', 'abgelehnte und aus der Queue entfernte'], ['queue', 'Offene Wünsche & Warteschlange', 'Wiedergabe läuft weiter'], ['polls', 'Umfragen & Chat', '']];
+  const openReset = (env) => {
+    const boxes = PARTS.map(([id, label, hint]) => ({ id, el: h('input', { type: 'checkbox' }), label, hint }));
+    const close = modal([h('h2', {}, env === 'live' ? 'Live zurücksetzen' : 'Testmodus zurücksetzen'),
+      h('p', { class: 'small muted' }, 'Wähle, was gelöscht wird. Codes, Einstellungen und Sperrlisten bleiben immer erhalten.'),
+      ...boxes.map((b) => h('label', { class: 'check' }, b.el, h('span', {}, h('b', {}, b.label), b.hint ? h('span', { class: 'small muted' }, ` – ${b.hint}`) : null))),
+      h('div', { class: 'row between', style: 'flex-wrap:wrap' },
+        h('button', { class: env === 'live' ? 'bad' : 'outline-bad', onclick: () => run(null) }, 'Alles löschen (stoppt die Wiedergabe)'),
+        h('button', { class: 'primary', onclick: () => { const parts = boxes.filter((b) => b.el.checked).map((b) => b.id); if (!parts.length) return toast('Nichts ausgewählt', true); run(parts); } }, 'Ausgewähltes löschen'))], { wide: true });
+    const run = (parts) => {
+      const what = parts ? PARTS.filter(([id]) => parts.includes(id)).map(([, l]) => l).join(', ') : 'ALLE Wünsche, die Warteschlange, die Setlist und alle Zähler (die Wiedergabe stoppt)';
+      let confirmText;
+      if (env === 'live') {
+        confirmText = prompt(`ACHTUNG Live: Gelöscht wird: ${what}.\nVorher wird ein Backup gemacht.\n\nZur Bestätigung tippe: ZURÜCKSETZEN`);
+        if (confirmText !== 'ZURÜCKSETZEN') { if (confirmText != null) toast('Nicht bestätigt – nichts gelöscht', true); return; }
+      } else if (!confirm(`Testmodus: ${what} löschen?`)) return;
+      safe(async () => { await api('/admin/reset', { method: 'POST', body: { env, ...(parts ? { parts } : {}), ...(confirmText ? { confirm: confirmText } : {}) } }); close(); toast(parts ? `Gelöscht: ${what}` : 'Zurückgesetzt'); await load(); })();
+    };
   };
+  const resetTest = () => openReset('test');
+  const resetLive = () => openReset('live');
   const c = data.counts;
   const ev = data.evening?.live || {};
   const evCard = h('div', { class: 'card stack' }, h('div', { class: 'row between' }, h('h2', {}, 'Abend-Start'),
@@ -346,8 +368,8 @@ function viewStart() {
         t.enabled ? h('button', { onclick: () => { if (confirm('Neue Test-Adresse erzeugen? Die alte funktioniert dann nicht mehr.')) save({ test: { regeneratePrefix: true } }); } }, 'Test-Adresse erneuern') : null)),
     h('div', { class: 'card stack danger' },
       h('h2', {}, 'Zurücksetzen'),
-      h('p', { class: 'small muted' }, 'Löscht Wünsche, Warteschlange, Setlist und Zähler und stoppt die Wiedergabe. Codes und Einstellungen bleiben erhalten.'),
-      h('div', { class: 'row between' }, h('div', {}, h('strong', {}, 'Testmodus'), h('div', { class: 'small muted' }, `${c.test.pending} offen · ${c.test.approved} in Queue · ${c.test.played} gespielt`)), h('button', { class: 'outline-bad', onclick: resetTest }, 'Testmodus zurücksetzen')),
+      h('p', { class: 'small muted' }, 'Alles oder nur Teile löschen, z. B. nur die gespielten Lieder oder nur die Statistik. Codes und Einstellungen bleiben erhalten.'),
+      h('div', { class: 'row between' }, h('div', {}, h('strong', {}, 'Testmodus'), h('div', { class: 'small muted' }, `${c.test.pending} offen · ${c.test.approved} in Queue · ${c.test.played} gespielt`)), h('button', { class: 'outline-bad', onclick: resetTest }, 'Testmodus zurücksetzen …')),
       h('hr'),
       h('div', { class: 'row between' }, h('div', {}, h('strong', {}, 'Live'), h('div', { class: 'small muted' }, `${c.live.pending} offen · ${c.live.approved} in Queue · ${c.live.played} gespielt`)), h('button', { class: 'bad', onclick: resetLive }, 'Live zurücksetzen …'))),
     h('details', { class: 'card more' }, h('summary', {}, 'Testmodus-Optionen'),
@@ -425,7 +447,7 @@ function viewAutomation() {
       h('label', { class: 'field' }, 'Zeitzone der Party', tz)),
     h('div', { class: 'grid two' },
       h('div', { class: 'card stack' }, h('h2', {}, 'Smarter Übergang'), row(smart, 'Auto-Crossfade beginnt, wenn der Song ausklingt'),
-        h('p', { class: 'small muted' }, 'Nutzt Intro-/Outro-Zeiten aus Spotify (falls für eure App verfügbar). Sonst gilt die feste Vorlaufzeit aus der Technik-Ansicht.')),
+        h('p', { class: 'small muted' }, 'Nutzt Intro-/Outro-Zeiten aus Spotify (falls für eure App verfügbar). Sonst gilt die feste Vorlaufzeit aus der Technik-Ansicht. Sind KI-Übergänge an (Admin → KI), plant die KI Länge und Startpunkt pro Song.')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Lückenfüller'), row(fOn, 'Bei leerer Warteschlange automatisch Songs einreihen'),
         h('label', { class: 'field' }, 'Playlist (öffentlich oder dein eigenes Konto)', fPl),
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Auffüllen, wenn weniger als'), fMin, h('span', { class: 'small muted' }, 'Songs warten · Wiederholung frühestens nach'), fAvoid, h('span', { class: 'small muted' }, 'Min.')))),
@@ -565,7 +587,8 @@ function viewAi() {
   const url = h('input', { value: a.url, placeholder: 'http://192.168.178.50:11434', autocomplete: 'off' });
   const token = h('input', { type: 'password', placeholder: a.token ? '(gesetzt – leer lassen zum Behalten)' : 'nur nötig hinter einem geschützten Proxy', autocomplete: 'new-password' });
   const model = h('select', {}, h('option', { value: a.model }, a.model || '– erst Modelle laden –'));
-  const enabled = chk(a.enabled), autoLight = chk(a.autoLight), autoFiller = chk(a.autoFiller);
+  const enabled = chk(a.enabled), autoLight = chk(a.autoLight), autoFiller = chk(a.autoFiller), autoMix = chk(a.autoMix !== false);
+  const mixCut = num(a.mixMaxCutDb ?? 6, { min: 0, max: 12, class: 'num' });
   const timeout = num(a.timeoutSec, { min: 10, max: 600, class: 'num' });
   const info = h('div', { class: 'small muted' });
   const loadModels = safe(async () => {
@@ -587,9 +610,11 @@ function viewAi() {
       h('label', { class: 'check' }, enabled, 'KI einschalten'),
       h('label', { class: 'check' }, autoLight, 'Licht-Vorschläge automatisch erzeugen'),
       h('label', { class: 'check' }, autoFiller, 'Leere Warteschlange automatisch per KI auffüllen'),
+      h('label', { class: 'check' }, autoMix, 'Songs analysieren: Auto-Crossfades planen und Lautstärke angleichen'),
+      h('div', { class: 'row' }, h('span', { class: 'small' }, 'Laute Songs höchstens leiser machen um'), mixCut, h('span', { class: 'small' }, 'dB')),
       field('Maximale Wartezeit (Sekunden)', timeout),
       h('div', { class: 'row' },
-        h('button', { class: 'primary', onclick: () => save({ ai: { url: url.value, token: token.value || undefined, model: model.value, enabled: enabled.checked, autoLight: autoLight.checked, autoFiller: autoFiller.checked, timeoutSec: Number(timeout.value) } }) }, 'Speichern'),
+        h('button', { class: 'primary', onclick: () => save({ ai: { url: url.value, token: token.value || undefined, model: model.value, enabled: enabled.checked, autoLight: autoLight.checked, autoFiller: autoFiller.checked, autoMix: autoMix.checked, mixMaxCutDb: Number(mixCut.value), timeoutSec: Number(timeout.value) } }) }, 'Speichern'),
         h('button', { onclick: safe(async () => { const r = await api('/admin/ai/test', { method: 'POST', body: {} }); toast(`✓ Antwort nach ${(r.ms / 1000).toFixed(1)} s: „${r.reply}“`); }) }, 'Verbindung testen'),
         a.token ? h('button', { class: 'ghost small', onclick: () => save({ ai: { clearToken: true } }, 'Token entfernt') }, 'Token entfernen') : null),
       status),
@@ -597,6 +622,7 @@ function viewAi() {
       feat('aiEnergy', 'Energie-Kurve: Technik → KI-Assistent → „Reihenfolge vorschlagen“'),
       feat('aiFiller', 'Lückenfüller: Technik → „Songs vorschlagen“ (bei Spotify geprüft, Einreihen per Knopf)'),
       feat('aiLight', 'Licht-Vorschläge: Farben, Tempo, Intensität, Strobo im Licht-Dashboard'),
+      feat('aiMix', 'Übergänge & Auto-Pegel: plant jeden Auto-Crossfade (Länge, Startpunkt) und gleicht laute Songs an – sichtbar in der Technik unter „Übergang“. Von Hand gemerkte Lautstärken haben Vorrang.'),
       feat('aiHelp', 'Fehler-Assistent: „Was ist los?“ in Technik, Vorbereitung und Ton-Dashboard'),
       feat('aiRecap', 'Rückblick: Bericht & Export → „Rückblick schreiben“'),
       feat('aiGenres', 'Genres nachtragen: wenn Spotify keine liefert (im Licht-Dashboard mit „KI“ markiert)'),

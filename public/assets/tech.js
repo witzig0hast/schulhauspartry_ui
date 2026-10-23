@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat, coverOnce } from '/assets/app.js';
-import { pendingList, upcomingList, bar, playerName, chatPanel, isPressing, onRelease, connectionDot } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, bar, playerName, chatPanel, isPressing, onRelease, connectionDot, addSongBox } from '/assets/staff-ui.js';
 import { openLevels } from '/assets/levels.js';
 import { aiCard } from '/assets/ai-ui.js';
 
@@ -73,7 +73,7 @@ function playerCard(n) {
   r.fader.addEventListener('input', () => { const now = Date.now(); if (now - t > 80) { t = now; api('/control/gain', { method: 'POST', body: { player: n, value: r.fader.value / 100 } }).catch(() => {}); } });
   r.fader.addEventListener('change', () => api('/control/gain', { method: 'POST', body: { player: n, value: r.fader.value / 100 } }).catch(() => {}));
   r.faderVal = h('span', { class: 'small mono' });
-  r.fadeSec = numInput(5);
+  r.fadeSec = numInput(5, { onchange: () => { r.fadeTouched = true; } });   // startet mit der Standard-Fade-Zeit
   r.root = h('section', { class: `card stack player ${n === 2 ? 'p2' : ''}` },
     h('div', { class: 'row between' }, h('h2', {}, playerName(n)), h('div', { class: 'row', style: 'gap:8px' }, r.eq, r.status)),
     h('div', { class: 'dplayer-main' }, r.cov, h('div', { class: 'grow', style: 'min-width:0' }, r.title, r.artist)),
@@ -114,9 +114,10 @@ function crossfadeCard() {
   refs.cfNext = h('div');
   refs.cfSeg = h('div', { class: 'seg' });
   refs.cfCount = h('div', { class: 'tcount' });
+  refs.cfAi = h('div', { class: 'small muted' });
   return h('section', { class: 'card stack' },
     h('div', { class: 'row between' }, h('h2', {}, 'Übergang'), refs.cfCount),
-    refs.cfNext,
+    refs.cfNext, refs.cfAi,
     h('button', { class: 'primary', style: 'height:56px;font-size:1.05rem', onclick: () => post('/control/crossfade', { sec: Number(refs.cfSec.value) }) }, '⇄  Crossfade zum nächsten Song'),
     h('div', { class: 'row between' }, h('span', { class: 'small muted' }, 'Dauer'), refs.cfSeg),
     refs.cfBar, refs.cfInfo);
@@ -196,18 +197,19 @@ async function onEnd() {
 
 // ---------- Wuensche ----------
 function wishesCard() {
-  refs.pendingBox = h('div'); refs.upBox = h('div');
+  refs.pendingBox = h('div'); refs.upBox = h('div'); refs.addSong = h('div');
   refs.assign = h('select', { onchange: (e) => { assignMode = e.target.value; } }, h('option', { value: 'auto' }, 'Auto-Zuweisung'), h('option', { value: '1' }, 'Player 1'), h('option', { value: '2' }, 'Player 2'));
   refs.pendingTitle = h('span', {}, 'Wünsche');
   return h('details', { class: 'card stack more', open: true }, h('summary', { style: 'cursor:pointer;font-weight:650' }, refs.pendingTitle),
     h('div', { class: 'grid two', style: 'margin-top:10px;align-items:start' },
       h('div', { class: 'stack' }, h('div', { class: 'row between' }, h('h3', {}, 'Offen'), h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Zuweisung'), refs.assign)), refs.pendingBox),
-      h('div', { class: 'stack' }, h('h3', {}, 'Warteschlange'), refs.upBox)));
+      h('div', { class: 'stack' }, h('h3', {}, 'Warteschlange'), refs.addSong, refs.upBox)));
 }
 
 // ---------- Erweitert ----------
 function advancedCard() {
   refs.autoSec = numInput(8, { onchange: (v) => post('/settings/tech', { auto: { crossfadeSec: v } }) });
+  refs.fadeDef = numInput(5, { onchange: (v) => post('/settings/tech', { auto: { fadeSec: v } }) });
   refs.before1 = numInput(20, { min: 1, max: 180, step: 1, onchange: (v) => post('/settings/tech', { auto: { startBeforeEndSec: { 1: v } } }) });
   refs.before2 = numInput(20, { min: 1, max: 180, step: 1, onchange: (v) => post('/settings/tech', { auto: { startBeforeEndSec: { 2: v } } }) });
   refs.curve = h('select', { onchange: (e) => post('/settings/tech', { auto: { curve: e.target.value } }) }, h('option', { value: 'equalPower' }, 'Gleiche Lautheit (empfohlen)'), h('option', { value: 'linear' }, 'Linear'));
@@ -221,6 +223,7 @@ function advancedCard() {
     h('div', { class: 'grid two', style: 'margin-top:14px' },
       h('div', { class: 'stack' }, h('h3', {}, 'Auto-Crossfade'),
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Dauer'), refs.autoSec, h('span', { class: 'small muted' }, 's')),
+        h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Standard-Fade-Zeit (Ein-/Ausblenden)'), refs.fadeDef, h('span', { class: 'small muted' }, 's')),
         h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Start vor Songende: P1'), refs.before1, h('span', { class: 'small muted' }, 'P2'), refs.before2, h('span', { class: 'small muted' }, 's')),
         h('label', { class: 'field' }, 'Kurve', refs.curve),
         h('label', { class: 'field' }, 'Manuelle Crossfade-Dauer (s)', refs.cfSec)),
@@ -259,6 +262,13 @@ function render() {
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
   refs.cfInfo.textContent = cf ? `Crossfade läuft: Player ${cf.from} → Player ${cf.to}` : '';
   setVal(refs.autoSec, state.auto.crossfadeSec);
+  setVal(refs.fadeDef, state.auto.fadeSec ?? 5);
+  for (const n of [1, 2]) { const r = refs[`p${n}`]; if (r?.fadeSec && !r.fadeTouched) setVal(r.fadeSec, state.auto.fadeSec ?? 5); }
+  const mx = state.mix, db = (v) => `${v < 0 ? '−' : '±'}${String(Math.abs(v)).replace('.', ',')} dB`;
+  refs.cfAi.textContent = !mx ? '' : [
+    mx.plan ? `KI-Übergang: ${String(mx.plan.durSec).replace('.', ',')} s, beginnt ${Math.round(mx.plan.leadMs / 1000)} s vor Ende – ${mx.plan.why}${state.auto.enabled ? '' : ' (Auto-Crossfade ist aus)'}` : (state.upcoming[0] ? 'KI-Übergang: Songs werden noch analysiert …' : ''),
+    mx.nextTrimDb != null && mx.nextTrimDb < 0 ? `Pegel nächster Song: ${db(mx.nextTrimDb)} (KI)` : '',
+  ].filter(Boolean).join(' · ');
   setVal(refs.before1, state.auto.startBeforeEndSec[1]); setVal(refs.before2, state.auto.startBeforeEndSec[2]); setVal(refs.curve, state.auto.curve);
   setVal(refs.duckDb, state.ducking.db);
   for (const b of refs.wishBtns) b.className = b.dataset.mode === state.wishMode ? 'on' : '';
@@ -279,6 +289,7 @@ function render() {
   swap(refs.errors, JSON.stringify(state.errors.map((e) => e.ts)), () => (state.errors.length ? h('div', {}, ...state.errors.map((e) => h('div', { class: 'tiny muted' }, `${new Date(e.ts).toLocaleTimeString('de-DE')} ${e.msg}`))) : h('div', { class: 'tiny muted' }, 'Keine Fehler.')));
   refs.pendingTitle.textContent = `Wünsche · ${state.pending.length} offen · ${state.upcomingTotal} in der Warteschlange`;
   memoSet(refs.pendingBox, JSON.stringify(state.pending.map((p) => [p.id, p.votes])), () => pendingList(state, { canAct: true, assign: () => assignMode }));
+  if (state.role === 'admin' && !refs.addSong.firstChild) refs.addSong.append(addSongBox());
   memoSet(refs.upBox, JSON.stringify(state.upcoming.map((u) => [u.id, u.player, u.prioritized])), () => upcomingList(state, { canAct: true }));
 }
 

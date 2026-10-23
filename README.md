@@ -81,6 +81,16 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
+### KI-Übergänge & Auto-Pegel (Admin → KI)
+
+Die KI analysiert jeden Song der Warteschlange vorab: geschätzte Lautheit (LUFS), ruhiges Intro, Art des Endes (blendet aus / hartes Ende / klingt aus) und Energie. Daraus plant die App jeden **Auto-Crossfade** (Länge, Startpunkt, Kurve – z. B. lange Überblendung bei ausblendenden Songs, kurzer Wechsel bei hartem Ende oder Energiesprung) und gleicht **laute Songs** an (höchstens um die eingestellten dB leiser, leisere bleiben beim Grundpegel). Von Hand gemerkte Lautstärken haben Vorrang. Sichtbar in der Technik unter „Übergang“, im Protokoll als `crossfade.ai`. Die KI hört die Musik nicht – sie kennt den Song oder schätzt aus Interpret, Jahr und Genre.
+
+**Standard-Fade-Zeit:** Admin → Wünsche & Regeln → Fade-Zeiten (oder Technik → Erweitert). Gilt für Ein-/Ausblenden, Companion und als Grundlage des Auto-Crossfades.
+
+**Lieder hinzufügen (Admin):** in Technik (Warteschlange) und Moderation (Tab Warteschlange) – suchen, „Hinzufügen“ oder „Vorziehen“. Erscheint als „Team“.
+
+**Zurücksetzen in Teilen:** Admin → Start & Links → Zurücksetzen: wahlweise nur gespielte Lieder, nur Statistiken & Zähler, abgelehnte Wünsche, offene Wünsche & Warteschlange, Umfragen & Chat – oder alles. Live mit getippter Bestätigung und Backup vorher.
+
 ### Generalprobe (Admin → Generalprobe)
 
 Simuliert viele Gäste (Seite, Suche, Wünsche, Votes, Live-Verbindungen), einen Moderations-Bot und die Wiedergabe mit Crossfades – über die echten Schnittstellen inklusive Schutzgrenzen. **Wo?**

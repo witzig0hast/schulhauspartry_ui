@@ -58,6 +58,27 @@ export function banMenu(r, onAfter, reason = '') {
 }
 
 // ---- Warteschlange ----
+// Admin: Lieder selbst in die Warteschlange legen (Suche bei Spotify, hinten anstellen oder vorziehen)
+export function addSongBox() {
+  const results = h('div', { class: 'list' });
+  let t = null;
+  const add = (x, next) => safe(async () => {
+    const r = await api('/queue/add', { method: 'POST', body: { trackId: x.id, next } });
+    toast(`Eingereiht${next ? ' und vorgezogen' : ''}: ${r.title}`);
+    input.value = ''; clear(results);
+  })();
+  const input = h('input', { type: 'search', placeholder: 'Lied suchen und selbst einreihen …', maxlength: 80, 'aria-label': 'Lied hinzufügen', oninput: () => { clearTimeout(t); t = setTimeout(safe(async () => {
+    const q = input.value.trim(); if (q.length < 2) return clear(results);
+    const { tracks } = await api(`/queue/search?q=${encodeURIComponent(q)}`);
+    clear(results).append(...(tracks.length ? tracks.map((x) => h('div', { class: 'item row between nowrap' },
+      h('div', { class: 'req-main grow' }, cover(x.title, 'sm', x.id), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, `${x.artist}${x.durationMs ? ` · ${fmtTime(x.durationMs)}` : ''}`))),
+      x.blocked ? h('span', { class: 'badge bad' }, 'gesperrt') : x.queued ? h('span', { class: 'badge' }, 'schon in der Queue')
+        : h('div', { class: 'row nowrap', style: 'gap:6px' }, h('button', { class: 'small', onclick: () => add(x, true) }, 'Vorziehen'), h('button', { class: 'small primary', onclick: () => add(x, false) }, 'Hinzufügen'))))
+      : [h('div', { class: 'small muted' }, 'Nichts gefunden.')]));
+  }), 300); } });
+  return h('div', { class: 'stack', style: 'gap:8px;margin-bottom:12px' }, h('div', { class: 'eyebrow' }, 'Lied hinzufügen (Admin)'), input, results);
+}
+
 export function upcomingList(state, { canAct, onAfter } = {}) {
   if (!state.upcoming.length) return empty('Die Warteschlange ist leer.', 'note');
   const box = h('div', {});
@@ -68,6 +89,7 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
       h('div', { class: 'grow' }, h('div', { class: 't' }, u.title), h('div', { class: 'a' }, u.artist)),
       h('div', { class: 'row', style: 'gap:6px;justify-content:flex-end' },
         u.auto ? h('span', { class: 'badge', title: 'Automatisch eingereiht (Lückenfüller)' }, 'Auto') : null,
+        u.team ? h('span', { class: 'badge', title: `Vom Team eingereiht${u.decidedBy ? ` (${u.decidedBy})` : ''}` }, 'Team') : null,
         u.introMs > 20000 ? h('span', { class: 'badge', title: `Langes Intro (${Math.round(u.introMs / 1000)} s)` }, 'Intro') : null,
         u.explicit ? h('span', { class: 'badge warn', title: 'Explicit' }, 'E') : null,
         u.votes > 1 ? h('span', { class: 'badge' }, `+${u.votes - 1}`) : null,

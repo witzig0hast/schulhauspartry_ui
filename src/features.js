@@ -72,6 +72,7 @@ export const FEATURES = [
   { id: 'aiEnergy', group: 'ai', label: 'KI: Energie-Kurve', desc: 'Schlägt eine Reihenfolge der Warteschlange vor, damit sich die Stimmung sinnvoll aufbaut. Die Technik übernimmt per Knopf.', def: true },
   { id: 'aiFiller', group: 'ai', label: 'KI: Lückenfüller-Vorschläge', desc: 'Schlägt Songs passend zu den letzten Wünschen vor (und füllt auf Wunsch automatisch auf).', def: true },
   { id: 'aiLight', group: 'ai', label: 'KI: Licht-Vorschläge', desc: 'Farben, Tempo, Intensität und Strobo-Empfehlung pro Song im Licht-Dashboard.', def: true },
+  { id: 'aiMix', group: 'ai', label: 'KI: Übergänge & Auto-Pegel', desc: 'Analysiert jeden Song (Lautheit, Intro, Ende, Energie) und plant daraus automatische Crossfades und einen Pegel-Ausgleich.', def: true },
   { id: 'aiHelp', group: 'ai', label: 'KI: Fehler-Assistent', desc: '„Was ist los?“ – wertet Verbindungen, Fehler und Live-Test aus und nennt die nächsten Schritte.', def: true },
   { id: 'aiGenres', group: 'ai', label: 'KI: Genres nachtragen', desc: 'Liefert Spotify keine Genres, ordnet die KI den Song selbst ein (für Auswertungen, Licht und Auto-Ordnung).', def: true },
   { id: 'aiSummary', group: 'ai', label: 'KI: Wunsch-Zusammenfassung', desc: 'Überblick über die offenen Wünsche für die Moderation: Gruppen, Auffälliges, womit anfangen.', def: true },

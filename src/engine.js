@@ -8,7 +8,7 @@ import { RealSpotify, RealPlayer } from './adapters/spotify-real.js';
 import { MockX32, HttpX32, ampToFader, faderToAmp } from './adapters/x32.js';
 import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
-import { autoFill } from './ai.js';
+import { autoFill, mixPlan, mixTrimDb, mixActive } from './ai.js';
 import * as L from './log.js';
 import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
@@ -52,6 +52,7 @@ export class Engine extends EventEmitter {
     this.gain = { 1: 1, 2: 1 };
     this.duckMul = 1;
     this.trackMul = { 1: 1, 2: 1 }; // gemerkte Lautstaerke je Song
+    this.mixTrim = { 1: null, 2: null };   // KI-Pegel-Ausgleich des laufenden Songs (dB), null = keiner
     this.lastSent = { 1: -1, 2: -1 };
     this.muted = { 1: false, 2: false };   // Kanal nach dem Ausblenden stumm geschaltet
     this.current = null;
@@ -342,13 +343,20 @@ export class Engine extends EventEmitter {
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
-    // Smart: den Uebergang beginnen, wenn der Song ausklingt (Outro), nicht mitten im Refrain
-    const lead = leadFor(cfg, this.current, st.durationMs, getMeta(this.trackIdOf[this.current]));
+    // KI-Uebergang (falls analysiert), sonst Smart: den Uebergang beginnen, wenn der Song ausklingt, nicht mitten im Refrain
+    const plan = this.mixPlanNow(st, cfg);
+    const lead = plan ? plan.leadMs : leadFor(cfg, this.current, st.durationMs, getMeta(this.trackIdOf[this.current]));
     const braked = isOn('songLimit') && cfg.limits.maxSongSec > 0 && st.positionMs > cfg.limits.maxSongSec * 1000;
     if (remaining > lead && !braked) return;
     if (!rq.upcoming(this.env).length) return;
-    const dur = Math.max(0.5, Math.min(cfg.auto.crossfadeSec, remaining / 1000));
-    this.startCrossfade(dur, cfg.auto.curve, { auto: true }).catch((e) => this.fail('auto-crossfade', e));
+    const dur = Math.max(0.5, Math.min(plan ? plan.durSec : cfg.auto.crossfadeSec, remaining / 1000));
+    if (plan) L.info('wiedergabe', 'crossfade.ai', `KI-Übergang: ${String(Math.round(dur * 10) / 10).replace('.', ',')} s – ${plan.why}`, { env: this.env, actor: { kind: 'ai' }, data: { ...plan, durSec: dur } });
+    this.startCrossfade(dur, plan ? plan.curve : cfg.auto.curve, { auto: true }).catch((e) => this.fail('auto-crossfade', e));
+  }
+  mixPlanNow(st = this.current && this.players[this.current].status(), cfg = settings()) {
+    if (!this.current || !st?.durationMs) return null;
+    const meta = getMeta(this.trackIdOf[this.current]);
+    return mixPlan({ curId: this.trackIdOf[this.current], nextId: rq.upcoming(this.env)[0]?.trackId, durationMs: st.durationMs, spotifyOutroMs: meta?.src === 'spotify' ? meta.outro_ms : null, baseSec: cfg.auto.crossfadeSec });
   }
 
   // ----- Aktionen -----
@@ -405,7 +413,10 @@ export class Engine extends EventEmitter {
     const cur = this.trackIdOf[player ?? this.current ?? 1];
     if (player) {
       const g = cur && isOn('gainMemory') ? getDb().prepare('SELECT gain FROM track_gain WHERE track_id = ?').get(cur) : null;
-      this.trackMul[player] = g ? g.gain : 1;
+      // von Hand gemerkte Lautstaerke hat Vorrang, sonst der KI-Pegel-Ausgleich
+      const trim = g ? null : mixTrimDb(cur);
+      this.trackMul[player] = g ? g.gain : trim != null ? dbToAmp(trim) : 1;
+      this.mixTrim[player] = trim;
     }
     if (cur) ensureMeta(this.spotify, { id: cur }).catch(() => {});
     this.afterQueueChange();
@@ -696,6 +707,7 @@ export class Engine extends EventEmitter {
       current: this.current,
       crossfade: cf ? { from: cf.from, to: cf.to, progress: clamp01((Date.now() - cf.start) / (cf.dur * 1000)), durSec: cf.dur } : null,
       auto: cfg.auto,
+      mix: mixActive() ? { plan: this.mixPlanNow(), trim: { ...this.mixTrim }, nextTrimDb: mixTrimDb(rq.upcoming(this.env)[0]?.trackId) } : null,
       ducking: { ...cfg.ducking, active: !!this.ducking, mul: this.duckMul },
       mics: this.x32State.mics,
       wishMode: this.state.wishMode,

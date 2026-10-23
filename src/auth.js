@@ -38,7 +38,8 @@ export const PERMS = {
   connections: ['admin', 'tech', 'display', 'light'], // Mics, Verbindungsampel
   viewSound: ['admin', 'tech', 'orga', 'display'],                 // Ton-Dashboard
   viewOrga: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],     // Orga-Dashboard
-  viewLogs: ['admin', 'tech'],                                     // Live-Protokoll
+  viewLogs: ['admin', 'tech'],
+  addSongs: ['admin'],                                             // Lieder selbst in die Warteschlange legen                                     // Live-Protokoll
 };
 export const can = (role, perm) => !!role && (PERMS[perm] || []).includes(role);
 

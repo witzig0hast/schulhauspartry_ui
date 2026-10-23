@@ -1,5 +1,5 @@
 import { h, api, connect, topbar, clear, eq, toast, BASE, $, feat, safe, coverOnce } from '/assets/app.js';
-import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban, isPressing, onRelease } from '/assets/staff-ui.js';
+import { pendingList, upcomingList, historyList, blacklistPanel, chatPanel, ban, isPressing, onRelease, addSongBox } from '/assets/staff-ui.js';
 import { actionFor, openHotkeyEditor, getHotkeys, ACTIONS } from '/assets/hotkeys.js';
 import { summaryBox } from '/assets/ai-ui.js';
 
@@ -30,6 +30,8 @@ const pendingBox = h('div'); const laterBox = h('div');
 boxes.wuensche.append(assignRow, pendingBox);
 summaryBox().then((b) => { if (b) boxes.wuensche.prepend(b); }).catch(() => {});
 boxes.spaeter.append(laterBox);
+const queueInner = h('div');
+boxes.queue.append(queueInner);
 
 function renderTabs() {
   const n = { wuensche: state.pending.length, spaeter: state.later?.length || 0, queue: state.upcomingTotal, gespielt: state.history?.length || 0, gesperrt: state.blacklist?.length || 0, chat: Math.max(0, (state.chat?.length || 0) - chatSeen) };
@@ -67,7 +69,8 @@ function render() {
   const pk = (arr) => arr.map((p) => [p.id, p.votes]);
   update(pendingBox, JSON.stringify([pk(state.pending), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, me: state.me }));
   update(laterBox, JSON.stringify([pk(state.later || []), canAct, state.settings.rejectReasons, claimKey, state.me]), () => pendingList(state, { canAct, assign: () => assignMode, list: 'later', me: state.me }));
-  update(boxes.queue, JSON.stringify([state.upcoming.map((u) => [u.id, u.player, u.prioritized, u.votes, u.auto]), canAct]), () => upcomingList(state, { canAct }));
+  if (state.role === 'admin' && !boxes.queue.dataset.add) { boxes.queue.dataset.add = '1'; boxes.queue.prepend(addSongBox()); }
+  update(queueInner, JSON.stringify([state.upcoming.map((u) => [u.id, u.player, u.prioritized, u.votes, u.auto]), canAct]), () => upcomingList(state, { canAct }));
   update(boxes.gespielt, JSON.stringify([state.history?.map((r) => [r.id, r.status]), canAct, (state.blacklist || []).length]), () => historyList(state, { canAct }));
   update(boxes.gesperrt, JSON.stringify([state.blacklist, canAct]), () => blacklistPanel(state, { canAct }));
   update(boxes.chat, JSON.stringify([state.chat?.map((m) => m.id), canAct]), () => chatPanel(state, { canWrite: canAct }));

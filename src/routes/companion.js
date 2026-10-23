@@ -79,8 +79,8 @@ export function companionRouter(env, engine, hub) {
         case 'panic-clear': engine.panicClear(); break;
         case 'play-1': case 'play-2': await engine.play(n); break;
         case 'pause-1': case 'pause-2': await engine.pause(n); break;
-        case 'fade-in-1': case 'fade-in-2': await engine.fadeIn(n, sec || 5); break;
-        case 'fade-out-1': case 'fade-out-2': engine.fadeOut(n, sec || 5); break;
+        case 'fade-in-1': case 'fade-in-2': await engine.fadeIn(n, sec || settings().auto.fadeSec || 5); break;
+        case 'fade-out-1': case 'fade-out-2': engine.fadeOut(n, sec || settings().auto.fadeSec || 5); break;
         case 'wishes-open': engine.setWishMode('open'); break;
         case 'wishes-pause': engine.setWishMode('paused'); break;
         case 'wishes-close': engine.setWishMode('closed'); break;
