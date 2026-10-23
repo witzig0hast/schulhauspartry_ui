@@ -5,7 +5,8 @@ import { getDb } from '../db.js';
 import { applyPatch, publicSettings, settings, setPlayerToken, spotifyApps } from '../settings.js';
 import * as rq from '../requests.js';
 import { config } from '../config.js';
-import { authorizeUrl, exchangeCode } from '../adapters/spotify-real.js';
+import { authorizeUrl, exchangeCode, explainSpotifyError } from '../adapters/spotify-real.js';
+import * as L from '../log.js';
 import { RealPlayer } from '../adapters/spotify-real.js';
 import { audit } from '../audit.js';
 import { testConnection, unlinkFor } from '../sso.js';
@@ -210,6 +211,8 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
   return r;
 }
 
+const escHtml = (x) => String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 // Callback darf ohne Session-Cookie laufen (Strict-Cookie wird bei Redirect von Spotify nicht gesendet);
 // der geheime, einmalige state-Wert ist hier der Nachweis.
 export function spotifyCallbackRouter(onConnected) {
@@ -217,13 +220,23 @@ export function spotifyCallbackRouter(onConnected) {
   r.get('/api/admin/spotify/callback', async (req, res) => {
     const st = oauthStates.get(String(req.query.state || ''));
     oauthStates.delete(String(req.query.state || ''));
-    if (!st || st.exp < Date.now() || !req.query.code) return res.status(400).send('Ungültige oder abgelaufene Anfrage.');
+    const fail = (status, why, data) => {
+      L.error('spotify', 'spotify.connect_failed', `Spotify-Player ${st?.player || '?'} nicht verbunden: ${why}`, { env: 'system', data });
+      audit('spotify.connect.fail', null, clientIp(req), why);
+      res.status(status).type('html').send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spotify-Verbindung</title>
+<body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 16px;line-height:1.5"><h1>Spotify-Verbindung fehlgeschlagen</h1><p>${escHtml(why)}</p><p><a href="/admin#verbindungen">Zurück zum Admin</a></p></body>`);
+    };
+    if (!st || st.exp < Date.now()) return fail(400, 'Ungültige oder abgelaufene Anfrage (Seite neu geladen, länger als 10 Minuten gewartet oder Server neu gestartet). Bitte im Admin neu auf „Verbinden“ drücken.', { known: !!st });
+    if (req.query.error || !req.query.code) return fail(400, `Spotify hat abgelehnt: ${String(req.query.error || 'kein Code').slice(0, 60)}`, { error: String(req.query.error || '').slice(0, 60) });
     try {
       const out = await exchangeCode(String(req.query.code), `${config.publicUrl}/api/admin/spotify/callback`, st.appId);
       setPlayerToken(st.player, out.refreshToken, `${out.user}${out.product ? ` (${out.product})` : ''}`, out.appId);
       onConnected?.(st.player);
+      L.info('spotify', 'spotify.connected', `Spotify-Player ${st.player} verbunden (${out.user})`, { env: 'system', data: { player: st.player, appId: out.appId, product: out.product || null } });
       res.redirect('/admin#verbindungen');
-    } catch (e) { res.status(502).send('Spotify-Verbindung fehlgeschlagen.'); }
+    } catch (e) {
+      fail(400, explainSpotifyError(e), { player: st.player, appId: st.appId || null, message: e.message, spotify: e.spotify || null, redirectUri: `${config.publicUrl}/api/admin/spotify/callback` });
+    }
   });
   return r;
 }

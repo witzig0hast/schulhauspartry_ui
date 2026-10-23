@@ -21,8 +21,26 @@ async function tokenRequest(params, app) {
     headers: { Authorization: basic(app), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(params),
   });
-  if (!res.ok) throw new Error(`Spotify-Token fehlgeschlagen (${res.status})`);
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    const err = new Error(`Spotify-Token fehlgeschlagen (${res.status}${j.error ? `: ${j.error}` : ''})`);
+    err.spotify = { status: res.status, error: String(j.error || ''), description: String(j.error_description || '').slice(0, 200) };
+    throw err;
+  }
   return res.json();
+}
+
+// Verstaendliche Ursache fuer einen fehlgeschlagenen Spotify-Login (Codes und Texte kommen von Spotify, enthalten nichts Geheimes)
+export function explainSpotifyError(e) {
+  const sp = e?.spotify || {};
+  const d = sp.description.toLowerCase?.() || '';
+  if (sp.error === 'invalid_client') return 'Client-ID oder Client-Secret der Spotify-App stimmt nicht (Admin → Verbindungen → Spotify-Apps prüfen).';
+  if (sp.error === 'invalid_grant' && d.includes('redirect')) return 'Die Rückkehr-Adresse passt nicht: Im Spotify-Dashboard muss genau PUBLIC_URL + /api/admin/spotify/callback eingetragen sein.';
+  if (sp.error === 'invalid_grant') return 'Der Anmelde-Code war schon benutzt oder abgelaufen. Bitte im Admin neu auf „Verbinden“ drücken (Seite nicht neu laden).';
+  if (sp.status === 403 && sp.where === 'me') return 'Dieses Spotify-Konto ist für die App nicht freigeschaltet. Im Spotify-Dashboard unter „User Management“ eintragen (Development Mode) oder ein anderes Konto nehmen.';
+  if (sp.where === 'me') return `Spotify hat das Konto nicht herausgegeben (${sp.status}).`;
+  if (e?.cause?.code || /fetch failed/i.test(e?.message || '')) return 'Der Server erreicht Spotify nicht (Internet/DNS des Servers prüfen).';
+  return e?.message || 'Unbekannter Fehler';
 }
 
 export function authorizeUrl(state, redirectUri, appId) {
@@ -34,7 +52,14 @@ export function authorizeUrl(state, redirectUri, appId) {
 export async function exchangeCode(code, redirectUri, appId) {
   const app = needApp(appId);
   const t = await tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }, app);
-  const me = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${t.access_token}` } }).then((r) => r.json());
+  const r = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+  const me = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(`Spotify-Konto nicht lesbar (${r.status})`);
+    err.spotify = { status: r.status, error: String(me.error?.status || ''), description: String(me.error?.message || '').slice(0, 200), where: 'me' };
+    throw err;
+  }
+  if (!t.refresh_token) throw new Error('Spotify hat keinen Refresh-Token geliefert.');
   return { refreshToken: t.refresh_token, user: me.display_name || me.id, product: me.product, appId: app.id };
 }
 

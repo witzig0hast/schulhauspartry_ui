@@ -140,7 +140,7 @@ const AUDIT_TEXT = {
   'sso.fail': ['warn', 'SSO-Anmeldung fehlgeschlagen'], 'settings.change': ['info', 'Einstellungen geändert'], 'mode.change': ['info', 'Betriebsart geändert'],
   'account.create': ['info', 'Code angelegt'], 'account.delete': ['info', 'Code gelöscht'], 'account.revoke': ['info', 'Code gesperrt'],
   'shield.ban': ['warn', 'Adresse automatisch gesperrt'], 'shield.unban': ['info', 'Sperre aufgehoben'], 'admin.blocked': ['warn', 'Admin-Zugriff abgewiesen'],
-  'password.change': ['info', 'Admin-Passwort geändert'], 'companion.token': ['info', 'Companion-Token neu erzeugt'],
+  'password.change': ['info', 'Admin-Passwort geändert'], 'companion.token': ['info', 'Companion-Token neu erzeugt'], 'spotify.connect.fail': ['warn', 'Spotify-Verbindung fehlgeschlagen'],
 };
 export function auditToLog(kind, who, ip, detail) {
   const t = AUDIT_TEXT[kind] || ['info', kind];
