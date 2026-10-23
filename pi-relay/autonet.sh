@@ -11,6 +11,30 @@ cd "$(dirname "$0")"
 set -a; . ./.env; set +a
 STATE=/run/x32-relay-net
 tunnel_up() { ip link show wg0 >/dev/null 2>&1; }
+WG_CONF="${WG_CONF:-/etc/wireguard/wg0.conf}"
+
+# VPN-Ziel immer per IPv4 ansprechen: wg-quick loest den Namen nur beim Start auf und nimmt dabei
+# gern die IPv6-Adresse, die unterwegs oft nicht funktioniert. Prueft auch bei jedem Lauf neu (DynDNS).
+force_ipv4_endpoint() {
+  [ "${WG_PREFER_IPV4:-1}" = 1 ] && tunnel_up && [ -r "$WG_CONF" ] || return 0
+  local key ep host port v4 now
+  while read -r key ep; do
+    [ -n "$key" ] && [ -n "$ep" ] || continue
+    host="${ep%:*}"; port="${ep##*:}"
+    case "$host" in \[*|*[!0-9.]*) ;; *) continue ;; esac      # schon eine IPv4-Adresse
+    [ "${host#[}" = "$host" ] || continue                       # feste IPv6-Adresse: so lassen
+    v4="$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1{print $1}')"
+    [ -n "$v4" ] || { echo "autonet: keine IPv4-Adresse fuer $host gefunden"; continue; }
+    now="$(wg show wg0 endpoints 2>/dev/null | awk -v k="$key" '$1==k{print $2}')"
+    [ "$now" = "$v4:$port" ] && continue
+    wg set wg0 peer "$key" endpoint "$v4:$port" && echo "autonet: VPN-Ziel $host auf IPv4 gesetzt ($v4:$port, vorher ${now:-keins})"
+  done < <(awk -F'=' '
+    /^[[:space:]]*\[/ { if (k != "" && e != "") print k, e; k = ""; e = ""; peer = ($0 ~ /\[Peer\]/) }
+    peer && /^[[:space:]]*PublicKey[[:space:]]*=/ { v = substr($0, index($0, "=") + 1); gsub(/[[:space:]]/, "", v); k = v }
+    peer && /^[[:space:]]*Endpoint[[:space:]]*=/  { v = substr($0, index($0, "=") + 1); gsub(/[[:space:]]/, "", v); e = v }
+    END { if (k != "" && e != "") print k, e }' "$WG_CONF")
+}
+vpn_up() { wg-quick up wg0; force_ipv4_endpoint; }
 
 # ---------- 1. zu Hause? ----------
 alive() {
@@ -59,8 +83,9 @@ apply_nat
 # ---------- Umschalten ----------
 if [ "$cur" = "$want" ]; then
   rm -f "$STATE"
+  [ "$want" = vpn ] && force_ipv4_endpoint
   if [ "$want" = vpn ] && [ -n "${PING_TARGET:-}" ] && ! ping -c 2 -W 3 "$PING_TARGET" >/dev/null 2>&1; then
-    echo "autonet: Tunnel antwortet nicht ($PING_TARGET) – starte ihn neu"; wg-quick down wg0 >/dev/null 2>&1; wg-quick up wg0
+    echo "autonet: Tunnel antwortet nicht ($PING_TARGET) – starte ihn neu"; wg-quick down wg0 >/dev/null 2>&1; vpn_up
   fi
   exit 0
 fi
@@ -72,6 +97,6 @@ if [ "$want" = lan ]; then
   net="$(ip -4 route show dev "$phys_if" scope link | awk '{print $1; exit}')"
   [ -n "$net" ] && command -v ufw >/dev/null && ufw allow from "$net" to any port 8080 proto tcp >/dev/null 2>&1
 else
-  wg-quick up wg0
+  vpn_up
 fi
 rm -f "$STATE"

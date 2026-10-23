@@ -78,6 +78,8 @@ MIC_CHANNELS=${MIC_CHANNELS:-5,6,7}
 SERVER_LAN_IP=${SERVER_LAN_IP:-}
 HOME_GW_MAC=$HOME_GW_MAC
 PING_TARGET=$PING_TARGET
+# VPN-Ziel (Subdomain) immer per IPv4 ansprechen, bei jeder Pruefung neu aufgeloest (0 = aus)
+WG_PREFER_IPV4=${WG_PREFER_IPV4:-1}
 # Virtuelle Adresse des X32 im Tunnel (vom Heimnetz aus erreichbar). Weitere Geraete: EXTRA_DEVICES=10.8.0.201=192.168.1.20,...
 VIRTUAL_X32_IP=${VIRTUAL_X32_IP:-10.8.0.200}
 EXTRA_DEVICES=${EXTRA_DEVICES:-}
