@@ -57,6 +57,7 @@ export async function prepChecks(env, engine, engines) {
   const liveCounts = rq.counts('live');
   add('livedata', 'Ablauf', 'Live-Daten leer', liveCounts.pending + liveCounts.approved + liveCounts.played + liveCounts.denied + liveCounts.later === 0 ? 'ok' : 'warn',
     liveCounts.pending + liveCounts.approved + liveCounts.played + liveCounts.denied + liveCounts.later === 0 ? 'Bereit für den ersten Wunsch' : `Noch Daten vom letzten Mal (${liveCounts.played} gespielt, ${liveCounts.pending} offen) – Admin → Zurücksetzen.`);
+  add('system', 'Ablauf', 'System eingeschaltet', engine.held ? 'fail' : 'ok', engine.held ? 'Das System ist aus (Soundcheck-Modus) – ein Admin schaltet es ein (Admin → Start & Links → System).' : 'Die App steuert Wiedergabe, Fader und Automatik.');
   add('emergency', 'Ablauf', 'Notfall-Playlist', s.emergency.playlist ? 'ok' : 'warn', s.emergency.playlist ? 'Eingetragen' : 'Nicht eingetragen (Admin → Automatik) – falls alles ausfällt.');
   add('filler', 'Ablauf', 'Lückenfüller', s.filler.enabled && s.filler.playlist ? 'ok' : 'info', s.filler.enabled && s.filler.playlist ? 'aktiv' : 'aus – bei leerer Warteschlange kann es still werden.');
   add('wish', 'Ablauf', 'Wünsche der Gäste', engine.wishMode === 'open' ? 'ok' : 'warn', { open: 'offen', paused: 'pausiert', closed: 'geschlossen' }[engine.wishMode], engine.wishMode !== 'open' ? { id: 'wish-open', label: 'Wünsche öffnen' } : null);
@@ -80,8 +81,11 @@ export function opsRouter(env, engine, hub, { engines }) {
   r.post('/prep/action', requirePerm('viewPrep'), json, wrap(async (req, res) => {
     const id = String(req.body?.id || '');
     if (id === 'fader-test') {
-      for (const p of [1, 2]) await engine.x32.setPlayerLevel(p, 0.35);
-      setTimeout(() => { for (const p of [1, 2]) engine.x32.setPlayerLevel(p, 1).catch(() => {}); }, 1500).unref?.();
+      if (engine.held) throw new Error('Das System ist aus (Soundcheck-Modus) – der Fader-Test bewegt Fader und geht erst nach dem Einschalten.');
+      // kurz runter, danach wieder auf die Werte der App (Grundpegel, Fade-Stand) statt pauschal auf 0 dB
+      engine.faderTest = true;
+      for (const p of [1, 2]) await engine.x32.setPlayerLevel(p, 0.35 * engine.levelAmp(p));
+      setTimeout(() => { engine.faderTest = false; engine.lastSent = { 1: -1, 2: -1 }; }, 1500).unref?.();
       return res.json({ ok: true, info: 'Beide Fader fahren kurz auf ca. 35 % und zurück – schau am X32.' });
     }
     if (id === 'notify-test') {

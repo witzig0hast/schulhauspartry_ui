@@ -7,7 +7,8 @@
 //   POST /x32/mute {channels, muted} -> Kanaele stumm / wieder an (nach dem Ausblenden)
 //   POST /x32/select {channel} -> waehlt den Kanal am Pult an (Select-Taste leuchtet), ohne den Fader zu bewegen
 // Fader werden geschont: Das Relay faehrt neue Werte mit begrenzter Geschwindigkeit an (25 Schritte/s im LAN),
-// statt den Motor springen zu lassen. Bewegt jemand einen Fader von Hand, hat die Hand 3 s Vorrang.
+// statt den Motor springen zu lassen. Bewegt jemand einen Fader von Hand, bleibt er dort: das Relay faehrt nie von selbst zurueck,
+// erst ein neuer Wert der App (fruehestens nach 3 s) bewegt ihn wieder.
 //   GET  /healthz    -> ohne Token, nur {ok:true}
 import dgram from 'node:dgram';
 import http from 'node:http';
@@ -72,7 +73,7 @@ export function createRelay(opts = {}) {
       if (fm && typeof m.args[0] === 'number') {
         const c = Number(fm[1]), v = Math.max(0, Math.min(1, m.args[0])), now = Date.now();
         if (fad.queried[c] && now - fad.queried[c] < 1500) { delete fad.queried[c]; if (fad.cur[c] == null) fad.cur[c] = v; }
-        else if (fad.cur[c] == null || Math.abs(v - fad.cur[c]) > 0.002) { fad.cur[c] = v; fad.manualUntil[c] = now + cfg.manualHoldMs; fad.manualAt[c] = now; }   // von Hand (Pult/X32-Edit) bewegt
+        else if (fad.cur[c] == null || Math.abs(v - fad.cur[c]) > 0.002) { fad.cur[c] = v; fad.target[c] = v; fad.manualUntil[c] = now + cfg.manualHoldMs; fad.manualAt[c] = now; }   // von Hand (Pult/X32-Edit) bewegt: Stellung uebernehmen, nicht zurueckfahren
       }
     }
   });

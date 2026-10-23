@@ -227,9 +227,14 @@ test('Fader-Schonung: sanftes Anfahren, Hand hat Vorrang, Not-Aus sofort, App bu
     assert.deepEqual(st.manual, [1]);
     await sleep(300);
     assert.equal(sent(1).length, n, 'waehrend der Handbewegung keine Befehle');
-    await sleep(500);
+    await sleep(900);
+    assert.equal(sent(1).length, n, 'auch danach kein Zurückfahren: die Hand-Stellung gilt');
+    assert.ok(Math.abs(relay.fad.target[1] - 0.3) < 1e-6);
+    // erst ein neuer Wert der App bewegt den Fader wieder – sanft von der Hand-Stellung aus
+    await fetch(`${base}/x32/level`, { method: 'POST', headers: auth, body: JSON.stringify({ player: 1, channels: [1, 2], fader: 0.6, speed: 1.2 }) });
+    await sleep(200);
     v = sent(1).slice(n);
-    assert.ok(v.length && v[0] > 0.3 && v[0] < 0.4, 'faehrt danach sanft von der Hand-Stellung zurueck');
+    assert.ok(v.length && v[0] > 0.3 && v[0] < 0.4, 'fährt von der Hand-Stellung aus los');
 
     // Not-Aus: sofort auf 0
     await fetch(`${base}/x32/level`, { method: 'POST', headers: auth, body: JSON.stringify({ player: 1, channels: [1, 2], fader: 0, instant: true }) });

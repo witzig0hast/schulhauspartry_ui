@@ -198,6 +198,7 @@ test('Backups: automatisch/manuell, Download nur Admin, vor dem Reset', async ()
 
 test('Vorbereitung: Checkliste, Testaktionen, nur Technik/Admin', async () => {
   rq.resetEnv('live'); engine.resetAll();
+  engine.endHold({ by: 'Test' });   // nach 'Alles loeschen' (Backup-Test) ist das System standardmaessig aus
   assert.equal((await mod.get('/api/prep/status')).status, 403);
   const s = (await tech.get('/api/prep/status')).json;
   const byId = Object.fromEntries(s.checks.map((c) => [c.id, c]));

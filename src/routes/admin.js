@@ -235,6 +235,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     const e = realEngine(), p = Number(req.body?.player);
     if (p !== 1 && p !== 2) throw new Error('Ungültiger Player');
     if (e.state.panic) throw new Error('Not-Aus ist aktiv.');
+    if (e.held) throw new Error('Das System ist aus (Soundcheck-Modus) – der Fader-Test bewegt Fader und geht erst nach dem Einschalten.');
     e.faderTest = true;
     await e.x32.setPlayerLevel(p, Math.pow(10, -10 / 20) * Math.pow(10, settings().levels.playerDb[p] / 20));
     setTimeout(() => { e.faderTest = false; e.lastSent = { 1: -1, 2: -1 }; }, 3000).unref?.();

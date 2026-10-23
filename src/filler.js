@@ -42,7 +42,7 @@ export async function maybeFill(engine, now = Date.now()) {
   const startMode = isOn('startPlaylist') && !!sp.playlist && engine.state.started && rq.noWishesYet(engine.env);
   const cfg = startMode ? { enabled: true, playlist: sp.playlist, minQueue: sp.minQueue, avoidMin: 240 } : settings().filler;
   if (!cfg.enabled || !cfg.playlist || (!startMode && !isOn('filler'))) return null;
-  if (engine.state.ended || engine.state.panic || engine.state.emergency) return null;
+  if (engine.state.ended || engine.state.panic || engine.state.emergency || engine.state.playlist) return null;   // laeuft eine Playlist direkt, nicht dazwischenfunken
   const playing = engine.current && engine.players[engine.current].status().playing;
   if (!playing) return null;
   const env = engine.env;

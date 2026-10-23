@@ -103,12 +103,12 @@ export class Engine extends EventEmitter {
     this.syncLevels();
   }
 
-  // Jemand hat einen Fader der App von Hand bewegt: die Hand hat kurz Vorrang, danach faehrt der Fader sanft zurueck
+  // Jemand hat einen Fader der App von Hand bewegt: er bleibt dort, bis die App den Pegel das naechste Mal aendert
   logManual(list = []) {
     const prev = this.manualSeen || [];
     this.manualSeen = list;
     const fresh = list.filter((c) => !prev.includes(c));
-    if (fresh.length) L.info('pult', 'fader.manual', `Fader von Hand bewegt (Kanal ${fresh.join(', ')}) – die App wartet 3 s und fährt dann sanft auf ihren Wert zurück. Dauerhaft ändern: Pegel-Fenster.`, { env: this.env, data: { channels: fresh } });
+    if (fresh.length) L.info('pult', 'fader.manual', `Fader von Hand bewegt (Kanal ${fresh.join(', ')}) – er bleibt dort, bis die App den Pegel das nächste Mal ändert (Fade, Crossfade, Ducking). Dauerhaft: Pegel-Fenster.`, { env: this.env, data: { channels: fresh } });
   }
 
   // Mikrofone: oeffnen als Eintrag, schliessen nur im Debug (sonst flattert das Protokoll beim Sprechen)
@@ -135,6 +135,7 @@ export class Engine extends EventEmitter {
   }
   async applySpotifyVolume(p) { if (this.players[p].setVolume) await this.players[p].setVolume(settings().levels.spotifyVol[p]); }
   async applyMicFaders() {
+    if (this.state.hold) return;   // System aus: die App fasst das Pult nicht an
     const l = settings().levels, chans = settings().x32.channels.mics;
     await Promise.all(chans.map((ch, i) => this.x32.setChannelFader(ch, ampToFader(dbToAmp(l.micDb[i] ?? 0)))));
   }
