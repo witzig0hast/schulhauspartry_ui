@@ -129,9 +129,19 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
   });
 
   app.get('/healthz', (req, res) => res.json({ ok: true, build: BUILD }));
-  // Immer beim Server nachfragen (ETag), auch Cloudflare darf die Dateien nicht festhalten.
-  // Zusaetzlich bekommt jede Asset-URL ?v=<Build>, damit alte Kopien (Browser, Proxy, CDN) nie passen.
-  const noCache = (res) => { res.setHeader('Cache-Control', 'no-cache, must-revalidate'); res.setHeader('CDN-Cache-Control', 'no-store'); res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store'); };
+  // Server-Timing: in den Entwicklertools (Netzwerk → Timing) sieht man, wie lange der Server selbst gebraucht hat
+  app.use('/api', (req, res, next) => {
+    const t0 = process.hrtime.bigint(), wh = res.writeHead;
+    res.writeHead = function (...a) { try { res.setHeader('Server-Timing', `app;dur=${(Number(process.hrtime.bigint() - t0) / 1e6).toFixed(1)}`); } catch { /* schon gesendet */ } return wh.apply(this, a); };
+    next();
+  });
+  // Jede Asset-URL bekommt ?v=<Build>. Passt die Version zum laufenden Build, darf die Datei fest zwischengespeichert werden
+  // (Browser und Cloudflare) – ein neuer Build hat eine neue URL. Ohne oder mit alter Version: immer beim Server nachfragen (ETag).
+  // Vorher wurde jede Datei bei jedem Seitenaufruf neu angefragt; ueber Cloudflare kostete das Stufe fuer Stufe spuerbar Zeit.
+  const noCache = (res) => {
+    if (res.req?.query?.v === BUILD) { res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); return; }
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate'); res.setHeader('CDN-Cache-Control', 'no-store'); res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
+  };
   const jsCache = new Map();
   app.get('/assets/:file', (req, res, next) => {
     const f = req.params.file;
@@ -190,9 +200,24 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
 
   app.use(spotifyCallbackRouter(() => { for (const e of Object.values(engines)) e.setReal(e.realConnections, true); }));
 
+  // Alle Module einer Seite gleich mit ankuendigen (modulepreload): der Browser laedt sie parallel statt Stufe fuer Stufe
+  const depsOf = (file, seen = new Set()) => {
+    if (seen.has(file)) return seen;
+    seen.add(file);
+    let src = '';
+    try { src = fs.readFileSync(path.join(PUBLIC, 'assets', file), 'utf8'); } catch { return seen; }
+    for (const m of src.matchAll(/(?:from|import)\s*['"]\/assets\/([\w.-]+\.js)['"]/g)) depsOf(m[1], seen);
+    return seen;
+  };
+  const withPreload = (html) => {
+    const main = /<script type="module" src="\/assets\/([\w.-]+\.js)"><\/script>/.exec(html)?.[1];
+    if (!main) return html;
+    const links = [...depsOf(main)].map((f) => `<link rel="modulepreload" href="/assets/${f}">`).join('\n');
+    return html.replace('</head>', `${links}\n</head>`);
+  };
   const pageCache = {};
   const renderPage = (name, base, env) => {
-    pageCache[name] ??= versioned(fs.readFileSync(path.join(PUBLIC, name), 'utf8'));
+    pageCache[name] ??= versioned(withPreload(fs.readFileSync(path.join(PUBLIC, name), 'utf8')));
     const b = brandInfo();
     return pageCache[name].replaceAll('__BASE__', base).replaceAll('__ENV__', env).replaceAll('__BUILD__', BUILD)
       .replaceAll('__BRAND_NAME__', escapeHtml(b.name)).replaceAll('__BRAND_TAG__', escapeHtml(b.tagline)).replaceAll('__BRAND_LOGO__', b.logoVer ? `/brand/logo?v=${b.logoVer}` : '').replaceAll('__BRAND_V__', escapeHtml(b.version)).replaceAll('__FEATURES__', onList().join(','));
