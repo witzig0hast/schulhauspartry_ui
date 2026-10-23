@@ -157,6 +157,7 @@ export class HttpX32 {
       this.ok = true; this.error = null; this.lastOk = Date.now();
       this.desk = s.x32 || null;   // antwortet das Pult selbst? (vom Relay gemeldet)
       this.manual = Array.isArray(s.manual) ? s.manual : [];   // Kanaele, die gerade jemand von Hand bewegt hat
+      this.hand = Array.isArray(s.hand) ? s.hand : [];         // letzte Handbewegung je Kanal (Wert, Alter, Nummer)
       return {
         mics: (s.mics || []).slice(0, 3).map((m, i) => ({ id: i + 1, name: settings().x32.micNames?.[i] || `Mic ${i + 1}`, open: !!m.open, level: Number(m.level) || 0 })),
         meters: { 1: Number(s.meters?.[1]) || 0, 2: Number(s.meters?.[2]) || 0 },

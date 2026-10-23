@@ -225,6 +225,8 @@ test('Fader-Schonung: sanftes Anfahren, Hand hat Vorrang, Not-Aus sofort, App bu
     const n = sent(1).length;
     const st = await (await fetch(`${base}/x32/state`, { headers: auth })).json();
     assert.deepEqual(st.manual, [1]);
+    const hm = st.hand.find((x) => x.ch === 1);
+    assert.ok(hm && Math.abs(hm.v - 0.3) < 1e-6 && hm.seq >= 1 && hm.ageMs >= 0, 'Handbewegung mit Wert und Nummer gemeldet');
     await sleep(300);
     assert.equal(sent(1).length, n, 'waehrend der Handbewegung keine Befehle');
     await sleep(900);

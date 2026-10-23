@@ -163,6 +163,7 @@ function viewConnections() {
   const piToken = h('input', { type: 'password', placeholder: s.x32.piToken ? '(gesetzt)' : 'Token', autocomplete: 'new-password' });
   const x32Addr = x32AddressBox(s, save);
   const muteAfter = h('input', { type: 'checkbox', checked: s.x32.muteAfterFade !== false });
+  const adoptHand = h('input', { type: 'checkbox', checked: s.x32.adoptHand !== false });
   const faderSpeed = h('select', {}, ...[['sanft', 'Sanft (schont den Motor am meisten)'], ['normal', 'Normal (empfohlen)'], ['schnell', 'Schnell (folgt kurzen Blenden genau)']].map(([v, t]) => h('option', { value: v, selected: (s.x32.faderSpeed || 'normal') === v }, t)));
   const ch = s.x32.channels;
   const chIn = (v, i) => num(v[i] ?? '', { min: 1, max: 32, class: 'num', placeholder: '–' });
@@ -198,8 +199,9 @@ function viewConnections() {
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
       field('Tempo der Motorfader', faderSpeed),
+      h('label', { class: 'check' }, adoptHand, 'Am Pult verstellte Fader übernehmen: Schiebt jemand einen Player-Fader von Hand, wird das der neue Grundpegel – die App zieht nicht zurück, Fades und Crossfades rechnen von dort aus'),
       h('label', { class: 'check' }, muteAfter, 'Nach dem Ausblenden Kanal stummschalten (eine halbe Sekunde danach geht der Fader auf null und bleibt unten; vor dem nächsten Abspielen wird der Kanal wieder freigegeben)'),
-      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, ...x32Addr.want(), faderSpeed: faderSpeed.value, muteAfterFade: muteAfter.checked, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
+      h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, ...x32Addr.want(), faderSpeed: faderSpeed.value, muteAfterFade: muteAfter.checked, adoptHand: adoptHand.checked, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
 

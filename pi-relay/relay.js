@@ -56,7 +56,8 @@ export function createRelay(opts = {}) {
   const sock = dgram.createSocket('udp4');
   const state = { meters: new Array(32).fill(0), micOn: {}, micActiveUntil: {}, lastSeen: 0, lastMeters: 0, names: {}, namesAt: 0, chOn: {} };
   // Fader: aktuelle Stellung, Ziel, Tempo; queried = wir haben die Stellung abgefragt (Antwort ist kein Handgriff)
-  const fad = { cur: {}, target: {}, speed: {}, manualUntil: {}, queried: {}, manualAt: {}, lastAt: {} };
+  const fad = { cur: {}, target: {}, speed: {}, manualUntil: {}, queried: {}, manualAt: {}, lastAt: {}, hand: {} };
+  let handSeq = 0;
   const send = (address, args) => sock.send(encode(address, args), cfg.x32Port, cfg.x32Host);
 
   sock.on('message', (msg) => {
@@ -73,7 +74,7 @@ export function createRelay(opts = {}) {
       if (fm && typeof m.args[0] === 'number') {
         const c = Number(fm[1]), v = Math.max(0, Math.min(1, m.args[0])), now = Date.now();
         if (fad.queried[c] && now - fad.queried[c] < 1500) { delete fad.queried[c]; if (fad.cur[c] == null) fad.cur[c] = v; }
-        else if (fad.cur[c] == null || Math.abs(v - fad.cur[c]) > 0.002) { fad.cur[c] = v; fad.target[c] = v; fad.manualUntil[c] = now + cfg.manualHoldMs; fad.manualAt[c] = now; }   // von Hand (Pult/X32-Edit) bewegt: Stellung uebernehmen, nicht zurueckfahren
+        else if (fad.cur[c] == null || Math.abs(v - fad.cur[c]) > 0.002) { fad.cur[c] = v; fad.target[c] = v; fad.manualUntil[c] = now + cfg.manualHoldMs; fad.manualAt[c] = now; fad.hand[c] = { v, at: now, seq: ++handSeq }; }   // von Hand (Pult/X32-Edit) bewegt: Stellung uebernehmen, nicht zurueckfahren
       }
     }
   });
@@ -196,6 +197,8 @@ export function createRelay(opts = {}) {
       return json(200, {
         mics: micState(), meters: { 1: playerMeter(1), 2: playerMeter(2) },
         manual: usedChannels().filter((c) => Date.now() - (fad.manualAt[c] || 0) < 10000),
+        // letzte Handbewegung je Kanal (Wert, wie lange her, laufende Nummer): die App uebernimmt sie als neuen Grundpegel
+        hand: usedChannels().filter((c) => fad.hand[c]).map((c) => ({ ch: c, v: fad.hand[c].v, ageMs: Date.now() - fad.hand[c].at, seq: fad.hand[c].seq })),
         x32: { ok: Date.now() - state.lastSeen < 5000, lastSeenMs: state.lastSeen ? Date.now() - state.lastSeen : null, host: cfg.x32Host, port: cfg.x32Port, source: cfg.hostSource, envHost: envHost.host },
       });
     }

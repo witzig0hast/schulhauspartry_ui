@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { config } from './config.js';
-import { settings, onSettingsChange, spotifyApps, playerRefreshToken } from './settings.js';
+import { settings, onSettingsChange, spotifyApps, playerRefreshToken, applyPatch } from './settings.js';
 import { getSetting, setSetting, logEvent } from './db.js';
 import * as rq from './requests.js';
 import { MockSpotify, MockPlayer } from './adapters/spotify-mock.js';
@@ -103,6 +103,41 @@ export class Engine extends EventEmitter {
     this.syncLevels();
   }
 
+  // Das Pult ist die Wahrheit: schiebt jemand einen Player-Fader von Hand, wird die Stellung zum neuen Grundpegel
+  // (levels.playerDb). Fades, Crossfades und Ducking rechnen danach von dort aus – nichts zieht zurueck.
+  // Mic-Fader: ist "Mic-Fader von der App setzen" an, wird die Stellung als Mic-Pegel uebernommen.
+  // Uebernommen wird erst, wenn die Hand losgelassen hat (0,6 s Ruhe). force: alle noch nicht uebernommenen (Ende Soundcheck).
+  adoptHand(moves = [], { force = false } = {}) {
+    if (!moves?.length || this.state.panic || settings().x32.adoptHand === false) return;
+    if (this.state.hold && !force) return;
+    this.handSeen ||= {};
+    const c = settings().x32.channels, lv = settings().levels, cap = isOn('faderLimit') ? settings().limits.maxGain : 1;
+    const patch = {}, micDb = [...lv.micDb], changed = [];
+    for (const m of moves) {
+      if (!(m.seq > (this.handSeen[m.ch] || 0)) || (!force && m.ageMs < 600)) continue;
+      this.handSeen[m.ch] = m.seq;
+      const p = c.p1.includes(m.ch) ? 1 : c.p2.includes(m.ch) ? 2 : null;
+      const hand = faderToAmp(m.v);
+      if (p) {
+        const rel = Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul;
+        if (rel < 0.05 || this.muted[p] || hand <= 0) continue;   // Player steht stumm/unten: nichts zu rechnen
+        const db = Math.round(Math.max(-40, Math.min(6, 20 * Math.log10(hand / rel))) * 2) / 2;
+        if (db !== lv.playerDb[p]) { (patch.playerDb ||= {})[p] = db; changed.push(`Player ${p}: ${db > 0 ? '+' : ''}${String(db).replace('.', ',')} dB`); }
+      } else if (lv.micControl) {
+        const i = c.mics.indexOf(m.ch);
+        if (i < 0 || hand <= 0) continue;
+        const db = Math.round(Math.max(-60, Math.min(10, 20 * Math.log10(hand))) * 2) / 2;
+        if (db !== micDb[i]) { micDb[i] = db; patch.micDb = micDb; changed.push(`${settings().x32.micNames?.[i] || `Mic ${i + 1}`}: ${String(db).replace('.', ',')} dB`); }
+      }
+    }
+    if (!changed.length) return;
+    applyPatch({ levels: patch }, { allow: ['levels'] });
+    this.levelsSeen = structuredClone(settings().levels);          // nicht erneut ans Pult schicken – dort steht es ja schon
+    for (const p of [1, 2]) if (patch.playerDb?.[p] != null) this.lastSent[p] = this.levelAmp(p);
+    L.info('pult', 'fader.adopted', `Am Pult verstellt, von der App übernommen – ${changed.join(', ')}. Die App zieht nicht zurück; Fades und Crossfades rechnen ab jetzt von hier.`, { env: this.env, data: patch });
+    this.emit('change');
+  }
+
   // Jemand hat einen Fader der App von Hand bewegt: er bleibt dort, bis die App den Pegel das naechste Mal aendert
   logManual(list = []) {
     const prev = this.manualSeen || [];
@@ -188,7 +223,8 @@ export class Engine extends EventEmitter {
     holdNotify(this.env, false);
     this.state.activatedAt = Date.now();   // einmal von einem Admin eingeschaltet: startet nicht mehr von selbst deaktiviert
     if (h.pausedWishes && this.state.wishMode === 'paused') this.setWishMode(h.prevWishMode);
-    this.lastSent = { 1: -1, 2: -1 };   // Fader wieder auf die Werte der App (sanft, das Relay begrenzt das Tempo)
+    this.lastSent = { 1: -1, 2: -1 };   // Fader wieder auf die Werte der App (sanft, das Relay begrenzt das Tempo) …
+    this.adoptHand(this.x32.hand, { force: true });   // … ausser was am Pult verstellt wurde: das wird uebernommen, nicht zurueckgezogen
     this.persist();
     L.info('pult', 'soundcheck.off', `Soundcheck-Modus aus${by ? ` (${by})` : ''} nach ${Math.max(1, Math.round((Date.now() - h.since) / 60000))} Min. – die App übernimmt wieder`, { env: this.env });
     this.emit('change');
@@ -225,7 +261,7 @@ export class Engine extends EventEmitter {
     if (now - this.lastX32Read >= 250 && !this.x32Busy) {
       this.lastX32Read = now; this.x32Busy = true;
       const playing = { 1: this.players[1].status().playing, 2: this.players[2].status().playing };
-      this.x32.readState(playing).then((s) => { this.logMics(s.mics); this.logManual(this.x32.manual); this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
+      this.x32.readState(playing).then((s) => { this.logMics(s.mics); this.logManual(this.x32.manual); this.adoptHand(this.x32.hand); this.x32State = s; }).catch(() => {}).finally(() => { this.x32Busy = false; });
     }
     if (!this.lastBroadcast || now - this.lastBroadcast >= BROADCAST_MS) {
       this.lastBroadcast = now;

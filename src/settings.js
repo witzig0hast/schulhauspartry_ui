@@ -52,7 +52,8 @@ export const DEFAULTS = {
     piUrl: '',
     piToken: '',
     faderSpeed: 'normal',
-    muteAfterFade: true,    // nach dem Ausblenden Kanal stumm, Fader faehrt stumm zurueck in die Grundstellung   // sanft | normal | schnell: wie schnell die Motorfader fahren duerfen
+    muteAfterFade: true,
+    adoptHand: true,        // am Pult verstellte Fader als neuen Grundpegel uebernehmen (nicht zurueckziehen)    // nach dem Ausblenden Kanal stumm, Fader faehrt stumm zurueck in die Grundstellung   // sanft | normal | schnell: wie schnell die Motorfader fahren duerfen
     host: '',      // IP des X32 im Veranstaltungsnetz; leer = Wert aus der .env des Pi
     port: 10023,
     channels: { p1: [1, 2], p2: [3, 4], mics: [5, 6, 7] },
@@ -297,6 +298,7 @@ export function applyPatch(patch, { allow }) {
     }
     if (['sanft', 'normal', 'schnell'].includes(x.faderSpeed)) s.x32.faderSpeed = x.faderSpeed;
     if ('muteAfterFade' in x) s.x32.muteAfterFade = !!x.muteAfterFade;
+    if ('adoptHand' in x) s.x32.adoptHand = !!x.adoptHand;
     if ('port' in x) s.x32.port = Math.round(clamp(x.port, 1, 65535, 10023));
     if (x.channels) {
       // leere Felder = nicht benutzt; mindestens ein Kanal bleibt, ungueltige Werte werden ignoriert
