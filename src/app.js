@@ -31,7 +31,7 @@ import { aiRouter } from './routes/ai.js';
 import { logsRouter } from './routes/logs.js';
 import { companionRouter } from './routes/companion.js';
 import { startLightWorker, startGenreWorker, startMoodWatch, startMixWorker } from './ai.js';
-import { sendNotify } from './notify.js';
+import { sendNotify, holdNotify } from './notify.js';
 import { RateLimiter, clientIp } from './security.js';
 import { recapValid } from './extras.js';
 import { createMonitor } from './monitor.js';
@@ -96,6 +96,7 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     live: new Engine('live', { realConnections: settings().test.realEnv === 'live' }),
     test: new Engine('test', { realConnections: settings().test.realEnv === 'test' }),
   };
+  for (const e of Object.values(engines)) if (e.held) holdNotify(e.env, true);   // Soundcheck-Modus ueberlebt einen Neustart
   const setRealEnv = () => { for (const e of Object.keys(engines)) engines[e].setReal(settings().test.realEnv === e); };
 
   const app = express();

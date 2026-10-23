@@ -76,6 +76,7 @@ export function createRehearsal({ server, engines, setRealEnv = () => {}, pushEn
       if (getDb().prepare("SELECT COUNT(*) AS c FROM requests WHERE env = 'live'").get().c > 0) throw new Error('Live hat schon Wünsche oder eine Setlist. Die Generalprobe live läuft nur vor der Party auf leerer Live-Umgebung – danach wird alles gelöscht. Vorher Admin → Bericht → Live zurücksetzen (mit Backup) oder die Probe im Testmodus machen.');
       if ([1, 2].some((n) => eng.players[n].status().playing)) throw new Error('Auf Live läuft gerade Musik – erst stoppen.');
       if (eng.state.panic) throw new Error('Not-Aus ist aktiv – erst aufheben.');
+      if (eng.held) throw new Error('Der Soundcheck-Modus ist an – erst beenden.');
       try { backupNow('vor-generalprobe'); } catch { /* ohne Backup-Ordner (Tests) */ }
       liveBefore = { wishMode: eng.state.wishMode, awaitOpen: !!eng.state.awaitOpen, real: eng.realConnections };
       eng.probeHold = true; eng.probeSpeed = opt.speed;

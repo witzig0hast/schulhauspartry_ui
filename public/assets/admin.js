@@ -206,7 +206,7 @@ function viewConnections() {
 // Hardware-Knoepfe ueber Bitfocus Companion (Stream Deck): Token, Adressen, Anleitung
 const COMPANION_ACTIONS = [['crossfade', 'Crossfade zum nächsten Song'], ['panic', 'NOT-AUS (2× innerhalb von 4 s)'], ['panic-clear', 'Not-Aus aufheben'], ['play-1', 'Player 1 Play'], ['pause-1', 'Player 1 Pause'], ['play-2', 'Player 2 Play'], ['pause-2', 'Player 2 Pause'],
   ['fade-in-1', 'P1 einblenden'], ['fade-out-1', 'P1 ausblenden'], ['fade-in-2', 'P2 einblenden'], ['fade-out-2', 'P2 ausblenden'], ['wishes-open', 'Wünsche öffnen'], ['wishes-pause', 'Wünsche pausieren'], ['wishes-close', 'Wünsche schließen'],
-  ['pause-mode', 'Pausen-Modus an/aus'], ['auto-toggle', 'Auto-Crossfade an/aus'], ['ducking-toggle', 'Ducking an/aus'], ['emergency', 'Notfall-Playlist an/aus'], ['end', 'Ende-Modus an/aus']];
+  ['pause-mode', 'Pausen-Modus an/aus'], ['auto-toggle', 'Auto-Crossfade an/aus'], ['ducking-toggle', 'Ducking an/aus'], ['emergency', 'Notfall-Playlist an/aus'], ['end', 'Ende-Modus an/aus'], ['soundcheck', 'Soundcheck-Modus an/aus']];
 function companionCard() {
   if (!data.features.flags.companion) return h('span');
   const c = data.settings.companion;

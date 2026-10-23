@@ -1,4 +1,4 @@
-import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat, coverOnce } from '/assets/app.js';
+import { h, api, connect, topbar, clear, safe, toast, $, fmtTime, eq, feat, coverOnce, modal } from '/assets/app.js';
 import { pendingList, upcomingList, bar, playerName, chatPanel, isPressing, onRelease, connectionDot, addSongBox } from '/assets/staff-ui.js';
 import { openLevels } from '/assets/levels.js';
 import { aiCard } from '/assets/ai-ui.js';
@@ -45,13 +45,15 @@ function statusStrip() {
   refs.duckBtn = h('button', { class: 'tog', title: 'Ducking: Musik leiser, solange ein Mikrofon offen ist', onclick: () => post('/settings/tech', { ducking: { enabled: !state.ducking.enabled } }) }, 'Ducking');
   refs.micChips = h('div', { class: 'row', style: 'gap:6px' });
   refs.wishChip = h('span', { class: 'badge' });
-  return h('div', { class: 'tstrip' }, refs.conn, h('div', { class: 'grow' }), refs.wishChip, refs.micChips, refs.autoBtn, refs.duckBtn);
+  refs.holdChip = h('span');
+  return h('div', { class: 'tstrip' }, refs.conn, h('div', { class: 'grow' }), refs.holdChip, refs.wishChip, refs.micChips, refs.autoBtn, refs.duckBtn);
 }
 function updateStrip() {
   const c = state.connections;
   if (c) swap(refs.conn, JSON.stringify(['x32', 'spotify', 'player1', 'player2'].map((k) => [c[k]?.ok, c[k]?.detail])), () => h('div', { class: 'row', style: 'gap:6px' },
     ...[['Spotify', c.spotify], ['P1', c.player1], ['P2', c.player2], ['X32', c.x32]].map(([n, x]) => h('span', { class: 'pill small', title: x?.detail || '' }, connectionDot(x || {}), n)),
     c.mode !== 'echte Verbindungen' ? h('span', { class: 'badge' }, 'simuliert') : null));
+  swap(refs.holdChip, state.hold ? 'on' : 'off', () => (state.hold ? h('button', { class: 'badge warn', title: 'Soundcheck-Modus: die App steuert gerade nichts – klicken zum Beenden', onclick: onHold }, 'Soundcheck') : h('span')));
   refs.autoBtn.className = `tog ${state.auto.enabled ? 'on' : ''}`;
   refs.autoBtn.textContent = `Auto-Crossfade ${state.auto.enabled ? 'an' : 'aus'}`;
   refs.duckBtn.className = `tog ${state.ducking.enabled ? 'on' : ''} ${state.ducking.active ? 'hot' : ''}`;
@@ -153,6 +155,7 @@ function operationsCard() {
     b.dataset.mode = m; return b;
   });
   refs.endBtn = h('button', { onclick: onEnd }, 'Ende-Modus');
+  refs.holdBtn = h('button', { onclick: onHold }, 'Soundcheck-Modus');
   refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, 'Notfall-Playlist');
   refs.openBtn = h('button', { class: 'primary hidden', onclick: () => post('/control/open-wishes') }, 'Wünsche jetzt freischalten');
   refs.startBtn = feat('startPlaylist') ? h('button', { class: 'hidden', onclick: () => post('/control/start-evening') }, 'Start-Playlist starten') : null;
@@ -167,7 +170,7 @@ function operationsCard() {
     h('h2', {}, 'Betrieb'),
     h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     refs.openBtn, refs.startBtn,
-    h('div', { class: 'grid two', style: 'gap:8px' }, refs.pauseBtn || h('span'), refs.endBtn, refs.emBtn),
+    h('div', { class: 'grid two', style: 'gap:8px' }, refs.pauseBtn || h('span'), refs.endBtn, refs.emBtn, refs.holdBtn),
     pollCard);
 }
 
@@ -258,6 +261,13 @@ function memoSet(box, key, build) {
 function render() {
   if (!state) return;
   refs.modeBanner.classList.toggle('hidden', state.mode !== 'wishlist');
+  const hold = state.hold;
+  refs.holdBanner.classList.toggle('hidden', !hold);
+  document.body.classList.toggle('holding', !!hold);
+  if (hold) swap(refs.holdBanner, `${hold.since}|${Math.floor((Date.now() - hold.since) / 60000)}`, () => h('div', { class: 'row between' },
+    h('div', {}, h('b', {}, 'Soundcheck-Modus'), ` seit ${Math.max(1, Math.round((Date.now() - hold.since) / 60000))} Min.${hold.by ? ` (${hold.by})` : ''} – die App steuert gerade nichts. Not-Aus bleibt aktiv.`),
+    h('button', { class: 'primary', onclick: onHold }, 'Soundcheck beenden')));
+  if (refs.holdBtn) { refs.holdBtn.textContent = hold ? 'Soundcheck beenden' : 'Soundcheck-Modus'; refs.holdBtn.className = hold ? 'primary' : ''; }
   updateStrip(); updatePlayer(1); updatePlayer(2); fillPresets(); updateMics(); updateNext(); updateCountdown();
   const cf = state.crossfade;
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
@@ -295,6 +305,21 @@ function render() {
 }
 
 // ---------- Aufbau ----------
+// Soundcheck-Modus: App steuert voruebergehend nichts (Pult gehoert ganz der Technik)
+function onHold() {
+  if (state?.hold) {
+    if (confirm('Soundcheck-Modus beenden? Die App übernimmt wieder: Die Player-Fader fahren sanft auf die Werte der App, Automatik und Knöpfe sind wieder aktiv.')) post('/control/soundcheck', { on: false });
+    return;
+  }
+  const stopMusic = h('input', { type: 'checkbox', checked: true }), pauseWishes = h('input', { type: 'checkbox', checked: true });
+  const close = modal([h('h2', {}, 'Soundcheck-Modus'),
+    h('p', { class: 'small' }, 'Die App steuert vorübergehend gar nichts: keine Fader, kein Stummschalten, kein Ducking, keine Wiedergabe, kein Auto-Crossfade, keine Lückenfüller. Das Pult gehört ganz euch. Der Not-Aus bleibt aktiv. Alarme aufs Handy sind solange aus (außer Not-Aus).'),
+    h('label', { class: 'check' }, stopMusic, 'Laufende Musik anhalten'),
+    h('label', { class: 'check' }, pauseWishes, 'Gäste-Wünsche solange pausieren'),
+    h('div', { class: 'row between' }, h('button', { onclick: () => close() }, 'Abbrechen'),
+      h('button', { class: 'primary', onclick: () => { close(); post('/control/soundcheck', { on: true, stopMusic: stopMusic.checked, pauseWishes: pauseWishes.checked }); } }, 'Soundcheck starten'))]);
+}
+refs.holdBanner = h('div', { class: 'card hidden hold-banner' });
 refs.modeBanner = h('div', { class: 'card hidden', style: 'background:var(--warn-bg);border-color:transparent' }, h('b', {}, 'Wunschlisten-Modus: '), 'Die App spielt keine Musik ab und steuert das Pult nicht – der DJ spielt selbst. Fader, Crossfade und Player sind gesperrt. Umschalten: Admin → Start.');
 refs.badges = h('span', { class: 'row' });
 refs.chatBox = h('div', { style: 'margin-top:12px' }); refs.chatSum = h('summary', {}, 'Team-Chat');
@@ -315,7 +340,7 @@ refs.panicClear = h('button', { class: 'hidden', onclick: () => post('/control/p
 refs.dockNext = h('div', { class: 'small grow', style: 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' });
 const chatCard = h('details', { class: 'card more' }, refs.chatSum, refs.chatBox);
 const aiSlot = h('div');
-const main = h('div', { class: 'wrap stack tech' }, statusStrip(), refs.modeBanner,
+const main = h('div', { class: 'wrap stack tech' }, statusStrip(), refs.holdBanner, refs.modeBanner,
   h('div', { class: 'grid two' }, playerCard(1), playerCard(2)),
   h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()),
   aiSlot, wishesCard(), chatCard, advancedCard());

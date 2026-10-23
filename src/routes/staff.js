@@ -1,4 +1,5 @@
 import express from 'express';
+import { holdNotify } from '../notify.js';
 import {
   login, logout, requirePerm, requireAnyPerm, can, setSessionCookie, clearSessionCookie, clientIp, homeFor,
 } from '../auth.js';
@@ -216,6 +217,15 @@ export function staffRouter(env, engine, hub) {
   }));
 
   // Auto-Crossfade, Ducking und Orga-Hinweis darf auch die Technik aendern
+  // Soundcheck-Modus: App steuert voruebergehend nichts (nur Technik/Admin, nicht im Wunschlisten-Modus noetig)
+  r.post('/control/soundcheck', ctlPerm, wrap((req, res) => {
+    const by = req.session.label || null;
+    if (req.body?.on) engine.startHold({ by, stopMusic: req.body.stopMusic !== false, pauseWishes: req.body.pauseWishes !== false });
+    else engine.endHold({ by });
+    holdNotify(env, engine.held);
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, hold: engine.state.hold || null });
+  }));
   r.post('/settings/tech', ctlPerm, wrap((req, res) => {
     const allow = ['auto', 'ducking', 'notice', 'wishMessages'];
     applyPatch(req.body || {}, { allow });

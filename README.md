@@ -81,6 +81,10 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
+### Soundcheck-Modus (Technik → Betrieb)
+
+Schaltet die App vorübergehend komplett ab: keine Fader-Befehle, kein Stummschalten, kein Ducking, keine Wiedergabe, kein Auto-Crossfade, keine Lückenfüller oder Start-Playlist, keine Alarme aufs Handy (außer Not-Aus). Wahlweise wird laufende Musik angehalten und die Gäste-Wünsche pausiert. Der **Not-Aus bleibt aktiv**. Oben in der Technik steht solange ein Hinweis, seit wann der Modus läuft. Beim Beenden sind die Wünsche wie vorher und die Player-Fader fahren sanft auf die Werte der App. Auch per Companion (`soundcheck`). Der Modus bleibt bei einem Neustart des Servers erhalten.
+
 ### KI-Übergänge & Auto-Pegel (Admin → KI)
 
 Die KI analysiert jeden Song der Warteschlange vorab: geschätzte Lautheit (LUFS), ruhiges Intro, Art des Endes (blendet aus / hartes Ende / klingt aus) und Energie. Daraus plant die App jeden **Auto-Crossfade** (Länge, Startpunkt, Kurve – z. B. lange Überblendung bei ausblendenden Songs, kurzer Wechsel bei hartem Ende oder Energiesprung) und gleicht **laute Songs** an (höchstens um die eingestellten dB leiser, leisere bleiben beim Grundpegel). Von Hand gemerkte Lautstärken haben Vorrang. Sichtbar in der Technik unter „Übergang“, im Protokoll als `crossfade.ai`. Die KI hört die Musik nicht – sie kennt den Song oder schätzt aus Interpret, Jahr und Genre.

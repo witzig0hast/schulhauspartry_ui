@@ -7,10 +7,14 @@ const lastSent = new Map();
 // Waehrend der Generalprobe live: keine Alarme fuer die Live-Umgebung (die simulierten Gaeste wuerden sonst z. B. den Flut-Alarm ausloesen)
 let mutedEnv = null;
 export const muteNotify = (env) => { mutedEnv = env; };
+// Soundcheck-Modus: keine Alarme fuer diese Umgebung (ausser Not-Aus)
+const holdEnvs = new Set();
+export const holdNotify = (env, on) => { if (on) holdEnvs.add(env); else holdEnvs.delete(env); };
 
 export async function sendNotify({ title, message, priority = 3, tags = [], key = null, force = false, env = 'live' }) {
   const n = settings().notify;
   if (!force && mutedEnv && env === mutedEnv) return { sent: false, reason: 'Generalprobe läuft' };
+  if (!force && holdEnvs.has(env) && !String(key || '').startsWith('panic')) return { sent: false, reason: 'Soundcheck-Modus' };
   if (!force && (!n.enabled || !isOn('notify'))) return { sent: false, reason: 'ausgeschaltet' };
   if (!n.topic) return { sent: false, reason: 'Kein Topic eingetragen' };
   if (key && !force) { // gleiche Meldung nicht mehr als einmal pro Minute

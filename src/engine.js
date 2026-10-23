@@ -161,6 +161,34 @@ export class Engine extends EventEmitter {
 
   persist() { setSetting(`engine:${this.env}`, this.state); }
 
+  // ----- Soundcheck-Modus: die App steuert voruebergehend gar nichts (kein Fader, kein Mute, keine Wiedergabe, keine Automatik).
+  // Nur der Not-Aus bleibt aktiv. Beim Beenden uebernimmt die App die Fader wieder (sie fahren sanft auf ihre Werte).
+  get held() { return !!this.state.hold; }
+  assertActive() { if (this.state.hold) throw new Error('Soundcheck-Modus ist an – die App steuert gerade nichts. Erst beenden.'); }
+  startHold({ by = null, stopMusic = true, pauseWishes = true } = {}) {
+    if (this.state.hold) return this.state.hold;
+    if (this.liveTest) throw new Error('Der Live-Test läuft gerade – erst beenden.');
+    this.crossfade = null; this.ramps = {}; this.pendingStart = [];
+    if (stopMusic) for (const p of [1, 2]) if (this.players[p].status().playing) this.players[p].pause().catch((e) => this.fail('pause', e));
+    const pausedWishes = !!pauseWishes && this.state.wishMode === 'open';
+    this.state.hold = { since: Date.now(), by, prevWishMode: this.state.wishMode, pausedWishes };
+    if (pausedWishes) this.setWishMode('paused');
+    this.persist();
+    L.warn('pult', 'soundcheck.on', `Soundcheck-Modus an${by ? ` (${by})` : ''}: Die App steuert weder Fader noch Wiedergabe${stopMusic ? ', Musik angehalten' : ''}${pausedWishes ? ', Wünsche pausiert' : ''}`, { env: this.env, data: { stopMusic, pausedWishes } });
+    this.emit('change');
+    return this.state.hold;
+  }
+  endHold({ by = null } = {}) {
+    const h = this.state.hold;
+    if (!h) return;
+    this.state.hold = null;
+    if (h.pausedWishes && this.state.wishMode === 'paused') this.setWishMode(h.prevWishMode);
+    this.lastSent = { 1: -1, 2: -1 };   // Fader wieder auf die Werte der App (sanft, das Relay begrenzt das Tempo)
+    this.persist();
+    L.info('pult', 'soundcheck.off', `Soundcheck-Modus aus${by ? ` (${by})` : ''} nach ${Math.max(1, Math.round((Date.now() - h.since) / 60000))} Min. – die App übernimmt wieder`, { env: this.env });
+    this.emit('change');
+  }
+
   // ----- Hauptschleife -----
   // Wunschlisten-Modus: die App spielt nichts ab, ein DJ spielt selbst. Hier laeuft dann nur noch die Verwaltung der Wuensche.
   get wishlist() { return settings().operation.mode === 'wishlist'; }
@@ -184,7 +212,7 @@ export class Engine extends EventEmitter {
     this.runDucking(now, cfg);
     this.maybeAutoCrossfade(now, cfg);
     this.applyLevels();
-    if (now - this.lastFillCheck >= 5000 && !this.liveTest) { this.lastFillCheck = now; maybeFill(this, now)
+    if (now - this.lastFillCheck >= 5000 && !this.liveTest && !this.state.hold) { this.lastFillCheck = now; maybeFill(this, now)
       .then((r) => { if (r) { L.info('wiedergabe', 'queue.filler', `Lückenfüller eingereiht: ${r.title} – ${r.artist}`, { env: this.env, actor: { kind: 'system' }, data: { id: r.id, trackId: r.trackId } }); return r; }
         return autoFill(this, now).then((a) => { if (a) L.info('ki', 'queue.ai_filler', `KI hat eingereiht: ${a.title} – ${a.artist}`, { env: this.env, actor: { kind: 'ai' }, data: { id: a.id, trackId: a.trackId } }); return a; }); })
       .then((r) => { if (r) this.afterQueueChange(); }).catch((e) => this.fail('filler', e)); }
@@ -206,7 +234,7 @@ export class Engine extends EventEmitter {
     if (this.state.awaitOpen && this.state.openAtTs && now >= this.state.openAtTs) { this.openWishes(); logEvent(this.env, 'wishmode', { auto: 'open' }); }
     // Start-Playlist automatisch starten (einmal pro Abend, in den 6 Stunden nach der Startzeit)
     const st = cfg.start;
-    if (st.autoStart && isOn('startPlaylist') && this.realConnections && !this.liveTest && !this.wishlist && !this.state.started && now >= (this.nextStartTry || 0)) {
+    if (st.autoStart && isOn('startPlaylist') && this.realConnections && !this.liveTest && !this.state.hold && !this.wishlist && !this.state.started && now >= (this.nextStartTry || 0)) {
       const [h, m] = st.startAt.split(':').map(Number), [nh, nm] = localHHMM().split(':').map(Number);
       const since = (nh * 60 + nm) - (h * 60 + m);
       const day = localDay();
@@ -239,6 +267,7 @@ export class Engine extends EventEmitter {
 
   // Start-Playlist: Warteschlange fuellen und mit Einblenden loslegen
   async startEvening() {
+    this.assertActive();
     if (this.wishlist) throw new Error('Im Wunschlisten-Modus spielt die App keine Musik.');
     if (this.state.panic || this.state.ended) throw new Error('Not-Aus oder Ende-Modus ist aktiv.');
     const sp = settings().start;
@@ -329,7 +358,7 @@ export class Engine extends EventEmitter {
     return this.state.panic ? 0 : Math.min(cap, this.gain[p] * this.trackMul[p]) * this.duckMul * dbToAmp(settings().levels.playerDb[p]);
   }
   applyLevels() {
-    if (this.faderTest && !this.state.panic) return;   // Einrichtung: Fader-Test laeuft gerade
+    if ((this.faderTest || this.state.hold) && !this.state.panic) return;   // Fader-Test / Soundcheck: die App fasst die Fader nicht an   // Einrichtung: Fader-Test laeuft gerade
     for (const p of [1, 2]) {
       const amp = this.levelAmp(p);
       if (Math.abs(amp - this.lastSent[p]) < 0.002 && !(amp === 0 && this.lastSent[p] !== 0)) continue;
@@ -339,7 +368,7 @@ export class Engine extends EventEmitter {
   }
 
   maybeAutoCrossfade(now, cfg) {
-    if (!cfg.auto.enabled || this.liveTest?.noAuto || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
+    if (!cfg.auto.enabled || this.state.hold || this.liveTest?.noAuto || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
@@ -361,6 +390,7 @@ export class Engine extends EventEmitter {
 
   // ----- Aktionen -----
   async startCrossfade(durSec, curve = settings().auto.curve, { auto = false } = {}) {
+    this.assertActive();
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     if (this.state.ended) throw new Error('Ende-Modus ist aktiv.');
     if (this.crossfade || this.starting || this.pendingStart.length) throw new Error('Es läuft bereits ein Crossfade.');
@@ -423,6 +453,7 @@ export class Engine extends EventEmitter {
   }
 
   async play(player, { startGain = 1 } = {}) {
+    this.assertActive();
     this.endLevelTest();
     const st = this.players[player].status();
     const np = rq.nowPlayingRequest(this.env);
@@ -477,6 +508,7 @@ export class Engine extends EventEmitter {
   }
 
   async fadeIn(player, sec) {
+    this.assertActive();
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     const st = this.players[player].status();
     this.gain[player] = 0;
@@ -489,6 +521,7 @@ export class Engine extends EventEmitter {
   }
 
   fadeOut(player, sec, { pauseAfter = true } = {}) {
+    this.assertActive();
     const from = this.gain[player];
     this.ramps[player] = {
       from, to: 0, start: Date.now(), dur: Math.max(0.1, sec), curve: 'fader',
@@ -516,7 +549,7 @@ export class Engine extends EventEmitter {
     this.persist(); this.emit('change');
   }
 
-  setGain(player, value) { delete this.ramps[player]; this.gain[player] = clamp01(value); this.emit('change'); }
+  setGain(player, value) { this.assertActive(); delete this.ramps[player]; this.gain[player] = clamp01(value); this.emit('change'); }
 
   panicArm() { this.panicNonce = Math.random().toString(36).slice(2); this.panicNonceExp = Date.now() + 5000; return this.panicNonce; }
   async panicFire(nonce) {
@@ -538,6 +571,7 @@ export class Engine extends EventEmitter {
 
   // Notfall-Playlist: stoppt alles, startet die eingestellte Playlist (gemischt) auf dem gewaehlten Player
   async emergencyStart() {
+    this.assertActive();
     const cfg = settings().emergency;
     const m = String(cfg.playlist || '').match(/playlist[/:]([A-Za-z0-9]{22})/) || String(cfg.playlist || '').match(/^([A-Za-z0-9]{22})$/);
     if (!m && this.players[cfg.player].kind === 'real') throw new Error('Keine Notfall-Playlist eingetragen (Admin → Automatik).');
@@ -567,6 +601,7 @@ export class Engine extends EventEmitter {
   }
   // Einen Song direkt auf einem Player abspielen (ohne Warteschlange), z. B. fuer Pegel und Live-Test
   async playDirect(n, track, gain = 1) {
+    this.assertActive();
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     delete this.ramps[n]; this.gain[n] = gain; this.trackMul[n] = 1;
     this.expectedUri[n] = track.uri; this.trackIdOf[n] = null;
@@ -715,6 +750,7 @@ export class Engine extends EventEmitter {
       current: this.current,
       crossfade: cf ? { from: cf.from, to: cf.to, progress: clamp01((Date.now() - cf.start) / (cf.dur * 1000)), durSec: cf.dur } : null,
       auto: cfg.auto,
+      hold: this.state.hold || null,
       mix: mixActive() ? { plan: this.mixPlanNow(), trim: { ...this.mixTrim }, nextTrimDb: mixTrimDb(rq.upcoming(this.env)[0]?.trackId) } : null,
       ducking: { ...cfg.ducking, active: !!this.ducking, mul: this.duckMul },
       mics: this.x32State.mics,

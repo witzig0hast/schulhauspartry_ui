@@ -36,11 +36,11 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
   };
   for (const p of [1, 2]) {
     const pl = snap.players[p];
-    out.players[p] = { playing: pl.playing, title: pl.title, artist: pl.artist, trackId: trackIdOfUri(pl.uri), positionMs: pl.positionMs, durationMs: pl.durationMs, remainingMs: pl.remainingMs, fading: pl.fading };
+    out.players[p] = { muted: !!pl.muted, playing: pl.playing, title: pl.title, artist: pl.artist, trackId: trackIdOfUri(pl.uri), positionMs: pl.positionMs, durationMs: pl.durationMs, remainingMs: pl.remainingMs, fading: pl.fading };
     if (can(role, 'viewTech') || can(role, 'viewFoh')) Object.assign(out.players[p], { gain: pl.gain, level: pl.level, meter: pl.meter, connected: pl.connected });
   }
   if (can(role, 'viewTech') || can(role, 'viewFoh')) {
-    out.auto = snap.auto; out.panic = snap.panic; out.emergency = snap.emergency;
+    out.auto = snap.auto; out.panic = snap.panic; out.emergency = snap.emergency; out.hold = snap.hold; out.mix = snap.mix;
     out.ducking = snap.ducking;
     // Pegel-Fenster
     const c = settings();
