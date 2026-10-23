@@ -108,14 +108,26 @@ async function call(ctx, method, path, { body, query, cls = 'search' } = {}) {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       L.warn('spotify', 'spotify.error', `Spotify-Fehler ${res.status} bei ${method} ${path}${res.status === 404 && /player/.test(path) ? ' – kein aktives Wiedergabegerät?' : res.status === 403 ? ' – Premium nötig oder Funktion für diese App gesperrt' : res.status === 401 ? ' – Anmeldung abgelaufen, Konto neu verbinden' : ''}`, { env: 'system', data: { method, path, status: res.status, body: text.slice(0, 300), app } });
-      const err = new Error(`Spotify ${method} ${path} -> ${res.status} ${text.slice(0, 120)}`);
-      err.status = res.status;
+      let reason = ''; try { const j = JSON.parse(text); reason = String(j.error?.reason || j.error?.message || ''); } catch { /* kein JSON */ }
+      const err = new Error(friendlySpotifyError(res.status, path, reason) || `Spotify ${method} ${path} -> ${res.status} ${text.slice(0, 120)}`);
+      err.status = res.status; err.reason = reason;
       throw err;
     }
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
   throw new RateLimitError(governor.pausedMs() || 1000, 'retries');
+}
+
+// Fehler der Wiedergabe-Steuerung so formulieren, dass man am Pult weiss, was zu tun ist
+function friendlySpotifyError(status, path, reason) {
+  if (!/^\/me\/player/.test(path)) return status === 401 ? 'Spotify-Anmeldung abgelaufen – Konto unter Verbindungen neu verbinden.' : null;
+  if (status === 404) return 'Kein aktives Spotify-Gerät: Spotify auf dem Wiedergabe-Rechner öffnen und einmal kurz abspielen, oder unter Admin → Verbindungen ein Gerät wählen.';
+  if (status === 401) return 'Spotify-Anmeldung abgelaufen – Konto unter Verbindungen neu verbinden.';
+  if (status === 403 && /PREMIUM/i.test(reason)) return 'Spotify Premium nötig: Mit diesem Konto lässt sich die Wiedergabe nicht steuern.';
+  if (status === 403 && /pause/.test(path)) return 'Spotify hat Pause abgelehnt – läuft dort gerade gar nichts (schon pausiert)?';
+  if (status === 403) return `Spotify hat den Befehl abgelehnt${reason ? ` (${reason.slice(0, 60)})` : ''} – z. B. schon in diesem Zustand oder vom Gerät nicht erlaubt.`;
+  return null;
 }
 
 // Album-Cover: das Bild, das am naechsten an 300 px liegt (wird ueber /cover/<id> vom Server geladen und gemerkt)
