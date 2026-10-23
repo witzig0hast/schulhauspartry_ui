@@ -69,6 +69,8 @@ export class Engine extends EventEmitter {
     this.x32Busy = false; this.lastX32Read = 0; this.lastPoll = 0;
     this.lastError = null; this.errors = [];
     this.state = getSetting(`engine:${env}`, { wishMode: 'open', ended: false, panic: false });
+    // Stumm geschaltete Kanaele ueberleben einen Neustart (sonst bliebe der Kanal beim naechsten Song stumm)
+    if (this.state.mutedCh) this.muted = { 1: !!this.state.mutedCh[1], 2: !!this.state.mutedCh[2] };
     this.buildAdapters();
     this.unsub = onSettingsChange(() => this.syncSettings());
   }
@@ -184,6 +186,9 @@ export class Engine extends EventEmitter {
   }
 
   start() {
+    // Neustart mitten in der Party: die Fader nicht sofort auf die Werte der App setzen (kein Pegelsprung im laufenden Song),
+    // gesendet wird erst bei der naechsten Aenderung (Fade, Crossfade, Ducking, Play)
+    this.lastSent = { 1: this.levelAmp(1), 2: this.levelAmp(2) };
     this.timer = setInterval(() => this.tick().catch((e) => this.fail('tick', e)), TICK_MS);
     this.timer.unref?.();
   }
@@ -532,7 +537,7 @@ export class Engine extends EventEmitter {
   async afterFadeOut(player) {
     let muted = false;
     if (settings().x32.muteAfterFade !== false && this.x32.setMute && !this.state.panic) {
-      try { await this.x32.setMute(player, true); this.muted[player] = muted = true; L.debug('pult', 'channel.muted', `Player ${player} ausgeblendet: Kanal stumm, Fader auf null`, { env: this.env }); }
+      try { await this.x32.setMute(player, true); this.muted[player] = muted = true; this.state.mutedCh = { ...this.muted }; this.persist(); L.debug('pult', 'channel.muted', `Player ${player} ausgeblendet: Kanal stumm, Fader auf null`, { env: this.env }); }
       catch (e) { this.fail('mute', e); }
     }
     await this.players[player].pause().catch((e) => this.fail('pause', e));
@@ -552,7 +557,7 @@ export class Engine extends EventEmitter {
     const amp = this.levelAmp(player);
     this.lastSent[player] = amp;
     await this.x32.setPlayerLevel(player, amp, { instant: true }).catch(() => {});
-    try { await this.x32.setMute(player, false); this.muted[player] = false; }
+    try { await this.x32.setMute(player, false); this.muted[player] = false; this.state.mutedCh = { ...this.muted }; this.persist(); }
     catch (e) { this.fail('mute', e); throw new Error(`Kanal von Player ${player} lässt sich nicht freigeben – am Pult von Hand einschalten. (${e.message})`); }
   }
 
@@ -748,7 +753,7 @@ export class Engine extends EventEmitter {
     this.gain = { 1: this.muted[1] ? 0 : 1, 2: this.muted[2] ? 0 : 1 }; this.duckMul = 1;
     this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
     this.trackIdOf = { 1: null, 2: null };
-    this.state = { wishMode: 'open', ended: false, panic: false, emergency: false, hold: this.state.hold || null, activatedAt: this.state.activatedAt || null }; this.persist();   // System an/aus bleibt
+    this.state = { wishMode: 'open', ended: false, panic: false, emergency: false, hold: this.state.hold || null, activatedAt: this.state.activatedAt || null, mutedCh: { ...this.muted } }; this.persist();   // System an/aus bleibt
     if (settings().opening.enabled && isOn('openingGate')) this.armOpening();
     for (const p of [1, 2]) { this.players[p].reset?.(); this.players[p].pause().catch(() => {}); }
     this.emit('change');

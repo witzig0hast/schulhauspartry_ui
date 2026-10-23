@@ -64,3 +64,31 @@ test('Pult ist die Wahrheit: von Hand verstellte Fader werden Grundpegel, nichts
     assert.ok(logs.some((x) => x.event === 'fader.adopted'));
   } finally { await ctx.close(); }
 });
+
+test('Neustart mitten in der Party: stumme Kanaele bleiben bekannt, kein Fader-Sprung beim Start', async () => {
+  const { createApp } = await import('../src/app.js');
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'restart-'));
+  let ctx = createApp({ dataDir: dir, startEngines: false });
+  try {
+    const e = ctx.engines.live; e.endHold({ by: 'T' }); e.start();
+    const t = (await e.spotify.search('uptown', 1))[0];
+    rq.addAuto('live', t, null);
+    await e.play(1); await sleep(200);
+    e.fadeOut(1, 0.2); await sleep(700);
+    assert.equal(e.muted[1], true);
+  } finally { await ctx.close(); }
+  ctx = createApp({ dataDir: dir, startEngines: false });
+  try {
+    const e = ctx.engines.live;
+    assert.equal(e.muted[1], true, 'nach dem Neustart weiß die App, dass Player 1 stumm ist');
+    const sent = []; const orig = e.x32.setPlayerLevel.bind(e.x32);
+    e.x32.setPlayerLevel = (p, a, o) => { sent.push([p, a]); return orig(p, a, o); };
+    e.start(); await sleep(400);
+    assert.equal(sent.length, 0, 'beim Start kein Fader-Befehl');
+    const calls = []; e.x32.setMute = async (p, m) => { calls.push([p, m]); };
+    rq.addAuto('live', (await e.spotify.search('levitating', 1))[0], null);
+    await e.play(1);
+    assert.deepEqual(calls, [[1, false]], 'vor dem nächsten Song wieder freigegeben');
+  } finally { await ctx.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
