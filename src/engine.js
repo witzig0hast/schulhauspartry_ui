@@ -447,14 +447,22 @@ export class Engine extends EventEmitter {
 
   async pause(player) { await this.players[player].pause(); this.emit('change'); }
 
-  // Ende eines Fade-outs/Crossfades: Kanal stumm, Player pausieren, Fader faehrt (stumm) zurueck in die Grundstellung
+  // Ende eines Fade-outs/Crossfades: Kanal stumm, Player pausieren; eine halbe Sekunde nach dem Muten den Fader auf null
+  // (er bleibt unten, solange der Kanal stumm ist). Ohne Stummschalten faehrt der Fader wie frueher zurueck in die Grundstellung.
   async afterFadeOut(player) {
+    let muted = false;
     if (settings().x32.muteAfterFade !== false && this.x32.setMute && !this.state.panic) {
-      try { await this.x32.setMute(player, true); this.muted[player] = true; L.debug('pult', 'channel.muted', `Player ${player} ausgeblendet: Kanal stumm`, { env: this.env }); }
+      try { await this.x32.setMute(player, true); this.muted[player] = muted = true; L.debug('pult', 'channel.muted', `Player ${player} ausgeblendet: Kanal stumm, Fader auf null`, { env: this.env }); }
       catch (e) { this.fail('mute', e); }
     }
     await this.players[player].pause().catch((e) => this.fail('pause', e));
-    if (!this.ramps[player] && this.crossfade?.to !== player) this.gain[player] = 1;   // bereit fuer den naechsten Einsatz
+    const busy = () => this.ramps[player] || this.crossfade?.to === player;
+    if (!muted) { if (!busy()) this.gain[player] = 1; }   // bereit fuer den naechsten Einsatz
+    else {
+      this.gain[player] = 0;
+      const t = setTimeout(() => { if (this.muted[player] && !busy()) { this.gain[player] = 0; this.lastSent[player] = -1; } }, 500);
+      t.unref?.();
+    }
     this.emit('change');
   }
   // Vor jedem Abspielen: war der Kanal stumm, zuerst den Fader auf den Startwert setzen, dann freigeben
@@ -523,7 +531,7 @@ export class Engine extends EventEmitter {
   }
   panicClear() {
     this.state.panic = false; this.persist();
-    this.gain = { 1: 1, 2: 1 };
+    this.gain = { 1: this.muted[1] ? 0 : 1, 2: this.muted[2] ? 0 : 1 };   // stumme Kanaele bleiben unten
     logEvent(this.env, 'panic-clear', {});
     this.emit('change');
   }
@@ -537,7 +545,7 @@ export class Engine extends EventEmitter {
     this.crossfade = null; this.ramps = {}; this.pendingStart = [];
     this.state.panic = false; this.state.ended = false; this.state.emergency = true; this.persist();
     this.players[o].pause().catch(() => {});
-    this.gain[o] = 1; this.gain[p] = 0; this.duckMul = 1;
+    this.gain[o] = this.muted[o] ? 0 : 1; this.gain[p] = 0; this.duckMul = 1;
     if (this.muted[p]) await this.unmuteFor(p, 0).catch((e) => this.fail('mute', e));   // im Notfall trotzdem weiter
     await this.players[p].playContext(m ? `spotify:playlist:${m[1]}` : 'mock:playlist:notfall', { shuffle: cfg.shuffle });
     this.current = p;
@@ -617,7 +625,7 @@ export class Engine extends EventEmitter {
   // Setzt den Abend zurueck: Wiedergabe stoppen, Zustand leeren (Daten loescht requests.resetEnv)
   resetAll() {
     this.crossfade = null; this.ramps = {}; this.pendingStart = []; this.current = null;
-    this.gain = { 1: 1, 2: 1 }; this.duckMul = 1;
+    this.gain = { 1: this.muted[1] ? 0 : 1, 2: this.muted[2] ? 0 : 1 }; this.duckMul = 1;
     this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
     this.trackIdOf = { 1: null, 2: null };
     this.state = { wishMode: 'open', ended: false, panic: false, emergency: false }; this.persist();

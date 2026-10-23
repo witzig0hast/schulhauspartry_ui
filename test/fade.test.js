@@ -13,7 +13,7 @@ test('faderToAmp ist die Umkehrung von ampToFader', () => {
   assert.equal(faderToAmp(0), 0);
 });
 
-test('Fade-out: gleichmaessig am Fader, danach Kanal stumm und Fader zurueck; Fade-in gibt den Kanal wieder frei', async () => {
+test('Fade-out: gleichmaessig am Fader, danach Kanal stumm und Fader auf null; Fade-in gibt den Kanal wieder frei', async () => {
   const ctx = await startTestApp();
   try {
     const e = ctx.engines.live;
@@ -32,7 +32,9 @@ test('Fade-out: gleichmaessig am Fader, danach Kanal stumm und Fader zurueck; Fa
     assert.equal(e.x32.mutes?.[1], true, 'Kanal stumm');
     assert.equal(e.muted[1], true);
     assert.equal(e.players[1].status().playing, false, 'Player pausiert');
-    assert.equal(e.gain[1], 1, 'Fader faehrt (stumm) zurueck in die Grundstellung');
+    assert.equal(e.gain[1], 0, 'Fader bleibt unten');
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(e.x32.levels[1], 0, 'eine halbe Sekunde nach dem Muten steht der Fader auf null');
 
     // Fade-in: erst Fader auf 0, dann Kanal frei, dann hoch
     const rq = await import('../src/requests.js');
@@ -56,6 +58,7 @@ test('Fade-out: gleichmaessig am Fader, danach Kanal stumm und Fader zurueck; Fa
     applyPatch({ x32: { muteAfterFade: false } }, { allow: ['x32'] });
     e.fadeOut(1, 0.2); await sleep(700);
     assert.equal(e.muted[1], false, 'ohne Stummschalten');
+    assert.equal(e.gain[1], 1, 'ohne Stummschalten faehrt der Fader zurück in die Grundstellung');
     applyPatch({ x32: { muteAfterFade: true } }, { allow: ['x32'] });
   } finally { await ctx.close(); }
 });

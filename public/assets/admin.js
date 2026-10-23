@@ -198,7 +198,7 @@ function viewConnections() {
       h('div', { class: 'grid three' }, field('Player 1 (Kanal L / R)', h('div', { class: 'row' }, ...p1)), field('Player 2 (Kanal L / R)', h('div', { class: 'row' }, ...p2)), field('Mikrofon-Kanäle (bis zu 3)', h('div', { class: 'row' }, ...mics))),
       field('Namen der Mikrofone (so erscheinen sie in Technik und Anzeige)', h('div', { class: 'row' }, ...micNames)),
       field('Tempo der Motorfader', faderSpeed),
-      h('label', { class: 'check' }, muteAfter, 'Nach dem Ausblenden Kanal stummschalten (der Fader fährt danach stumm zurück in die Grundstellung, vor dem nächsten Abspielen wird der Kanal wieder freigegeben)'),
+      h('label', { class: 'check' }, muteAfter, 'Nach dem Ausblenden Kanal stummschalten (eine halbe Sekunde danach geht der Fader auf null und bleibt unten; vor dem nächsten Abspielen wird der Kanal wieder freigegeben)'),
       h('button', { class: 'primary', onclick: () => save({ x32: { adapter: adapter.value, piUrl: piUrl.value, piToken: piToken.value, ...x32Addr.want(), faderSpeed: faderSpeed.value, muteAfterFade: muteAfter.checked, micNames: micNames.map((i) => i.value), channels: { p1: p1.map((i) => i.value), p2: p2.map((i) => i.value), mics: mics.map((i) => i.value) } } }) }, 'Speichern'),
       h('p', { class: 'small muted' }, 'Echte Verbindungen (Spotify, Pi) nutzt immer nur die unter "Start & Links → Testmodus-Optionen" gewählte Umgebung; die andere läuft simuliert.')));
 }
