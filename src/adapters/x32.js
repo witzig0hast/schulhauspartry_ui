@@ -52,7 +52,8 @@ export class HttpX32 {
       const i = (this.idx + k) % urls.length;
       try { const res = await fetch(urls[i] + path, { signal: AbortSignal.timeout(1500), ...init }); this.idx = i; return res; } catch (e) { last = e; }
     }
-    throw last;
+    const why = last?.name === 'TimeoutError' ? 'keine Antwort' : (last?.cause?.code || last?.message || 'Fehler');
+    throw new Error(`Pi nicht erreichbar (${urls.join(', ')}: ${why})`);
   }
   async setPlayerLevel(player, amp) {
     const ch = settings().x32.channels[`p${player}`];
