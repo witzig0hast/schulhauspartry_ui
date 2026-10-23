@@ -80,5 +80,14 @@ test('Live-Protokoll: Mensch und Maschine, Rechte, Filter, Export, Live-Nachschu
     L.debug('spotify', 'test.debug', 'sichtbar', { env: 'system' });
     assert.ok((await admin.get('/api/logs?level=debug')).json.logs.some((e) => e.event === 'test.debug'));
     assert.ok(!(await admin.get('/api/logs?level=info')).json.logs.some((e) => e.event === 'test.debug'));
+
+    // Abgelehnte Technik-Knoepfe: Grund steht im Protokoll; fremde Herkunft landet bei Sicherheit
+    await tech.post('/api/control/crossfade', {});
+    const cf = (await tech.get('/api/logs?cats=wiedergabe')).json.logs.find((e) => e.event === 'control.crossfade');
+    assert.equal(cf.level, 'warn'); assert.ok(cf.data.error && cf.msg.includes(cf.data.error), cf.msg);
+    const bad = await fetch(`${ctx.base}/api/control/pause`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://boese.example', Cookie: Object.entries(tech.cookies).map(([k, v]) => `${k}=${v}`).join('; ') }, body: '{"player":1}' });
+    assert.equal(bad.status, 403);
+    const od = (await admin.get('/api/logs?cats=sicherheit')).json.logs.find((e) => e.event === 'origin.denied');
+    assert.equal(od.data.origin, 'https://boese.example');
   } finally { ws?.close(); await ctx.close(); }
 });

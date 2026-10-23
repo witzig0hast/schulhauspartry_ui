@@ -4,6 +4,7 @@ import {
   parseCookies, cookieString, clientIp, isSecure, RateLimiter, cookieName, readCookie,
 } from './security.js';
 import { audit } from './audit.js';
+import * as L from './log.js';
 import { settings } from './settings.js';
 import { isOn } from './features.js';
 import { adminIpAllowed } from './ipallow.js';
@@ -229,14 +230,18 @@ export function requireAnyPerm(...perms) {
 // CSRF-Schutz: SameSite=Strict plus Origin-Pruefung bei schreibenden Requests
 export function originCheck(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const deny = (why) => {
+    L.warn('sicherheit', 'origin.denied', `Anfrage abgewiesen (fremde Herkunft): ${req.method} ${req.path}`, { data: { why, path: req.path, site: req.headers['sec-fetch-site'] || null, origin: req.headers.origin || null, host: req.headers.host || null, forwardedHost: req.headers['x-forwarded-host'] || null } });
+    return res.status(403).json({ error: 'Ungültige Herkunft' });
+  };
   const site = req.headers['sec-fetch-site'];
-  if (site && !['same-origin', 'none'].includes(site)) return res.status(403).json({ error: 'Ungültige Herkunft' });
+  if (site && !['same-origin', 'none'].includes(site)) return deny('sec-fetch-site');
   const origin = req.headers.origin;
   if (origin) {
     let host;
     try { host = new URL(origin).host; } catch { host = null; }
     const own = req.headers['x-forwarded-host'] || req.headers.host;
-    if (host !== own) return res.status(403).json({ error: 'Ungültige Herkunft' });
+    if (host !== own) return deny('origin');
   }
   next();
 }

@@ -138,7 +138,11 @@ export function staffRouter(env, engine, hub) {
   const CTL_TEXT = { play: 'Play', pause: 'Pause', 'fade-in': 'Einblenden', 'fade-out': 'Ausblenden', crossfade: 'Crossfade von Hand', 'panic-clear': 'Not-Aus aufheben', end: 'Ende-Modus', 'end-clear': 'Ende-Modus aufheben', emergency: 'Notfall-Playlist', 'emergency-clear': 'Notfall beenden' };
   r.use('/control/:act', (req, res, next) => {
     const act = req.params.act, t = CTL_TEXT[act];   // merken: req.params aendert sich beim weiteren Routing
-    if (t && req.method === 'POST') res.on('finish', () => L.log(res.statusCode < 400 ? 'info' : 'warn', 'wiedergabe', `control.${act}`, `${t}${req.body?.player ? ` (Player ${req.body.player})` : ''}${res.statusCode >= 400 ? ` – abgelehnt (${res.statusCode})` : ''}`, { env, actor: staffActor(req), data: { action: act, body: req.body || null, status: res.statusCode } }));
+    if (!t || req.method !== 'POST') return next();
+    let why = null;   // Fehlertext der Antwort mitschreiben, damit im Protokoll steht, WARUM abgelehnt wurde
+    const json = res.json.bind(res);
+    res.json = (body) => { if (body?.error) why = String(body.error).slice(0, 200); return json(body); };
+    res.on('finish', () => L.log(res.statusCode < 400 ? 'info' : 'warn', 'wiedergabe', `control.${act}`, `${t}${req.body?.player ? ` (Player ${req.body.player})` : ''}${res.statusCode >= 400 ? ` – abgelehnt (${res.statusCode}${why ? `: ${why}` : ''})` : ''}`, { env, actor: staffActor(req), data: { action: act, body: req.body || null, status: res.statusCode, error: why } }));
     next();
   });
   r.post('/control/play', ctl, wrap(async (req, res) => { await engine.play(player(req.body.player)); res.json({ ok: true }); }));
