@@ -81,6 +81,14 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
+### System an/aus (Admin → Start & Links → System)
+
+Das System **startet deaktiviert** (bei einer neuen Installation und nach „Alles löschen“ in Live): Die App steuert nichts, bis ein **Admin** es einschaltet (Admin → Start oder Technik). Technik kann es jederzeit ausschalten (Soundcheck-Modus), einschalten darf nur ein Admin. Einmal eingeschaltet, bleibt es auch nach einem Neustart des Servers an. Abschaltbar unter „System startet deaktiviert“.
+
+**Playlist abspielen** (Technik → Betrieb): Spotify-Playlist-Link einfügen, Player wählen, „Abspielen“. Geht auch, wenn das System aus ist – dann startet nur Spotify, das Pult bleibt unberührt. Ist das System an, blendet die App kurz ein; angenommene Wünsche übernehmen beim nächsten Crossfade.
+
+**Start-Playlist:** Wiederholungs-Regeln gelten zum Abend-Start nicht (sonst blieb die Liste leer, wenn alles schon einmal lief). Gibt Spotify die Songs nicht einzeln heraus (z. B. Spotify-eigene Playlists sind für neue Spotify-Apps gesperrt), läuft die Playlist direkt über Spotify; die ersten Wünsche übernehmen per Crossfade.
+
 ### Soundcheck-Modus (Technik → Betrieb)
 
 Schaltet die App vorübergehend komplett ab: keine Fader-Befehle, kein Stummschalten, kein Ducking, keine Wiedergabe, kein Auto-Crossfade, keine Lückenfüller oder Start-Playlist, keine Alarme aufs Handy (außer Not-Aus). Wahlweise wird laufende Musik angehalten und die Gäste-Wünsche pausiert. Der **Not-Aus bleibt aktiv**. Oben in der Technik steht solange ein Hinweis, seit wann der Modus läuft. Beim Beenden sind die Wünsche wie vorher und die Player-Fader fahren sanft auf die Werte der App. Auch per Companion (`soundcheck`). Der Modus bleibt bei einem Neustart des Servers erhalten.

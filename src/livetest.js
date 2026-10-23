@@ -425,7 +425,7 @@ export function createLiveTest({ engines, hub, setRealEnv, isBusy = () => null }
       const busy = isBusy();
       if (busy) throw new Error(busy);
       const live = engines.live;
-      if (Object.values(engines).some((x) => x.held)) throw new Error('Der Soundcheck-Modus ist an – erst beenden.');
+      if (engines.test.held) throw new Error('Der Soundcheck-Modus ist im Testmodus an – erst beenden.');
       if (live.realConnections && [1, 2].some((n) => live.players[n].status().playing)) throw new Error('Auf der Live-Party läuft gerade Musik über die echten Player. Der Live-Test braucht sie für sich – erst stoppen.');
       const skip = new Set((Array.isArray(o.skip) ? o.skip : []).filter((x) => IDS.includes(x)));
       const opt = { resetBefore: o.resetBefore !== false, resetAfter: !!o.resetAfter, skip: [...skip] };

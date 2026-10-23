@@ -79,6 +79,7 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
       publicUrl: config.publicUrl,
       features: { list: FEATURES, groups: GROUPS, flags: allFlags() },
       redirectUri: `${config.publicUrl || ''}/api/admin/spotify/callback`,
+      system: { hold: engines.live.state.hold || null, playlist: engines.live.state.playlist || null },
       evening: Object.fromEntries(Object.entries(engines).map(([k, v]) => [k, v.snapshot().opening])),
       ssoRedirectUri: `${config.publicUrl || ''}/api/sso/callback`,
       spotifyConfigured: spotifyApps(config).length > 0,
@@ -267,6 +268,8 @@ export function adminRouter(env, engine, hub, { engines, setRealEnv }) {
     audit('reset', req.session.label, clientIp(req), target);
     rq.resetEnv(target);
     engines[target].resetAll();
+    // Neuer Abend: das System startet wieder deaktiviert, bis ein Admin es einschaltet
+    if (target === 'live' && settings().operation.startDisabled !== false) { engines.live.startHold({ by: 'Zurücksetzen – ein Admin schaltet ein', stopMusic: false, pauseWishes: false, initial: true }); }
     hub.pushEnv(target, { guests: true });
     res.json({ ok: true });
   }));

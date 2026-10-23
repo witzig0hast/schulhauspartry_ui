@@ -1,5 +1,4 @@
 import express from 'express';
-import { holdNotify } from '../notify.js';
 import crypto from 'node:crypto';
 import { requirePerm, adminIpGuard, clientIp } from '../auth.js';
 import { requireFeature, isOn } from '../features.js';
@@ -24,7 +23,7 @@ export const COMPANION_ACTIONS = {
   'fade-in-1': 'Player 1 einblenden', 'fade-in-2': 'Player 2 einblenden', 'fade-out-1': 'Player 1 ausblenden', 'fade-out-2': 'Player 2 ausblenden',
   'wishes-open': 'Wünsche öffnen', 'wishes-pause': 'Wünsche pausieren', 'wishes-close': 'Wünsche schließen',
   'pause-mode': 'Pausen-Modus an/aus', 'auto-toggle': 'Auto-Crossfade an/aus', 'ducking-toggle': 'Ducking an/aus',
-  emergency: 'Notfall-Playlist an/aus', end: 'Ende-Modus an/aus', soundcheck: 'Soundcheck-Modus an/aus (App steuert nichts)',
+  emergency: 'Notfall-Playlist an/aus', end: 'Ende-Modus an/aus', soundcheck: 'Soundcheck-Modus an (App steuert nichts; einschalten nur durch Admin)',
 };
 const PLAYBACK = /^(crossfade|panic|play-|pause-\d|fade-|emergency|end)/;
 
@@ -89,7 +88,7 @@ export function companionRouter(env, engine, hub) {
         case 'auto-toggle': applyPatch({ auto: { enabled: !settings().auto.enabled } }, { allow: ['auto'] }); result = settings().auto.enabled ? 'an' : 'aus'; break;
         case 'ducking-toggle': applyPatch({ ducking: { enabled: !settings().ducking.enabled } }, { allow: ['ducking'] }); result = settings().ducking.enabled ? 'an' : 'aus'; break;
         case 'emergency': if (engine.state.emergency) { engine.emergencyClear(); result = 'beendet'; } else { if (!isOn('emergency')) throw new Error('Notfall-Playlist ist ausgeschaltet.'); await engine.emergencyStart(); result = 'gestartet'; } break;
-        case 'soundcheck': if (engine.held) { engine.endHold({ by: 'Companion' }); result = 'aus'; } else { engine.startHold({ by: 'Companion' }); result = 'an'; } holdNotify(env, engine.held); break;
+        case 'soundcheck': if (engine.held) throw Object.assign(new Error('Einschalten darf nur ein Admin (Technik-Ansicht).'), { status: 403 }); engine.startHold({ by: 'Companion' }); result = 'an'; break;
         case 'end': if (engine.state.ended) { engine.endClear(); result = 'aufgehoben'; } else { engine.endEvening(10); result = 'gestartet'; } break;
         default: break;
       }

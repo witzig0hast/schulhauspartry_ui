@@ -1,5 +1,4 @@
 import express from 'express';
-import { holdNotify } from '../notify.js';
 import {
   login, logout, requirePerm, requireAnyPerm, can, setSessionCookie, clearSessionCookie, clientIp, homeFor,
 } from '../auth.js';
@@ -221,11 +220,22 @@ export function staffRouter(env, engine, hub) {
   r.post('/control/soundcheck', ctlPerm, wrap((req, res) => {
     const by = req.session.label || null;
     if (req.body?.on) engine.startHold({ by, stopMusic: req.body.stopMusic !== false, pauseWishes: req.body.pauseWishes !== false });
-    else engine.endHold({ by });
-    holdNotify(env, engine.held);
+    else {
+      if (!can(req.session.role, 'viewAdmin')) return res.status(403).json({ error: 'Einschalten darf nur ein Admin.' });
+      engine.endHold({ by });
+    }
     hub.pushEnv(env, { guests: true });
     res.json({ ok: true, hold: engine.state.hold || null });
   }));
+  // Einfach eine Playlist abspielen (geht auch, wenn das System aus ist – dann ohne Fader/Mute)
+  r.post('/control/playlist', ctlPerm, wrap(async (req, res) => {
+    const uri = String(req.body?.uri || '').trim().slice(0, 300), player = Number(req.body?.player) === 2 ? 2 : 1, shuffle = req.body?.shuffle !== false;
+    const out = await engine.playPlaylist({ uri, player, shuffle, by: req.session.label || null });
+    applyPatch({ playlistPlay: { last: uri, player, shuffle } }, { allow: ['playlistPlay'] });
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, playlist: out });
+  }));
+  r.post('/control/playlist-stop', ctlPerm, wrap((req, res) => { engine.stopPlaylist({ by: req.session.label || null }); hub.pushEnv(env, { guests: true }); res.json({ ok: true }); }));
   r.post('/settings/tech', ctlPerm, wrap((req, res) => {
     const allow = ['auto', 'ducking', 'notice', 'wishMessages'];
     applyPatch(req.body || {}, { allow });

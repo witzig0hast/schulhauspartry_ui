@@ -96,6 +96,9 @@ export function createApp({ dataDir = config.dataDir, startEngines = true } = {}
     live: new Engine('live', { realConnections: settings().test.realEnv === 'live' }),
     test: new Engine('test', { realConnections: settings().test.realEnv === 'test' }),
   };
+  // Standard: das System startet deaktiviert (Soundcheck-Modus), bis ein Admin es einschaltet. Einmal eingeschaltet,
+  // bleibt es auch nach einem Neustart des Servers an (sonst wuerde ein Update mitten in der Party alles anhalten).
+  if (settings().operation.startDisabled !== false && !engines.live.state.activatedAt && !engines.live.state.hold) engines.live.startHold({ by: 'Standard – ein Admin schaltet ein', stopMusic: false, pauseWishes: false, initial: true });
   for (const e of Object.values(engines)) if (e.held) holdNotify(e.env, true);   // Soundcheck-Modus ueberlebt einen Neustart
   const setRealEnv = () => { for (const e of Object.keys(engines)) engines[e].setReal(settings().test.realEnv === e); };
 

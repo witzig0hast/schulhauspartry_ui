@@ -8,7 +8,8 @@ export const DEFAULTS = {
   // Abend-Start: Start-Playlist und Freischaltung der Wuensche
   start: { playlist: '', minQueue: 3, autoStart: false, startAt: '17:30' },
   opening: { enabled: false, at: '18:00', auto: true, message: 'Die Wünsche öffnen um {zeit} Uhr – bis dahin läuft schon Musik!' },
-  operation: { mode: 'full' },   // full = Spotify-Player/Crossfade/X32 | wishlist = nur Wuensche annehmen/ablehnen (ein DJ spielt selbst)
+  operation: { mode: 'full', startDisabled: true },   // startDisabled: System startet im Soundcheck-Modus, ein Admin schaltet es ein
+  playlistPlay: { last: '', player: 1, shuffle: true },   // full = Spotify-Player/Crossfade/X32 | wishlist = nur Wuensche annehmen/ablehnen (ein DJ spielt selbst)
   // Single Sign-On (OpenID Connect, z. B. Authentik). roleMap: Gruppe im Anbieter -> Rolle in der App
   sso: { enabled: false, issuer: '', clientId: '', clientSecret: '', scopes: 'openid profile email', groupsClaim: 'groups', roleMap: [], defaultRole: '', allowAdmin: false, autoCreate: true, autoLinkEmail: false, buttonLabel: 'Mit SSO anmelden' },
   security: { idleMinutes: 240, maxHours: 12, adminIpAllow: [], adminPasskeyOnly: false, apiPerMin: 900, floodPerMin: 40, requirePasskeyHint: true,
@@ -192,6 +193,8 @@ export function applyPatch(patch, { allow }) {
     if ('message' in q) o.message = str(q.message, 200).trim() || 'Die Wünsche öffnen um {zeit} Uhr.';
   }
   if (has('operation') && ['full', 'wishlist'].includes(patch.operation?.mode)) s.operation.mode = patch.operation.mode;
+  if (has('operation') && 'startDisabled' in (patch.operation || {})) s.operation.startDisabled = !!patch.operation.startDisabled;
+  if (has('playlistPlay')) { const q = patch.playlistPlay, o = s.playlistPlay; if ('last' in q) o.last = str(q.last, 300).trim(); if ([1, 2].includes(Number(q.player))) o.player = Number(q.player); if ('shuffle' in q) o.shuffle = !!q.shuffle; }
   if (has('sso')) {
     const q = patch.sso, o = s.sso;
     if ('enabled' in q) o.enabled = !!q.enabled;

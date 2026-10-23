@@ -10,6 +10,7 @@ import { governorFor, setBudgetAll } from './adapters/spotify-governor.js';
 import { maybeFill, fillStart } from './filler.js';
 import { autoFill, mixPlan, mixTrimDb, mixActive } from './ai.js';
 import * as L from './log.js';
+import { holdNotify } from './notify.js';
 import { applyAutoOrder, localHHMM } from './autoorder.js';
 import { ensureMeta, getMeta } from './trackmeta.js';
 import { isOn } from './features.js';
@@ -165,13 +166,14 @@ export class Engine extends EventEmitter {
   // Nur der Not-Aus bleibt aktiv. Beim Beenden uebernimmt die App die Fader wieder (sie fahren sanft auf ihre Werte).
   get held() { return !!this.state.hold; }
   assertActive() { if (this.state.hold) throw new Error('Soundcheck-Modus ist an – die App steuert gerade nichts. Erst beenden.'); }
-  startHold({ by = null, stopMusic = true, pauseWishes = true } = {}) {
+  startHold({ by = null, stopMusic = true, pauseWishes = true, initial = false } = {}) {
     if (this.state.hold) return this.state.hold;
     if (this.liveTest) throw new Error('Der Live-Test läuft gerade – erst beenden.');
     this.crossfade = null; this.ramps = {}; this.pendingStart = [];
     if (stopMusic) for (const p of [1, 2]) if (this.players[p].status().playing) this.players[p].pause().catch((e) => this.fail('pause', e));
     const pausedWishes = !!pauseWishes && this.state.wishMode === 'open';
-    this.state.hold = { since: Date.now(), by, prevWishMode: this.state.wishMode, pausedWishes };
+    this.state.hold = { since: Date.now(), by, prevWishMode: this.state.wishMode, pausedWishes, initial };
+    holdNotify(this.env, true);
     if (pausedWishes) this.setWishMode('paused');
     this.persist();
     L.warn('pult', 'soundcheck.on', `Soundcheck-Modus an${by ? ` (${by})` : ''}: Die App steuert weder Fader noch Wiedergabe${stopMusic ? ', Musik angehalten' : ''}${pausedWishes ? ', Wünsche pausiert' : ''}`, { env: this.env, data: { stopMusic, pausedWishes } });
@@ -182,6 +184,8 @@ export class Engine extends EventEmitter {
     const h = this.state.hold;
     if (!h) return;
     this.state.hold = null;
+    holdNotify(this.env, false);
+    this.state.activatedAt = Date.now();   // einmal von einem Admin eingeschaltet: startet nicht mehr von selbst deaktiviert
     if (h.pausedWishes && this.state.wishMode === 'paused') this.setWishMode(h.prevWishMode);
     this.lastSent = { 1: -1, 2: -1 };   // Fader wieder auf die Werte der App (sanft, das Relay begrenzt das Tempo)
     this.persist();
@@ -276,10 +280,16 @@ export class Engine extends EventEmitter {
     await this.applyAllLevels().catch(() => {});
     try {
       const n = await fillStart(this, Math.max(2, sp.minQueue));
-      if (!n) throw new Error('Die Start-Playlist liefert keine passenden Songs.');
       const playing = [1, 2].some((p) => this.players[p].status().playing);
-      if (!playing) await this.fadeIn(1, 4);
-    } catch (e) { this.state.started = false; this.persist(); this.emit('change'); throw e; }
+      if (n) { if (!playing) await this.fadeIn(1, 4); }
+      else if (!playing) {
+        // Songs der Playlist nicht einzeln lesbar (z. B. Spotify-eigene Playlists sind fuer neue Spotify-Apps gesperrt)
+        // oder alles gesperrt: die Playlist trotzdem direkt ueber Spotify abspielen. Sobald Wuensche da sind, uebernimmt die Warteschlange.
+        const why = this.spotify.lastError || 'keine einzeln lesbaren Songs';
+        await this.playPlaylist({ uri: sp.playlist, player: 1, shuffle: true, by: 'Abend-Start' });
+        L.info('wiedergabe', 'start.playlist_direct', `Start-Playlist läuft direkt über Spotify (${why}) – die ersten angenommenen Wünsche übernehmen per Crossfade`, { env: this.env, data: { why } });
+      }
+    } catch (e) { this.state.started = false; this.persist(); this.emit('change'); throw new Error(`Start-Playlist lässt sich nicht abspielen: ${e.message}`); }
     logEvent(this.env, 'start', {});
     this.emit('change');
   }
@@ -391,6 +401,7 @@ export class Engine extends EventEmitter {
   // ----- Aktionen -----
   async startCrossfade(durSec, curve = settings().auto.curve, { auto = false } = {}) {
     this.assertActive();
+    if (this.state.playlist) { this.state.playlist = null; this.persist(); }   // Warteschlange uebernimmt
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     if (this.state.ended) throw new Error('Ende-Modus ist aktiv.');
     if (this.crossfade || this.starting || this.pendingStart.length) throw new Error('Es läuft bereits ein Crossfade.');
@@ -454,6 +465,7 @@ export class Engine extends EventEmitter {
 
   async play(player, { startGain = 1 } = {}) {
     this.assertActive();
+    if (this.state.playlist) { this.state.playlist = null; this.persist(); }   // Warteschlange uebernimmt
     this.endLevelTest();
     const st = this.players[player].status();
     const np = rq.nowPlayingRequest(this.env);
@@ -588,6 +600,42 @@ export class Engine extends EventEmitter {
     logEvent(this.env, 'emergency', {});
     this.emit('emergency'); this.emit('change');
   }
+  // Einfach eine Playlist abspielen (Hintergrundmusik, Einlass, Soundcheck). Ist das System aus (Soundcheck-Modus),
+  // startet nur Spotify – Fader und Mute bleiben wie sie sind. Sonst wie gewohnt mit kurzem Einblenden.
+  async playPlaylist({ uri, player = 1, shuffle = true, by = null } = {}) {
+    const m = String(uri || '').match(/playlist[/:]([A-Za-z0-9]{22})/) || String(uri || '').match(/^([A-Za-z0-9]{22})$/);
+    if (!m && this.players[player].kind === 'real') throw new Error('Bitte einen Spotify-Playlist-Link einfügen (Spotify → Teilen → Link kopieren).');
+    if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
+    if (this.wishlist) throw new Error('Im Wunschlisten-Modus spielt die App keine Musik.');
+    const p = player === 2 ? 2 : 1, o = other(p), ctxUri = m ? `spotify:playlist:${m[1]}` : 'mock:playlist:playlist';
+    this.endLevelTest();
+    this.crossfade = null; delete this.ramps[p]; delete this.ramps[o]; this.pendingStart = [];
+    if (this.players[o].status().playing) this.players[o].pause().catch(() => {});
+    if (!this.state.hold) {
+      this.gain[o] = this.muted[o] ? 0 : 1; this.gain[p] = 0;
+      if (this.muted[p]) await this.unmuteFor(p, 0);
+    }
+    await this.players[p].playContext(ctxUri, { shuffle });
+    this.current = p; this.expectedUri[p] = null; this.trackIdOf[p] = null;
+    this.state.playlist = { uri: ctxUri, player: p, since: Date.now(), by }; this.persist();
+    if (!this.state.hold) {
+      const begin = () => { this.ramps[p] = { from: 0, to: 1, start: Date.now(), dur: 2, curve: 'fader' }; this.emit('change'); };
+      if (this.players[p].kind === 'real') this.pendingStart.push({ at: Date.now() + 600, fn: begin }); else begin();
+    }
+    L.info('wiedergabe', 'playlist.start', `Playlist läuft auf Player ${p}${shuffle ? ' (gemischt)' : ''}${this.state.hold ? ' – System aus, Pult unverändert' : ''}`, { env: this.env, actor: by ? { kind: 'staff', label: by } : null, data: { uri: ctxUri, player: p, shuffle } });
+    this.emit('change');
+    return this.state.playlist;
+  }
+  stopPlaylist({ by = null } = {}) {
+    const pl = this.state.playlist;
+    if (!pl) return;
+    this.state.playlist = null; this.persist();
+    if (this.state.hold) this.players[pl.player].pause().catch((e) => this.fail('pause', e));
+    else this.fadeOut(pl.player, settings().auto.fadeSec ?? 5);
+    L.info('wiedergabe', 'playlist.stop', `Playlist gestoppt (Player ${pl.player})`, { env: this.env, actor: by ? { kind: 'staff', label: by } : null });
+    this.emit('change');
+  }
+
   emergencyClear() { this.state.emergency = false; this.persist(); logEvent(this.env, 'emergency-clear', {}); this.emit('change'); }
 
   // Testsong fuer Pegel und Live-Test: etwas Bekanntes, das laenger als eine Minute laeuft
@@ -663,7 +711,7 @@ export class Engine extends EventEmitter {
     this.gain = { 1: this.muted[1] ? 0 : 1, 2: this.muted[2] ? 0 : 1 }; this.duckMul = 1;
     this.expectedUri = { 1: null, 2: null }; this.lastSeenUri = { 1: null, 2: null };
     this.trackIdOf = { 1: null, 2: null };
-    this.state = { wishMode: 'open', ended: false, panic: false, emergency: false }; this.persist();
+    this.state = { wishMode: 'open', ended: false, panic: false, emergency: false, hold: this.state.hold || null, activatedAt: this.state.activatedAt || null }; this.persist();   // System an/aus bleibt
     if (settings().opening.enabled && isOn('openingGate')) this.armOpening();
     for (const p of [1, 2]) { this.players[p].reset?.(); this.players[p].pause().catch(() => {}); }
     this.emit('change');
@@ -751,6 +799,7 @@ export class Engine extends EventEmitter {
       crossfade: cf ? { from: cf.from, to: cf.to, progress: clamp01((Date.now() - cf.start) / (cf.dur * 1000)), durSec: cf.dur } : null,
       auto: cfg.auto,
       hold: this.state.hold || null,
+      playlist: this.state.playlist || null,
       mix: mixActive() ? { plan: this.mixPlanNow(), trim: { ...this.mixTrim }, nextTrimDb: mixTrimDb(rq.upcoming(this.env)[0]?.trackId) } : null,
       ducking: { ...cfg.ducking, active: !!this.ducking, mul: this.duckMul },
       mics: this.x32State.mics,

@@ -156,6 +156,16 @@ function operationsCard() {
   });
   refs.endBtn = h('button', { onclick: onEnd }, 'Ende-Modus');
   refs.holdBtn = h('button', { onclick: onHold }, 'Soundcheck-Modus');
+  // Einfach eine Playlist abspielen (auch wenn das System aus ist)
+  refs.plUri = h('input', { placeholder: 'Spotify-Playlist-Link (Teilen → Link kopieren)', maxlength: 300 });
+  refs.plPlayer = h('select', {}, h('option', { value: '1' }, 'Player 1'), h('option', { value: '2' }, 'Player 2'));
+  refs.plShuffle = h('input', { type: 'checkbox', checked: true });
+  refs.plInfo = h('div', { class: 'small muted' });
+  refs.plStop = h('button', { class: 'hidden', onclick: () => post('/control/playlist-stop') }, 'Playlist stoppen');
+  refs.plCard = h('details', { class: 'more' }, h('summary', {}, 'Playlist abspielen'), h('div', { class: 'stack', style: 'margin-top:10px' },
+    refs.plUri, h('div', { class: 'row' }, refs.plPlayer, h('label', { class: 'check' }, refs.plShuffle, 'Gemischt')),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => post('/control/playlist', { uri: refs.plUri.value, player: Number(refs.plPlayer.value), shuffle: refs.plShuffle.checked }) }, 'Abspielen'), refs.plStop),
+    refs.plInfo));
   refs.emBtn = h('button', { class: 'outline-bad', onclick: onEmergency }, 'Notfall-Playlist');
   refs.openBtn = h('button', { class: 'primary hidden', onclick: () => post('/control/open-wishes') }, 'Wünsche jetzt freischalten');
   refs.startBtn = feat('startPlaylist') ? h('button', { class: 'hidden', onclick: () => post('/control/start-evening') }, 'Start-Playlist starten') : null;
@@ -171,6 +181,7 @@ function operationsCard() {
     h('div', { class: 'eyebrow' }, 'Wünsche der Gäste'), h('div', { class: 'seg', style: 'justify-self:start' }, ...refs.wishBtns),
     refs.openBtn, refs.startBtn,
     h('div', { class: 'grid two', style: 'gap:8px' }, refs.pauseBtn || h('span'), refs.endBtn, refs.emBtn, refs.holdBtn),
+    refs.plCard,
     pollCard);
 }
 
@@ -264,10 +275,12 @@ function render() {
   const hold = state.hold;
   refs.holdBanner.classList.toggle('hidden', !hold);
   document.body.classList.toggle('holding', !!hold);
-  if (hold) swap(refs.holdBanner, `${hold.since}|${Math.floor((Date.now() - hold.since) / 60000)}`, () => h('div', { class: 'row between' },
-    h('div', {}, h('b', {}, 'Soundcheck-Modus'), ` seit ${Math.max(1, Math.round((Date.now() - hold.since) / 60000))} Min.${hold.by ? ` (${hold.by})` : ''} – die App steuert gerade nichts. Not-Aus bleibt aktiv.`),
-    h('button', { class: 'primary', onclick: onHold }, 'Soundcheck beenden')));
-  if (refs.holdBtn) { refs.holdBtn.textContent = hold ? 'Soundcheck beenden' : 'Soundcheck-Modus'; refs.holdBtn.className = hold ? 'primary' : ''; }
+  const isAdmin = state.role === 'admin';
+  if (hold) swap(refs.holdBanner, `${hold.since}|${Math.floor((Date.now() - hold.since) / 60000)}|${isAdmin}`, () => h('div', { class: 'row between' },
+    h('div', {}, h('b', {}, hold.initial ? 'System ist aus' : 'Soundcheck-Modus'), hold.initial ? ' – die App steuert nichts, bis ein Admin sie einschaltet. Eine Playlist kannst du trotzdem abspielen (Betrieb → Playlist abspielen), das Pult bleibt dabei unberührt.' : ` seit ${Math.max(1, Math.round((Date.now() - hold.since) / 60000))} Min.${hold.by ? ` (${hold.by})` : ''} – die App steuert gerade nichts. Not-Aus bleibt aktiv.`),
+    isAdmin ? h('button', { class: 'primary', onclick: onHold }, 'System einschalten') : h('span', { class: 'small muted' }, 'Einschalten: nur Admin')));
+  if (refs.holdBtn) { refs.holdBtn.textContent = hold ? (isAdmin ? 'System einschalten' : 'System aus – Admin schaltet ein') : 'Soundcheck-Modus (System aus)'; refs.holdBtn.className = hold ? 'primary' : ''; refs.holdBtn.disabled = !!hold && !isAdmin; }
+  updatePlaylist();
   updateStrip(); updatePlayer(1); updatePlayer(2); fillPresets(); updateMics(); updateNext(); updateCountdown();
   const cf = state.crossfade;
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
@@ -305,10 +318,19 @@ function render() {
 }
 
 // ---------- Aufbau ----------
+function updatePlaylist() {
+  if (!refs.plUri) return;
+  const pl = state.playlist, last = state.playlistLast;
+  if (last && !refs.plUri.dataset.init) { refs.plUri.dataset.init = '1'; refs.plUri.value = last.last || ''; refs.plPlayer.value = String(last.player || 1); refs.plShuffle.checked = last.shuffle !== false; }
+  refs.plStop.classList.toggle('hidden', !pl);
+  refs.plInfo.textContent = pl ? `Playlist läuft auf Player ${pl.player}${state.hold ? ' – System aus: Fader und Mute am Pult selbst einstellen' : ''}. Angenommene Wünsche übernehmen per Crossfade, sobald das System an ist.` : (state.hold ? 'Das System ist aus: Die Playlist startet nur in Spotify, am Pult ändert sich nichts.' : 'Startet mit kurzem Einblenden; die Warteschlange übernimmt beim nächsten Crossfade.');
+}
+
 // Soundcheck-Modus: App steuert voruebergehend nichts (Pult gehoert ganz der Technik)
 function onHold() {
   if (state?.hold) {
-    if (confirm('Soundcheck-Modus beenden? Die App übernimmt wieder: Die Player-Fader fahren sanft auf die Werte der App, Automatik und Knöpfe sind wieder aktiv.')) post('/control/soundcheck', { on: false });
+    if (state.role !== 'admin') return toast('Einschalten darf nur ein Admin.', true);
+    if (confirm('System einschalten? Die App übernimmt wieder: Die Player-Fader fahren sanft auf die Werte der App, Automatik und Knöpfe sind wieder aktiv.')) post('/control/soundcheck', { on: false });
     return;
   }
   const stopMusic = h('input', { type: 'checkbox', checked: true }), pauseWishes = h('input', { type: 'checkbox', checked: true });

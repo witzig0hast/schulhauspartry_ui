@@ -10,7 +10,7 @@ import { sha256, randomToken } from './security.js';
 import * as rq from './requests.js';
 import * as L from './log.js';
 import { setQuietEnv } from './log.js';
-import { muteNotify } from './notify.js';
+import { muteNotify, holdNotify } from './notify.js';
 import { backupNow } from './backup.js';
 
 // Generalprobe: simuliert eine komplette Party -- viele Gaeste (Seite laden, suchen, wuenschen, abstimmen,
@@ -76,9 +76,9 @@ export function createRehearsal({ server, engines, setRealEnv = () => {}, pushEn
       if (getDb().prepare("SELECT COUNT(*) AS c FROM requests WHERE env = 'live'").get().c > 0) throw new Error('Live hat schon Wünsche oder eine Setlist. Die Generalprobe live läuft nur vor der Party auf leerer Live-Umgebung – danach wird alles gelöscht. Vorher Admin → Bericht → Live zurücksetzen (mit Backup) oder die Probe im Testmodus machen.');
       if ([1, 2].some((n) => eng.players[n].status().playing)) throw new Error('Auf Live läuft gerade Musik – erst stoppen.');
       if (eng.state.panic) throw new Error('Not-Aus ist aktiv – erst aufheben.');
-      if (eng.held) throw new Error('Der Soundcheck-Modus ist an – erst beenden.');
       try { backupNow('vor-generalprobe'); } catch { /* ohne Backup-Ordner (Tests) */ }
-      liveBefore = { wishMode: eng.state.wishMode, awaitOpen: !!eng.state.awaitOpen, real: eng.realConnections };
+      liveBefore = { wishMode: eng.state.wishMode, awaitOpen: !!eng.state.awaitOpen, real: eng.realConnections, hold: eng.state.hold || null };
+      eng.state.hold = null;   // System aus? Fuer die Probe kurz an (alles simuliert), danach wieder wie vorher
       eng.probeHold = true; eng.probeSpeed = opt.speed;
       if (eng.realConnections) eng.setReal(false, true);   // keine echten Spotify-Anfragen, kein Fader am Pult
       muteNotify('live');
@@ -316,6 +316,7 @@ export function createRehearsal({ server, engines, setRealEnv = () => {}, pushEn
     setRealEnv();
     if (before?.awaitOpen && settings().opening.enabled && isOn('openingGate')) eng.armOpening();
     else if (before) eng.setWishMode(before.wishMode);
+    if (before?.hold) { eng.state.hold = before.hold; eng.persist(); holdNotify('live', true); eng.emit('change'); }
     pushEnv('live');
   }
 

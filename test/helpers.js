@@ -5,6 +5,8 @@ export async function startTestApp({ dataDir = ':memory:' } = {}) {
   config.adminPassword = 'super-geheimes-passwort-123';
   config.secret = 'test-secret-test-secret-test-secret-1234';
   const ctx = createApp({ dataDir, startEngines: false });
+  // Tests starten mit eingeschaltetem System (im Betrieb startet es deaktiviert, bis ein Admin es einschaltet)
+  for (const e of Object.values(ctx.engines)) if (e.held) e.endHold({ by: 'Test' });
   await new Promise((r) => ctx.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${ctx.server.address().port}`;
   return { ...ctx, base };

@@ -10,15 +10,19 @@ export function playlistId(input) {
   return m ? m[1] : null;
 }
 
-// Songs aus einer Playlist waehlen: ohne Wiederholungen, ohne gesperrte/explizite Songs
-async function pickTracks(engine, playlist, n, avoidMin, now) {
+// Songs aus einer Playlist waehlen: ohne Wiederholungen, ohne gesperrte/explizite Songs.
+// relaxed: reicht das nicht (z. B. alles schon einmal gelaufen), werden Wiederholungs-Regeln ignoriert – Sperren und Explicit-Filter gelten immer.
+async function pickTracks(engine, playlist, n, avoidMin, now, { relaxed = false } = {}) {
   const id = playlistId(playlist);
   const tracks = await engine.spotify.getPlaylistTracks?.(id || playlist);
   if (!tracks?.length) return [];
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const allowed = tracks.filter((t) => !isBlacklisted(t.id, t.artist) && !(settings().explicitMode === 'block' && t.explicit));
   const recent = rq.recentTrackIds(engine.env, now - avoidMin * 60000);
-  const ok = tracks.filter((t) => !recent.has(t.id) && !isBlacklisted(t.id, t.artist) && !playedBlock(engine.env, t.id, now) && !(settings().explicitMode === 'block' && t.explicit));
-  for (let i = ok.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ok[i], ok[j]] = [ok[j], ok[i]]; }
-  return ok.slice(0, n);
+  const fresh = shuffle(allowed.filter((t) => !recent.has(t.id) && !playedBlock(engine.env, t.id, now)));
+  if (!relaxed || fresh.length >= n) return fresh.slice(0, n);
+  const queued = new Set(rq.upcoming(engine.env).map((u) => u.trackId));
+  return [...fresh, ...shuffle(allowed.filter((t) => !fresh.includes(t) && !queued.has(t.id)))].slice(0, n);
 }
 
 // Abend-Start: Songs der Start-Playlist in die Warteschlange legen (mindestens `count`)
@@ -26,7 +30,7 @@ export async function fillStart(engine, count, now = Date.now()) {
   const sp = settings().start;
   const have = rq.upcoming(engine.env).length;
   if (have >= count) return have;
-  const tracks = await pickTracks(engine, sp.playlist, count - have, 240, now);
+  const tracks = await pickTracks(engine, sp.playlist, count - have, 240, now, { relaxed: true });
   for (const t of tracks) rq.addAuto(engine.env, t, engine.current);
   if (tracks.length) engine.emit('change');
   return have + tracks.length;

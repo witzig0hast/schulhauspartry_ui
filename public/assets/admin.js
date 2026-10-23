@@ -206,7 +206,7 @@ function viewConnections() {
 // Hardware-Knoepfe ueber Bitfocus Companion (Stream Deck): Token, Adressen, Anleitung
 const COMPANION_ACTIONS = [['crossfade', 'Crossfade zum nächsten Song'], ['panic', 'NOT-AUS (2× innerhalb von 4 s)'], ['panic-clear', 'Not-Aus aufheben'], ['play-1', 'Player 1 Play'], ['pause-1', 'Player 1 Pause'], ['play-2', 'Player 2 Play'], ['pause-2', 'Player 2 Pause'],
   ['fade-in-1', 'P1 einblenden'], ['fade-out-1', 'P1 ausblenden'], ['fade-in-2', 'P2 einblenden'], ['fade-out-2', 'P2 ausblenden'], ['wishes-open', 'Wünsche öffnen'], ['wishes-pause', 'Wünsche pausieren'], ['wishes-close', 'Wünsche schließen'],
-  ['pause-mode', 'Pausen-Modus an/aus'], ['auto-toggle', 'Auto-Crossfade an/aus'], ['ducking-toggle', 'Ducking an/aus'], ['emergency', 'Notfall-Playlist an/aus'], ['end', 'Ende-Modus an/aus'], ['soundcheck', 'Soundcheck-Modus an/aus']];
+  ['pause-mode', 'Pausen-Modus an/aus'], ['auto-toggle', 'Auto-Crossfade an/aus'], ['ducking-toggle', 'Ducking an/aus'], ['emergency', 'Notfall-Playlist an/aus'], ['end', 'Ende-Modus an/aus'], ['soundcheck', 'Soundcheck-Modus an (Ausschalten nur durch Admin)']];
 function companionCard() {
   if (!data.features.flags.companion) return h('span');
   const c = data.settings.companion;
@@ -351,7 +351,19 @@ function viewStart() {
     save({ operation: { mode: m } }, m === 'wishlist' ? 'Wunschlisten-Modus an' : 'Normalbetrieb an');
   };
   const opt = (m, title, text) => h('button', { class: `mode-opt ${mode === m ? 'on' : ''}`, onclick: setMode(m), 'aria-pressed': String(mode === m) }, h('b', {}, title), h('span', {}, text));
+  // System an/aus: startet standardmaessig aus (Soundcheck-Modus), ein Admin schaltet es ein
+  const hold = data.system?.hold, startOff = chk(data.settings.operation.startDisabled !== false);
+  const sysCard = h('div', { class: `card stack ${hold ? 'hold-banner' : ''}` },
+    h('div', { class: 'row between' }, h('h2', {}, 'System'), h('span', { class: `badge ${hold ? 'warn' : 'ok'}` }, hold ? 'aus' : 'an')),
+    h('p', { class: 'small' }, hold ? `Die App steuert gerade nichts (keine Fader, keine Wiedergabe, keine Automatik)${hold.initial ? ' – Standard bis zum Einschalten.' : `, Soundcheck-Modus seit ${new Date(hold.since).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}${hold.by ? ` (${hold.by})` : ''}.`} Eine Playlist lässt sich trotzdem abspielen (Technik → Betrieb).`
+      : 'Die App steuert Wiedergabe, Fader und Automatik. Für einen Soundcheck: Technik → Betrieb → „Soundcheck-Modus“.'),
+    h('div', { class: 'row' },
+      hold ? h('button', { class: 'primary', onclick: safe(async () => { if (!confirm('System einschalten? Die Player-Fader fahren sanft auf die Werte der App, Automatik und Knöpfe sind wieder aktiv.')) return; await api('/control/soundcheck', { method: 'POST', body: { on: false } }); toast('System eingeschaltet'); await load(); }) }, 'System einschalten')
+        : h('button', { onclick: safe(async () => { await api('/control/soundcheck', { method: 'POST', body: { on: true, stopMusic: false, pauseWishes: false } }); toast('System aus'); await load(); }) }, 'System ausschalten')),
+    h('label', { class: 'check' }, startOff, h('span', {}, 'System startet deaktiviert (bei neuer Installation und nach „Alles löschen“ in Live) – ein Admin schaltet es ein')),
+    h('div', { class: 'row' }, h('button', { class: 'small', onclick: () => save({ operation: { startDisabled: startOff.checked } }) }, 'Speichern')));
   return h('div', { class: 'stack', style: 'gap:16px' },
+    sysCard,
     evCard,
     h('div', { class: 'card stack' }, h('h2', {}, 'Betriebsart'),
       h('p', { class: 'small muted' }, 'Spielt die App die Musik selbst (Spotify, Crossfade, Pult) oder gibt es einen DJ, der selbst spielt und die App nur die Wünsche verwaltet? Umschalten ist jederzeit möglich.'),

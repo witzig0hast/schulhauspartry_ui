@@ -40,7 +40,7 @@ export function staffState(engine, role, snap = engine.snapshot(), extra = {}) {
     if (can(role, 'viewTech') || can(role, 'viewFoh')) Object.assign(out.players[p], { gain: pl.gain, level: pl.level, meter: pl.meter, connected: pl.connected });
   }
   if (can(role, 'viewTech') || can(role, 'viewFoh')) {
-    out.auto = snap.auto; out.panic = snap.panic; out.emergency = snap.emergency; out.hold = snap.hold; out.mix = snap.mix;
+    out.auto = snap.auto; out.panic = snap.panic; out.emergency = snap.emergency; out.hold = snap.hold; out.mix = snap.mix; out.playlist = snap.playlist; out.playlistLast = settings().playlistPlay;
     out.ducking = snap.ducking;
     // Pegel-Fenster
     const c = settings();
