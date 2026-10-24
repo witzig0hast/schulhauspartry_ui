@@ -735,3 +735,7 @@ html.no-confetti .confetti-cv { display: none !important; }
 /* Soundcheck-Modus: Hinweis oben, Steuerung ausgegraut (Not-Aus bleibt bedienbar) */
 .hold-banner { background: var(--warn-bg); border-color: transparent; color: var(--text); }
 body.holding .tdock button.primary { opacity: .45; }
+
+/* Stopp / Weiter (sofort still) */
+.tdock .stop-btn { min-width: 110px; font-weight: 700; }
+.tdock .stop-btn.on { background: var(--warn); border-color: var(--warn); color: #111; }

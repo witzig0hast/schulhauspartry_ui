@@ -39,7 +39,7 @@ export const PERMS = {
   viewSound: ['admin', 'tech', 'orga', 'display'],                 // Ton-Dashboard
   viewOrga: ['admin', 'tech', 'mod', 'dj', 'orga', 'display'],     // Orga-Dashboard
   viewLogs: ['admin', 'tech'],
-  addSongs: ['admin'],                                             // Lieder selbst in die Warteschlange legen                                     // Live-Protokoll
+  addSongs: ['admin', 'tech'],                                             // Lieder selbst in die Warteschlange legen                                     // Live-Protokoll
 };
 export const can = (role, perm) => !!role && (PERMS[perm] || []).includes(role);
 

@@ -281,6 +281,8 @@ function render() {
     isAdmin ? h('button', { class: 'primary', onclick: onHold }, 'System einschalten') : h('span', { class: 'small muted' }, 'Einschalten: nur Admin')));
   if (refs.holdBtn) { refs.holdBtn.textContent = hold ? (isAdmin ? 'System einschalten' : 'System aus – Admin schaltet ein') : 'Soundcheck-Modus (System aus)'; refs.holdBtn.className = hold ? 'primary' : ''; refs.holdBtn.disabled = !!hold && !isAdmin; }
   updatePlaylist();
+  refs.stopBtn.textContent = state.quickStopped ? 'Weiter' : 'Stopp';
+  refs.stopBtn.classList.toggle('on', !!state.quickStopped);
   updateStrip(); updatePlayer(1); updatePlayer(2); fillPresets(); updateMics(); updateNext(); updateCountdown();
   const cf = state.crossfade;
   refs.cfBar.firstChild.style.width = `${(cf ? cf.progress : 0) * 100}%`;
@@ -313,7 +315,7 @@ function render() {
   swap(refs.errors, JSON.stringify(state.errors.map((e) => e.ts)), () => (state.errors.length ? h('div', {}, ...state.errors.map((e) => h('div', { class: 'tiny muted' }, `${new Date(e.ts).toLocaleTimeString('de-DE')} ${e.msg}`))) : h('div', { class: 'tiny muted' }, 'Keine Fehler.')));
   refs.pendingTitle.textContent = `Wünsche · ${state.pending.length} offen · ${state.upcomingTotal} in der Warteschlange`;
   memoSet(refs.pendingBox, JSON.stringify(state.pending.map((p) => [p.id, p.votes])), () => pendingList(state, { canAct: true, assign: () => assignMode }));
-  if (state.role === 'admin' && !refs.addSong.firstChild) refs.addSong.append(addSongBox());
+  if (['admin', 'tech'].includes(state.role) && !refs.addSong.firstChild) refs.addSong.append(addSongBox());
   memoSet(refs.upBox, JSON.stringify(state.upcoming.map((u) => [u.id, u.player, u.prioritized])), () => upcomingList(state, { canAct: true }));
 }
 
@@ -366,7 +368,11 @@ const main = h('div', { class: 'wrap stack tech' }, statusStrip(), refs.holdBann
   h('div', { class: 'grid two' }, playerCard(1), playerCard(2)),
   h('div', { class: 'grid two' }, crossfadeCard(), operationsCard()),
   aiSlot, wishesCard(), chatCard, advancedCard());
-refs.dock = h('div', { class: 'tdock' }, refs.dockNext,
+// Stopp / Weiter: sofort still ueber das Pult (z. B. Stopptanz), Spotify haelt an derselben Stelle
+refs.stopBtn = h('button', { class: 'stop-btn', title: 'Sofort still (Pult-Mute), Spotify hält an. Nochmal: weiter an derselben Stelle. Taste: Leertaste', onclick: () => toggleStop() }, 'Stopp');
+const toggleStop = () => post(state?.quickStopped ? '/control/go' : '/control/stop');
+addEventListener('keydown', (e) => { if (e.code === 'Space' && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement?.tagName || '') && !document.querySelector('.modal-back')) { e.preventDefault(); toggleStop(); } });
+refs.dock = h('div', { class: 'tdock' }, refs.dockNext, refs.stopBtn,
   h('button', { class: 'primary', onclick: () => post('/control/crossfade', { sec: Number(refs.cfSec.value) }) }, '⇄ Crossfade'), refs.panicClear, refs.panic);
 app.append((refs.top = topbar('Technik · FOH', { nav: true, right: [refs.badges, refs.levelsBtn] })), main, refs.dock);
 aiCard().then((c) => { if (c) aiSlot.replaceWith(c); }).catch(() => {});

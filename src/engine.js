@@ -420,7 +420,7 @@ export class Engine extends EventEmitter {
   }
 
   maybeAutoCrossfade(now, cfg) {
-    if (!cfg.auto.enabled || this.state.hold || this.liveTest?.noAuto || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
+    if (!cfg.auto.enabled || this.state.hold || this.quickStopped || this.liveTest?.noAuto || this.crossfade || this.starting || this.pendingStart.length || this.state.panic || this.state.ended || !this.current) return;
     const st = this.players[this.current].status();
     if (!st.playing || !st.durationMs) return;
     const remaining = st.durationMs - st.positionMs;
@@ -443,6 +443,7 @@ export class Engine extends EventEmitter {
   // ----- Aktionen -----
   async startCrossfade(durSec, curve = settings().auto.curve, { auto = false } = {}) {
     this.assertActive();
+    if (this.quickStopped) await this.clearQuickStop();
     if (this.state.playlist) { this.state.playlist = null; this.persist(); }   // Warteschlange uebernimmt
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     if (this.state.ended) throw new Error('Ende-Modus ist aktiv.');
@@ -507,11 +508,15 @@ export class Engine extends EventEmitter {
 
   async play(player, { startGain = 1 } = {}) {
     this.assertActive();
+    if (this.quickStopped) { if (this.quickStopped.player === player) return void await this.quickGo(); await this.clearQuickStop(); }
     if (this.state.playlist) { this.state.playlist = null; this.persist(); }   // Warteschlange uebernimmt
     this.endLevelTest();
     const st = this.players[player].status();
     const np = rq.nowPlayingRequest(this.env);
     const ours = st.uri && !st.ended && this.trackIdOf[player] && np && np.trackId === this.trackIdOf[player] && np.player === player;
+    // Angehaltener Song auf dem aktuellen Player (auch von aussen gestartet, z. B. direkt in Spotify): fortsetzen statt den naechsten zu starten
+    const resumeHere = !ours && st.uri && !st.ended && !st.playing && this.current === player && st.positionMs > 0;
+    if (resumeHere) { if (this.muted[player]) await this.unmuteFor(player, startGain); await this.players[player].resume(); this.emit('change'); return; }
     if (ours) { if (this.muted[player]) await this.unmuteFor(player, startGain); await this.players[player].resume(); if (!this.current) this.current = player; }
     else {
       const next = rq.upcoming(this.env).find((u) => !u.player || u.player === player) || rq.upcoming(this.env)[0];
@@ -531,6 +536,57 @@ export class Engine extends EventEmitter {
   }
 
   async pause(player) { await this.players[player].pause(); this.emit('change'); }
+
+  // Stopp / Weiter (z. B. Stopptanz): sofort still ueber das Pult (Mute, ohne Spotify-Verzoegerung), Spotify haelt an der Stelle an.
+  // Weiter: Spotify setzt fort, der Kanal geht erst auf, wenn wieder Ton kommt. Keine Automatik dazwischen.
+  async quickStop() {
+    this.assertActive();
+    if (this.quickStopped) return this.quickStopped;
+    const p = this.current && this.players[this.current].status().playing ? this.current : [1, 2].find((x) => this.players[x].status().playing);
+    if (!p) throw new Error('Gerade läuft nichts.');
+    this.crossfade = null; this.pendingStart = [];
+    this.quickStopped = { player: p, since: Date.now() };
+    await this.x32.setMute?.(p, true).catch((e) => this.fail('mute', e));
+    const o = other(p);
+    if (this.players[o].status().playing) this.players[o].pause().catch(() => {});
+    await this.players[p].pause().catch((e) => this.fail('pause', e));
+    this.emit('change');
+    return this.quickStopped;
+  }
+  // Jede andere Wiedergabe-Aktion hebt den Stopp auf (Kanal wieder auf, sonst bliebe der naechste Song stumm)
+  async clearQuickStop() {
+    const s = this.quickStopped;
+    if (!s) return;
+    this.quickStopped = null;
+    if (!this.muted[s.player]) await this.x32.setMute?.(s.player, false).catch((e) => this.fail('mute', e));
+  }
+  async quickGo() {
+    this.assertActive();
+    const s = this.quickStopped;
+    if (!s) return null;
+    this.quickStopped = null;
+    await this.players[s.player].resume();
+    await new Promise((r) => setTimeout(r, this.players[s.player].kind === 'real' ? 250 : 0));
+    if (!this.muted[s.player]) await this.x32.setMute?.(s.player, false).catch((e) => this.fail('mute', e));
+    this.current = s.player;
+    this.emit('change');
+    return s;
+  }
+
+  // Song sofort spielen (vorbei an der Warteschlange): ganz nach vorne und kurzer Crossfade bzw. Start, wenn nichts laeuft
+  async playNow(track, { by = null, accountId = null, sec = 2 } = {}) {
+    this.assertActive();
+    if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
+    if (this.quickStopped) await this.clearQuickStop();
+    let row = rq.upcoming(this.env).find((u) => u.trackId === track.id);
+    if (!row) row = rq.addAuto(this.env, track, this.current, Date.now(), { deviceId: 'staff', source: 'team', decidedBy: accountId });
+    rq.moveToFront(this.env, row.id, accountId, this.current);
+    const playing = this.current && this.players[this.current].status().playing;
+    if (playing) await this.startCrossfade(Math.max(0.5, sec));
+    else { const p = this.current || 1; rq.reassignPlayer(row.id, p); await this.play(p); }
+    L.info('wiedergabe', 'play.now', `Sofort gespielt${by ? ` (${by})` : ''}: ${track.title} – ${track.artist}`, { env: this.env, actor: by ? { kind: 'staff', label: by } : null, data: { trackId: track.id, sec } });
+    return rq.getRequest(row.id);
+  }
 
   // Ende eines Fade-outs/Crossfades: Kanal stumm, Player pausieren; eine halbe Sekunde nach dem Muten den Fader auf null
   // (er bleibt unten, solange der Kanal stumm ist). Ohne Stummschalten faehrt der Fader wie frueher zurueck in die Grundstellung.
@@ -563,6 +619,7 @@ export class Engine extends EventEmitter {
 
   async fadeIn(player, sec) {
     this.assertActive();
+    if (this.quickStopped) await this.clearQuickStop();
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     const st = this.players[player].status();
     this.gain[player] = 0;
@@ -626,6 +683,7 @@ export class Engine extends EventEmitter {
   // Notfall-Playlist: stoppt alles, startet die eingestellte Playlist (gemischt) auf dem gewaehlten Player
   async emergencyStart() {
     this.assertActive();
+    if (this.quickStopped) await this.clearQuickStop();
     const cfg = settings().emergency;
     const m = String(cfg.playlist || '').match(/playlist[/:]([A-Za-z0-9]{22})/) || String(cfg.playlist || '').match(/^([A-Za-z0-9]{22})$/);
     if (!m && this.players[cfg.player].kind === 'real') throw new Error('Keine Notfall-Playlist eingetragen (Admin → Automatik).');
@@ -645,6 +703,7 @@ export class Engine extends EventEmitter {
   // Einfach eine Playlist abspielen (Hintergrundmusik, Einlass, Soundcheck). Ist das System aus (Soundcheck-Modus),
   // startet nur Spotify – Fader und Mute bleiben wie sie sind. Sonst wie gewohnt mit kurzem Einblenden.
   async playPlaylist({ uri, player = 1, shuffle = true, by = null } = {}) {
+    if (this.quickStopped) await this.clearQuickStop();
     const m = String(uri || '').match(/playlist[/:]([A-Za-z0-9]{22})/) || String(uri || '').match(/^([A-Za-z0-9]{22})$/);
     if (!m && this.players[player].kind === 'real') throw new Error('Bitte einen Spotify-Playlist-Link einfügen (Spotify → Teilen → Link kopieren).');
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
@@ -692,6 +751,7 @@ export class Engine extends EventEmitter {
   // Einen Song direkt auf einem Player abspielen (ohne Warteschlange), z. B. fuer Pegel und Live-Test
   async playDirect(n, track, gain = 1) {
     this.assertActive();
+    if (this.quickStopped) await this.clearQuickStop();
     if (this.state.panic) throw new Error('Not-Aus ist aktiv.');
     delete this.ramps[n]; this.gain[n] = gain; this.trackMul[n] = 1;
     this.expectedUri[n] = track.uri; this.trackIdOf[n] = null;
@@ -841,6 +901,7 @@ export class Engine extends EventEmitter {
       crossfade: cf ? { from: cf.from, to: cf.to, progress: clamp01((Date.now() - cf.start) / (cf.dur * 1000)), durSec: cf.dur } : null,
       auto: cfg.auto,
       hold: this.state.hold || null,
+      quickStopped: this.quickStopped || null,
       playlist: this.state.playlist || null,
       mix: mixActive() ? { plan: this.mixPlanNow(), trim: { ...this.mixTrim }, nextTrimDb: mixTrimDb(rq.upcoming(this.env)[0]?.trackId) } : null,
       ducking: { ...cfg.ducking, active: !!this.ducking, mul: this.duckMul },

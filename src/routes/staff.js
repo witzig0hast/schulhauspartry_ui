@@ -101,7 +101,7 @@ export function staffRouter(env, engine, hub) {
   r.get('/mod/blacklist', requireAnyPerm('moderate', 'viewMod'), (req, res) => res.json({ blacklist: listBlacklist() }));
   r.post('/mod/blacklist', requireFeature('blacklist'), requirePerm('moderate'), wrap((req, res) => {
     const b = req.body || {};
-    const out = addBlock({ kind: b.kind, trackId: b.trackId, title: b.title, artist: b.artist, artistName: b.artistName, reason: b.reason }, req.session.accountId);
+    const out = addBlock({ kind: b.kind, trackId: b.trackId, title: b.title, artist: b.artist, artistName: b.artistName, reason: b.reason }, req.session.accountId, Date.now(), req.session.label || null);
     logEvent(env, 'blacklist', { kind: b.kind, label: out.label });
     hub.pushEnv(env, { guests: true }); hub.pushEnv(env === 'live' ? 'test' : 'live', { guests: true });
     res.json({ ok: true, ...out });
@@ -134,11 +134,23 @@ export function staffRouter(env, engine, hub) {
     if (!t) return res.status(404).json({ error: 'Song nicht gefunden' });
     if (isBlacklisted(t.id, t.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
     let row = rq.addAuto(env, t, engine.current, Date.now(), { deviceId: 'staff', source: 'team', decidedBy: req.session.accountId ?? null });
-    if (req.body?.next) { rq.prioritize(env, row.id, req.session.accountId ?? null, engine.current); row = rq.getRequest(row.id); }
+    if (req.body?.next) { rq.moveToFront(env, row.id, req.session.accountId ?? null, engine.current); row = rq.getRequest(row.id); }   // "Als Naechstes": Platz 1
     engine.afterQueueChange();
-    L.info('moderation', 'queue.added', `Vom Team eingereiht${req.body?.next ? ' und vorgezogen' : ''}: ${t.title} – ${t.artist}`, { env, actor: staffActor(req), data: { id: row.id, trackId: t.id, next: !!req.body?.next } });
+    L.info('moderation', 'queue.added', `Vom Team eingereiht${req.body?.next ? ' als Nächstes' : ''}: ${t.title} – ${t.artist}`, { env, actor: staffActor(req), data: { id: row.id, trackId: t.id, next: !!req.body?.next } });
     hub.pushEnv(env, { guests: true });
     res.json({ ok: true, id: row.id, title: t.title });
+  }));
+  // Sofort spielen: neuer Song (trackId) oder einer aus der Warteschlange (id) – ganz nach vorne und kurzer Crossfade
+  r.post('/queue/play-now', requirePerm('addSongs'), wrap(async (req, res) => {
+    if (settings().operation.mode === 'wishlist') return res.status(409).json({ error: 'Wunschlisten-Modus: Die App spielt keine Musik ab (der DJ spielt selbst).' });
+    let t = null;
+    if (req.body?.id != null) { const q = rq.getRequest(Number(req.body.id)); if (q) t = { id: q.trackId, uri: q.uri, title: q.title, artist: q.artist, durationMs: q.durationMs }; }
+    else { const id = String(req.body?.trackId || ''); if (!/^[A-Za-z0-9]{1,40}$/.test(id)) throw new Error('Ungültiger Song'); t = await engine.spotify.getTrack(id); }
+    if (!t) return res.status(404).json({ error: 'Song nicht gefunden' });
+    if (isBlacklisted(t.id, t.artist)) return res.status(409).json({ error: 'Dieser Song ist gesperrt.' });
+    const row = await engine.playNow(t, { by: req.session.label || null, accountId: req.session.accountId ?? null, sec: num(req.body?.sec, 2, 0.5, 30) });
+    hub.pushEnv(env, { guests: true });
+    res.json({ ok: true, id: row?.id, title: t.title });
   }));
   // Schon gespielten (oder abgelehnten/entfernten) Song nochmal einreihen
   r.post('/mod/requeue', requirePerm('moderate'), wrap((req, res) => {
@@ -235,6 +247,9 @@ export function staffRouter(env, engine, hub) {
     hub.pushEnv(env, { guests: true });
     res.json({ ok: true, playlist: out });
   }));
+  // Stopp / Weiter (z. B. Stopptanz): sofort still ueber das Pult, Spotify haelt an der Stelle an
+  r.post('/control/stop', ctl, wrap(async (req, res) => { const s = await engine.quickStop(); L.info('wiedergabe', 'control.stop', `Stopp (sofort still) – Player ${s.player}`, { env, actor: staffActor(req) }); res.json({ ok: true, stopped: s }); }));
+  r.post('/control/go', ctl, wrap(async (req, res) => { const s = await engine.quickGo(); if (s) L.info('wiedergabe', 'control.go', `Weiter nach ${Math.max(1, Math.round((Date.now() - s.since) / 1000))} s`, { env, actor: staffActor(req) }); res.json({ ok: true }); }));
   r.post('/control/playlist-stop', ctlPerm, wrap((req, res) => { engine.stopPlaylist({ by: req.session.label || null }); hub.pushEnv(env, { guests: true }); res.json({ ok: true }); }));
   r.post('/settings/tech', ctlPerm, wrap((req, res) => {
     const allow = ['auto', 'ducking', 'notice', 'wishMessages'];

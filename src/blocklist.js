@@ -9,17 +9,18 @@ export const artistNames = (artist) => String(artist || '').split(', ').map((a) 
 
 export const listBlacklist = () => db().prepare('SELECT * FROM blacklist ORDER BY created_at DESC').all().map((r) => ({
   id: r.id, kind: r.kind, key: r.key, title: r.title, artist: r.artist, reason: r.reason, createdAt: r.created_at,
+  by: r.created_by_label || (r.created_by ? db().prepare('SELECT label FROM accounts WHERE id = ?').get(r.created_by)?.label : null) || null,
 }));
 
 // Sperrt einen Song oder Interpreten und raeumt Wuensche/Queue aller Umgebungen auf.
-export function addBlock({ kind, trackId, title, artist, artistName, reason }, accountId, now = Date.now()) {
+export function addBlock({ kind, trackId, title, artist, artistName, reason }, accountId, now = Date.now(), byLabel = null) {
   if (!['track', 'artist'].includes(kind)) throw new Error('Ungültige Art');
   const key = kind === 'track' ? String(trackId || '') : normName(artistName);
   if (!key) throw new Error('Song/Interpret fehlt');
   const label = kind === 'track' ? title : artistName;
   return transaction(() => {
-    db().prepare('INSERT OR IGNORE INTO blacklist(kind, key, title, artist, reason, created_by, created_at) VALUES(?,?,?,?,?,?,?)')
-      .run(kind, key, kind === 'track' ? String(title || '').slice(0, 120) : null, kind === 'track' ? String(artist || '').slice(0, 200) : String(artistName).slice(0, 120), String(reason || '').slice(0, 80) || null, accountId ?? null, now);
+    db().prepare('INSERT OR IGNORE INTO blacklist(kind, key, title, artist, reason, created_by, created_at, created_by_label) VALUES(?,?,?,?,?,?,?,?)')
+      .run(kind, key, kind === 'track' ? String(title || '').slice(0, 120) : null, kind === 'track' ? String(artist || '').slice(0, 200) : String(artistName).slice(0, 120), String(reason || '').slice(0, 80) || null, accountId ?? null, now, byLabel ? String(byLabel).slice(0, 60) : null);
     // betroffene offene Wuensche ablehnen, Queue-Eintraege entfernen
     const rows = db().prepare("SELECT id, track_id, artist, status FROM requests WHERE status IN ('pending','later','approved')").all();
     let denied = 0, removed = 0;

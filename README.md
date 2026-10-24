@@ -81,6 +81,13 @@ kann übersprungen werden. Während des Tests hat der Testmodus die echten Verbi
 auch nach einem Neustart mitten im Test. Das Ergebnis steht in der Vorbereitung (`/prep`).
 Unterschied zur **Generalprobe:** die simuliert viele Gäste (Last), der Live-Test prüft die echten Geräte.
 
+### Sofort spielen & Stopp/Weiter (Technik)
+
+- **Lied suchen** (Technik → Warteschlange, für Admin und Technik): „**Jetzt spielen**“ (kurzer Crossfade, bzw. Start, wenn nichts läuft), „**Als Nächstes**“ (Platz 1 der Warteschlange) oder „**Hinten**“. Auch jeder Song in der Warteschlange hat „Jetzt“.
+- **Stopp / Weiter** (unten in der Leiste, Taste **Leertaste**, Companion `stop`): sofort still über das Pult (Mute, ohne Spotify-Verzögerung), Spotify hält an derselben Stelle an; „Weiter“ setzt genau dort fort. Während des Stopps keine Automatik. Gedacht z. B. für Stopptanz oder Durchsagen.
+- **Pause + Play** setzt den angehaltenen Song fort – auch wenn er nicht aus der Warteschlange kam (vorher startete Play dann den nächsten Song).
+- **Sperrliste** zeigt, wer wann gesperrt hat.
+
 ### System an/aus (Admin → Start & Links → System)
 
 Das System **startet deaktiviert** (bei einer neuen Installation und nach „Alles löschen“ in Live): Die App steuert nichts, bis ein **Admin** es einschaltet (Admin → Start oder Technik). Technik kann es jederzeit ausschalten (Soundcheck-Modus), einschalten darf nur ein Admin. Einmal eingeschaltet, bleibt es auch nach einem Neustart des Servers an. Abschaltbar unter „System startet deaktiviert“.

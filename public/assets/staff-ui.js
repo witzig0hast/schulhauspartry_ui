@@ -64,22 +64,27 @@ export function addSongBox() {
   let t = null;
   const add = (x, next) => safe(async () => {
     const r = await api('/queue/add', { method: 'POST', body: { trackId: x.id, next } });
-    toast(`Eingereiht${next ? ' und vorgezogen' : ''}: ${r.title}`);
+    toast(`${next ? 'Als Nächstes' : 'Eingereiht'}: ${r.title}`);
     input.value = ''; clear(results);
   })();
-  const input = h('input', { type: 'search', placeholder: 'Lied suchen und selbst einreihen …', maxlength: 80, 'aria-label': 'Lied hinzufügen', oninput: () => { clearTimeout(t); t = setTimeout(safe(async () => {
+  const now = (x) => safe(async () => {
+    const r = await api('/queue/play-now', { method: 'POST', body: { trackId: x.id } });
+    toast(`Läuft gleich: ${r.title}`);
+    input.value = ''; clear(results);
+  })();
+  const input = h('input', { type: 'search', placeholder: 'Lied suchen – z. B. für Stopptanz, Ansage, Wunsch vom Mikro …', maxlength: 80, 'aria-label': 'Lied hinzufügen', oninput: () => { clearTimeout(t); t = setTimeout(safe(async () => {
     const q = input.value.trim(); if (q.length < 2) return clear(results);
     const { tracks } = await api(`/queue/search?q=${encodeURIComponent(q)}`);
     clear(results).append(...(tracks.length ? tracks.map((x) => h('div', { class: 'item row between nowrap' },
       h('div', { class: 'req-main grow' }, cover(x.title, 'sm', x.id), h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), h('div', { class: 'a' }, `${x.artist}${x.durationMs ? ` · ${fmtTime(x.durationMs)}` : ''}`))),
-      x.blocked ? h('span', { class: 'badge bad' }, 'gesperrt') : x.queued ? h('span', { class: 'badge' }, 'schon in der Queue')
-        : h('div', { class: 'row nowrap', style: 'gap:6px' }, h('button', { class: 'small', onclick: () => add(x, true) }, 'Vorziehen'), h('button', { class: 'small primary', onclick: () => add(x, false) }, 'Hinzufügen'))))
+      x.blocked ? h('span', { class: 'badge bad' }, 'gesperrt') : x.queued ? h('div', { class: 'row nowrap', style: 'gap:6px' }, h('span', { class: 'badge' }, 'in der Queue'), h('button', { class: 'small primary', onclick: () => now(x) }, 'Jetzt spielen'))
+        : h('div', { class: 'row nowrap', style: 'gap:6px' }, h('button', { class: 'small primary', title: 'Sofort spielen (kurzer Crossfade)', onclick: () => now(x) }, 'Jetzt spielen'), h('button', { class: 'small', title: 'Ganz vorne in die Warteschlange', onclick: () => add(x, true) }, 'Als Nächstes'), h('button', { class: 'small', title: 'Hinten anstellen', onclick: () => add(x, false) }, 'Hinten'))))
       : [h('div', { class: 'small muted' }, 'Nichts gefunden.')]));
   }), 300); } });
-  return h('div', { class: 'stack', style: 'gap:8px;margin-bottom:12px' }, h('div', { class: 'eyebrow' }, 'Lied hinzufügen (Admin)'), input, results);
+  return h('div', { class: 'stack', style: 'gap:8px;margin-bottom:12px' }, h('div', { class: 'eyebrow' }, 'Lied suchen: jetzt spielen oder einreihen'), input, results);
 }
 
-export function upcomingList(state, { canAct, onAfter } = {}) {
+export function upcomingList(state, { canAct, onAfter, canPlay = ['admin', 'tech'].includes(state.role) } = {}) {
   if (!state.upcoming.length) return empty('Die Warteschlange ist leer.', 'note');
   const box = h('div', {});
   state.upcoming.forEach((u, i) => {
@@ -95,6 +100,7 @@ export function upcomingList(state, { canAct, onAfter } = {}) {
         u.votes > 1 ? h('span', { class: 'badge' }, `+${u.votes - 1}`) : null,
         u.prioritized ? h('span', { class: 'badge bad', title: u.prioritizedBy ? `von ${u.prioritizedBy}` : '' }, `Prio${u.prioritizedBy ? ` · ${u.prioritizedBy}` : ''}`) : null,
         u.player ? h('span', { class: `badge p${u.player}` }, `P${u.player}`) : null,
+        canPlay ? h('button', { class: 'small icon ghost', title: 'Sofort spielen (kurzer Crossfade)', onclick: safe(async () => { const o = await api('/queue/play-now', { method: 'POST', body: { id: u.id } }); toast(`Läuft gleich: ${o.title}`); onAfter?.(); }) }, 'Jetzt') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Priorisieren', 'aria-label': 'Priorisieren', onclick: safe(async () => { const o = await api('/mod/prioritize', { method: 'POST', body: { id: u.id } }); toast(`Priorisiert – kommt auf Platz ${o.position}`); onAfter?.(); }) }, 'Prio') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Entfernen', 'aria-label': 'Entfernen', onclick: safe(async () => { await api('/mod/remove', { method: 'POST', body: { id: u.id } }); onAfter?.(); }) }, '✕') : null,
         canAct ? h('button', { class: 'small icon ghost', title: 'Song sperren', 'aria-label': 'Song sperren', onclick: () => { if (confirm(`„${u.title}“ sperren und aus der Warteschlange nehmen?`)) ban({ kind: 'track', trackId: u.trackId, title: u.title, artist: u.artist }, `„${u.title}“`, onAfter); } }, 'Sperren') : null)));
@@ -194,7 +200,7 @@ export function blacklistPanel(state, { canAct, onAfter } = {}) {
   const list = state.blacklist || [];
   wrap.append(list.length ? h('div', {}, ...list.map((b) => h('div', { class: 'q-row' },
     h('span', { class: 'badge' }, b.kind === 'artist' ? 'Interpret' : 'Song'),
-    h('div', { class: 'grow' }, h('div', { class: 't' }, b.kind === 'artist' ? b.artist : b.title), h('div', { class: 'a' }, `${b.kind === 'track' ? `${b.artist} · ` : ''}${b.reason || 'gesperrt'} · ${ago(b.createdAt)}`)),
+    h('div', { class: 'grow' }, h('div', { class: 't' }, b.kind === 'artist' ? b.artist : b.title), h('div', { class: 'a' }, `${b.kind === 'track' ? `${b.artist} · ` : ''}${b.reason || 'gesperrt'}${b.by ? ` · von ${b.by}` : ''} · ${ago(b.createdAt)} (${fmtClock(b.createdAt)})`)),
     canAct ? h('button', { class: 'small', onclick: safe(async () => { await api('/mod/blacklist/remove', { method: 'POST', body: { id: b.id } }); toast('Freigegeben'); onAfter?.(); }) }, 'Freigeben') : null)))
     : empty('Nichts gesperrt.', 'note'));
   return wrap;

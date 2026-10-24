@@ -165,6 +165,20 @@ export function prioritize(env, id, accountId, currentPlayer, now = Date.now()) 
   });
 }
 
+// Ganz nach vorne (Platz 1), z. B. "Als Naechstes" oder "Jetzt spielen"; zaehlt als vorgezogen (Auto-Ordnung laesst es dort)
+export function moveToFront(env, id, accountId, currentPlayer, now = Date.now()) {
+  return transaction(() => {
+    const up = upcoming(env);
+    const item = up.find((u) => u.id === id);
+    if (!item) return { ok: false, status: 409, error: 'Song ist nicht (mehr) in der Warteschlange.' };
+    const rest = up.filter((u) => u.id !== id);
+    const pos = rest.length ? Math.min(rest[0].queuePos, item.queuePos) - 1 : item.queuePos;
+    const player = currentPlayer ? (currentPlayer === 1 ? 2 : 1) : item.player;
+    db().prepare('UPDATE requests SET queue_pos=?, player=?, prioritized_by=?, prioritized_at=? WHERE id=?').run(pos, player, accountId ?? null, now, id);
+    return { ok: true, request: getRequest(id), position: 1 };
+  });
+}
+
 // ---------- Engine ----------
 
 export function markPlaying(env, requestId, player, now = Date.now()) {

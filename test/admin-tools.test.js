@@ -4,11 +4,11 @@ import { startTestApp, Client } from './helpers.js';
 import * as rq from '../src/requests.js';
 import { getDb } from '../src/db.js';
 
-test('Admin legt Lieder selbst in die Warteschlange; nur Admin; gesperrt/doppelt abgelehnt', async () => {
+test('Admin/Technik legen Lieder selbst in die Warteschlange; Moderation nicht; gesperrt/doppelt abgelehnt', async () => {
   const ctx = await startTestApp();
   try {
     const admin = new Client(ctx.base); await admin.post('/api/login', { secret: 'super-geheimes-passwort-123' });
-    const tech = new Client(ctx.base); await tech.post('/api/login', { secret: (await admin.post('/api/admin/accounts', { role: 'tech', label: 'T' })).json.code });
+    const tech = new Client(ctx.base); await tech.post('/api/login', { secret: (await admin.post('/api/admin/accounts', { role: 'mod', label: 'M' })).json.code });   // Moderation darf es nicht
     assert.equal((await tech.get('/api/queue/search?q=uptown')).status, 403);
     const found = (await admin.get('/api/queue/search?q=uptown')).json.tracks;
     assert.ok(found.length && found[0].id);
@@ -24,9 +24,10 @@ test('Admin legt Lieder selbst in die Warteschlange; nur Admin; gesperrt/doppelt
     const lev = (await admin.get('/api/queue/search?q=levitating')).json.tracks[0];
     r = await admin.post('/api/queue/add', { trackId: lev.id, next: true });
     assert.equal(r.status, 200);
-    assert.ok((await admin.get('/api/state')).json.upcoming.find((x) => x.trackId === lev.id).prioritized, 'vorgezogen (wie Prio)');
+    const up2 = (await admin.get('/api/state')).json.upcoming;
+    assert.equal(up2[0].trackId, lev.id, 'Als Nächstes = Platz 1'); assert.ok(up2[0].prioritized);
     const logs = (await admin.get('/api/logs?cats=moderation')).json.logs;
-    assert.ok(logs.some((e) => e.event === 'queue.added' && /vorgezogen/.test(e.msg)));
+    assert.ok(logs.some((e) => e.event === 'queue.added' && /als Nächstes/.test(e.msg)));
     assert.equal((await admin.post('/api/queue/add', { trackId: 'gibtesnicht' })).status, 404);
     assert.equal((await admin.post('/api/queue/add', { trackId: '../x' })).status, 400);
   } finally { await ctx.close(); }
